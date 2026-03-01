@@ -403,7 +403,7 @@ function fleetVehiclesPlugin() {
         const f1Root = path.resolve(__dirname, '..');
         const envPath = path.join(f1Root, '.env');
         let mongoUri = process.env.MONGODB_URI || '';
-        let mongoDb = process.env.MONGODB_DB || 'McLaren_f1';
+        let mongoDb = process.env.MONGODB_DB || 'marip_f1';
         if (!mongoUri && fs.existsSync(envPath)) {
           const envContent = fs.readFileSync(envPath, 'utf-8');
           const uriMatch = envContent.match(/^MONGODB_URI=(.+)$/m);
@@ -556,6 +556,9 @@ export default defineConfig({
       },
       '/api/jolpica': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/openf1': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
+      '/api/opponents': { target: 'http://localhost:8100', changeOrigin: true },
+      '/api/driver_intel': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
+      '/api/circuit_intel': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/pipeline': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/f1data': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/mccar': { target: 'http://localhost:8100', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },

@@ -354,7 +354,7 @@ def _push_to_mongo(output_data: dict):
             logger.warning("MONGODB_URI not set — skipping MongoDB push")
             return
 
-        db_name = os.environ.get("MONGODB_DB", "McLaren_f1")
+        db_name = os.environ.get("MONGODB_DB", "marip_f1")
         client = MongoClient(uri)
         db = client[db_name]
 

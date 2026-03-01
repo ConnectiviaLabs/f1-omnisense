@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Cell, AreaChart, Area,
 } from 'recharts';
 import {
-  Trophy, TrendingUp, Loader2, AlertCircle, Flag, Users,
+  Trophy, TrendingUp, Loader2, AlertCircle, Flag, Users, Timer, Zap,
 } from 'lucide-react';
 import { usePolling } from '../hooks/usePolling';
 import * as jolpica from '../api/jolpica';
@@ -39,7 +39,7 @@ const compoundColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
 };
 
-type Tab = 'season' | 'mclaren';
+type Tab = 'season' | 'mclaren' | 'fullgrid';
 
 export function McLarenAnalytics() {
   const [tab, setTab] = useState<Tab>('season');
@@ -51,6 +51,7 @@ export function McLarenAnalytics() {
         {([
           { id: 'season' as Tab, label: 'Season Overview' },
           { id: 'mclaren' as Tab, label: 'McLaren Data' },
+          { id: 'fullgrid' as Tab, label: 'Full Grid' },
         ]).map(t => (
           <button
             key={t.id}
@@ -64,7 +65,9 @@ export function McLarenAnalytics() {
         ))}
       </div>
 
-      {tab === 'season' ? <SeasonOverview /> : <McLarenDeepDive />}
+      {tab === 'season' && <SeasonOverview />}
+      {tab === 'mclaren' && <McLarenDeepDive />}
+      {tab === 'fullgrid' && <FullGridView />}
     </div>
   );
 }
@@ -644,4 +647,231 @@ function KPI({ icon, label, value, detail }: {
       <div className="text-[12px] text-green-400 mt-0.5">{detail}</div>
     </div>
   );
+}
+
+/* ─── Full Grid View (Qualifying, Pit Stops, Sprints) ─── */
+
+function FullGridView() {
+  const [season, setSeason] = useState(2024);
+  const [qualifying, setQualifying] = useState<any[]>([]);
+  const [pitStops, setPitStops] = useState<any[]>([]);
+  const [sprints, setSprints] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/jolpica/qualifying?season=${season}`).then(r => r.json()),
+      fetch(`/api/jolpica/pit_stops?season=${season}`).then(r => r.json()),
+      fetch(`/api/jolpica/sprint_results?season=${season}`).then(r => r.json()),
+    ]).then(([q, p, s]) => {
+      setQualifying(q || []);
+      setPitStops(p || []);
+      setSprints(s || []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [season]);
+
+  // Qualifying best times per driver
+  const qualiBestByDriver = useMemo(() => {
+    const map: Record<string, { driver: string; constructor: string; bestQ3: number | null; bestQ2: number | null; bestQ1: number | null; sessions: number }> = {};
+    qualifying.forEach((q: any) => {
+      const code = q.driver_code || q.driver_id?.slice(0, 3).toUpperCase() || '???';
+      if (!map[code]) map[code] = { driver: code, constructor: q.constructor_id || '', bestQ3: null, bestQ2: null, bestQ1: null, sessions: 0 };
+      map[code].sessions++;
+      // Convert time string "1:23.456" to seconds
+      const toSec = (t: string | null) => {
+        if (!t) return null;
+        const parts = t.split(':');
+        if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+        return parseFloat(parts[0]);
+      };
+      const q3 = toSec(q.q3);
+      const q2 = toSec(q.q2);
+      const q1 = toSec(q.q1);
+      if (q3 && (!map[code].bestQ3 || q3 < map[code].bestQ3!)) map[code].bestQ3 = q3;
+      if (q2 && (!map[code].bestQ2 || q2 < map[code].bestQ2!)) map[code].bestQ2 = q2;
+      if (q1 && (!map[code].bestQ1 || q1 < map[code].bestQ1!)) map[code].bestQ1 = q1;
+    });
+    return Object.values(map).sort((a, b) => (a.bestQ3 || 999) - (b.bestQ3 || 999));
+  }, [qualifying]);
+
+  // Pit stop avg by team
+  const pitByTeam = useMemo(() => {
+    const map: Record<string, { team: string; durations: number[] }> = {};
+    pitStops.forEach((p: any) => {
+      // Find constructor from qualifying data
+      const qEntry = qualifying.find((q: any) => q.driver_id === p.driver_id && q.round === p.round);
+      const team = qEntry?.constructor_id || 'unknown';
+      if (!map[team]) map[team] = { team, durations: [] };
+      if (p.duration_s && p.duration_s < 60) map[team].durations.push(p.duration_s);
+    });
+    return Object.values(map)
+      .map(t => ({
+        team: t.team.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        avg: t.durations.length ? +(t.durations.reduce((a, b) => a + b, 0) / t.durations.length).toFixed(2) : 0,
+        min: t.durations.length ? +Math.min(...t.durations).toFixed(2) : 0,
+        count: t.durations.length,
+      }))
+      .filter(t => t.count > 0)
+      .sort((a, b) => a.avg - b.avg);
+  }, [pitStops, qualifying]);
+
+  // Grid vs finish position delta
+  const gridFinishData = useMemo(() => {
+    // Compute avg positions gained per driver from qualifying grid vs race finish
+    const map: Record<string, { code: string; totalGained: number; races: number }> = {};
+    // Use qualifying to get grid position, cross reference with race results would be complex
+    // Instead, use sprint data which has grid + position
+    sprints.forEach((s: any) => {
+      const code = s.driver_code || '???';
+      if (!map[code]) map[code] = { code, totalGained: 0, races: 0 };
+      map[code].totalGained += (s.positions_gained || 0);
+      map[code].races++;
+    });
+    return Object.values(map)
+      .map(d => ({ ...d, avgGained: +(d.totalGained / d.races).toFixed(1) }))
+      .sort((a, b) => b.avgGained - a.avgGained);
+  }, [sprints]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+  }
+
+  return (
+    <div className="space-y-4 pt-4">
+      {/* Season Selector */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted-foreground">Season:</span>
+        <div className="flex gap-1">
+          {[2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025].map(y => (
+            <button
+              key={y}
+              onClick={() => setSeason(y)}
+              className={`text-xs px-3 py-1.5 rounded-md transition-all ${
+                season === y ? 'bg-[#FF8000]/10 text-[#FF8000] border border-[#FF8000]/30' : 'text-muted-foreground hover:text-foreground border border-transparent'
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-muted-foreground ml-auto">
+          {qualifying.length} qualifying &middot; {pitStops.length} pit stops &middot; {sprints.length} sprints
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Qualifying Best Times */}
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Zap className="w-4 h-4" /> Qualifying Best Times (Q3)</h3>
+          <div className="overflow-y-auto max-h-[400px]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                  <th className="text-left py-1.5 px-2">#</th>
+                  <th className="text-left py-1.5 px-2">Driver</th>
+                  <th className="text-right py-1.5 px-2">Best Q3</th>
+                  <th className="text-right py-1.5 px-2">Best Q2</th>
+                  <th className="text-right py-1.5 px-2">Sessions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualiBestByDriver.map((d, i) => (
+                  <tr key={d.driver} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[#222838]">
+                    <td className="py-1.5 px-2 text-muted-foreground">{i + 1}</td>
+                    <td className="py-1.5 px-2 text-foreground font-mono">{d.driver}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-foreground">{d.bestQ3 ? formatTime(d.bestQ3) : '—'}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">{d.bestQ2 ? formatTime(d.bestQ2) : '—'}</td>
+                    <td className="py-1.5 px-2 text-right text-muted-foreground">{d.sessions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Pit Stop Times by Team */}
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Timer className="w-4 h-4" /> Avg Pit Stop Duration by Team</h3>
+          {pitByTeam.length > 0 ? (
+            <ResponsiveContainer width="100%" height={Math.max(250, pitByTeam.length * 30)}>
+              <BarChart data={pitByTeam} layout="vertical" margin={{ left: 10 }}>
+                <XAxis type="number" tick={{ fill: '#888', fontSize: 11 }} unit="s" domain={['dataMin - 1', 'dataMax + 1']} />
+                <YAxis type="category" dataKey="team" tick={{ fill: '#888', fontSize: 10 }} width={110} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="avg" name="Avg (s)" fill="#FF8000" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="min" name="Min (s)" fill="#27F4D2" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm">No pit stop data for {season}</div>
+          )}
+        </div>
+      </div>
+
+      {/* Sprint Results */}
+      {sprints.length > 0 && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Flag className="w-4 h-4" /> Sprint Race Results</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                  <th className="text-left py-1.5 px-2">Race</th>
+                  <th className="text-left py-1.5 px-2">Driver</th>
+                  <th className="text-left py-1.5 px-2">Team</th>
+                  <th className="text-right py-1.5 px-2">Grid</th>
+                  <th className="text-right py-1.5 px-2">Finish</th>
+                  <th className="text-right py-1.5 px-2">+/-</th>
+                  <th className="text-right py-1.5 px-2">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sprints.slice(0, 100).map((s: any, i: number) => (
+                  <tr key={i} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[#222838]">
+                    <td className="py-1.5 px-2 text-muted-foreground">{s.race_name?.replace(' Grand Prix', '')}</td>
+                    <td className="py-1.5 px-2 text-foreground font-mono">{s.driver_code}</td>
+                    <td className="py-1.5 px-2 text-muted-foreground">{s.constructor_name}</td>
+                    <td className="py-1.5 px-2 text-right font-mono">{s.grid}</td>
+                    <td className="py-1.5 px-2 text-right font-mono text-foreground">{s.position}</td>
+                    <td className={`py-1.5 px-2 text-right font-mono ${s.positions_gained > 0 ? 'text-green-400' : s.positions_gained < 0 ? 'text-red-400' : 'text-muted-foreground'}`}>
+                      {s.positions_gained > 0 ? '+' : ''}{s.positions_gained}
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono text-[#f59e0b]">{s.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Sprint Positions Gained Chart */}
+      {gridFinishData.length > 0 && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><TrendingUp className="w-4 h-4" /> Avg Sprint Positions Gained</h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <BarChart data={gridFinishData}>
+              <CartesianGrid stroke="rgba(255,128,0,0.08)" />
+              <XAxis dataKey="code" tick={{ fill: '#888', fontSize: 10 }} />
+              <YAxis tick={{ fill: '#888', fontSize: 11 }} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="avgGained" name="Avg Gained">
+                {gridFinishData.map((entry, i) => (
+                  <Cell key={i} fill={entry.avgGained >= 0 ? '#22c55e' : '#ef4444'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toFixed(3).padStart(6, '0')}`;
 }

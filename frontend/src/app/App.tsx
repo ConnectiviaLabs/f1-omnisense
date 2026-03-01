@@ -9,12 +9,16 @@ import { Regulations } from './components/Regulations';
 import { MediaIntelligence } from './components/MediaIntelligence';
 import { Chatbot } from './components/Chatbot';
 import { FleetOverview } from './components/FleetOverview';
+import { DriverIntel } from './components/DriverIntel';
+import { CircuitIntel } from './components/CircuitIntel';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 
 const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   dashboard: { title: 'Live Race Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
   'mclaren-analytics': { title: 'McLaren Analytics', subtitle: 'Season standings, race strategy, tire stints & pit stops' },
+  'driver-intel': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
+  'circuit-intel': { title: 'Circuit Intelligence', subtitle: 'Track layouts, pit loss times, air density & environmental conditions' },
   car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data from McLaren MCL60/MCL38' },
   driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
@@ -37,6 +41,8 @@ export default function App() {
     switch (activeView) {
       case 'dashboard': return <LiveDashboard />;
       case 'mclaren-analytics': return <McLarenAnalytics />;
+      case 'driver-intel': return <DriverIntel />;
+      case 'circuit-intel': return <CircuitIntel />;
       case 'car': return <CarTelemetry />;
       case 'driver': return <DriverBiometrics />;
       case 'ai-insights': return <AIInsights />;

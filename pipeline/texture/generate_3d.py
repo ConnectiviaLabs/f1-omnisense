@@ -511,7 +511,7 @@ def list_generated_models() -> list:
         uri = os.environ.get("MONGODB_URI", "")
         if uri:
             client = MongoClient(uri, serverSelectionTimeoutMS=3000)
-            db = client[os.environ.get("MONGODB_DB", "McLaren_f1")]
+            db = client[os.environ.get("MONGODB_DB", "marip_f1")]
             for doc in db["generated_models"].find({}, {"_id": 0}):
                 name = doc.get("model_name")
                 if name and name not in seen:
@@ -577,7 +577,7 @@ def _push_glb_to_gridfs(glb_path: Path, gridfs_filename: str) -> bool:
             logger.warning("MONGODB_URI not set — skipping GridFS push")
             return False
 
-        db_name = os.environ.get("MONGODB_DB", "McLaren_f1")
+        db_name = os.environ.get("MONGODB_DB", "marip_f1")
         client = MongoClient(uri)
         db = client[db_name]
         fs = gridfs.GridFS(db)
@@ -643,7 +643,7 @@ def _push_job_glbs_to_gridfs(model_name: str, provider: str, output_dir: Path):
             uri = os.environ.get("MONGODB_URI", "")
             if uri:
                 client = MongoClient(uri)
-                db = client[os.environ.get("MONGODB_DB", "McLaren_f1")]
+                db = client[os.environ.get("MONGODB_DB", "marip_f1")]
                 meta = {}
                 meta_path = output_dir / "metadata.json"
                 if meta_path.exists():

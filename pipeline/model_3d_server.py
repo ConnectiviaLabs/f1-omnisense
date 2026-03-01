@@ -192,7 +192,7 @@ def download_3d_glb(model_name: str, provider: str = "hunyuan", textured: bool =
         uri = os.environ.get("MONGODB_URI", "")
         if uri:
             client = MongoClient(uri)
-            db = client[os.environ.get("MONGODB_DB", "McLaren_f1")]
+            db = client[os.environ.get("MONGODB_DB", "marip_f1")]
             fs = gridfs.GridFS(db)
             grid_file = fs.find_one({"filename": gridfs_filename})
             if grid_file:

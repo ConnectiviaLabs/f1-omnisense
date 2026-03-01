@@ -59,16 +59,16 @@ def _get_chain():
         return _chain
 
     from omnirag import AtlasStore, RAGRetriever, RAGChain
-    from pipeline.embeddings import NomicEmbedder
+    from omnidoc.embedder import get_embedder
 
     _store = AtlasStore(
         uri=os.getenv("MONGODB_URI"),
-        db_name=os.getenv("MONGODB_DB", "McLaren_f1"),
+        db_name=os.getenv("MONGODB_DB", "marip_f1"),
         collection_name="f1_knowledge",
         index_name="vector_index",
-        embedding_dim=768,  # match existing nomic-embed-text-v1.5 index
+        embedding_dim=1024,  # BGE-large-en-v1.5
     )
-    embedder = NomicEmbedder()
+    embedder = get_embedder(enable_clip=False)
     _retriever = RAGRetriever(
         vectorstore=_store,
         embed_fn=embedder.embed_query,

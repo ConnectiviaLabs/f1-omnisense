@@ -46,6 +46,7 @@ from pipeline.omni_bedding_router import router as omni_bedding_router
 from pipeline.omni_vis_router import router as omni_vis_router
 from pipeline.omni_dapt_router import router as omni_dapt_router
 from pipeline.opponents.server import router as opponents_router
+from pipeline.updater.server import router as updater_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ app.include_router(omni_bedding_router)
 app.include_router(omni_vis_router)
 app.include_router(omni_dapt_router)
 app.include_router(opponents_router)
+app.include_router(updater_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
@@ -502,7 +504,7 @@ def get_data_db():
     global _data_client, _data_db
     if _data_db is None:
         _data_client = _MongoClient(os.getenv("MONGODB_URI", ""))
-        _data_db = _data_client[os.getenv("MONGODB_DB", "McLaren_f1")]
+        _data_db = _data_client[os.getenv("MONGODB_DB", "marip_f1")]
     return _data_db
 
 @app.get("/api/local/jolpica/race_results")
@@ -601,17 +603,71 @@ async def jolpica_constructor_standings():
         pos += 1
     return standings
 
+@app.get("/api/local/constructor_profiles")
+async def constructor_profiles(
+    season: int | None = None,
+    constructor_id: str | None = None,
+):
+    """Team performance profiles aggregated from race results, qualifying, pit stops, and telemetry."""
+    db = get_data_db()
+    filt: dict = {}
+    if season:
+        filt["season"] = season
+    if constructor_id:
+        filt["constructor_id"] = constructor_id
+    docs = list(db["constructor_profiles"].find(filt, {"_id": 0, "updated_at": 0}))
+    docs.sort(key=lambda d: (d.get("season", 0), d.get("championship_position") or 99))
+    return docs
+
+@app.get("/api/local/constructor_profiles/{constructor_id}")
+async def constructor_profile_detail(constructor_id: str, season: int | None = None):
+    """Single constructor profile, optionally filtered by season."""
+    db = get_data_db()
+    filt: dict = {"constructor_id": constructor_id}
+    if season:
+        filt["season"] = season
+    docs = list(db["constructor_profiles"].find(filt, {"_id": 0, "updated_at": 0}))
+    if not docs:
+        return {"error": f"No profile found for {constructor_id}"}
+    docs.sort(key=lambda d: d.get("season", 0))
+    return docs[0] if season else docs
+
 @app.get("/api/local/jolpica/qualifying")
-async def jolpica_qualifying():
-    return []
+async def jolpica_qualifying(season: int | None = None, driver: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if season:
+        filt["season"] = season
+    if driver:
+        filt["driver_code"] = driver.upper()
+    return list(db["jolpica_qualifying"].find(filt, {"_id": 0}).limit(5000))
 
 @app.get("/api/local/jolpica/circuits")
 async def jolpica_circuits():
-    return []
+    db = get_data_db()
+    pipeline = [
+        {"$group": {"_id": "$circuit_id", "race_name": {"$first": "$race_name"}, "races": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    return list(db["jolpica_race_results"].aggregate(pipeline))
 
 @app.get("/api/local/jolpica/pit_stops")
-async def jolpica_pit_stops():
-    return []
+async def jolpica_pit_stops(season: int | None = None, circuit: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if season:
+        filt["season"] = season
+    if circuit:
+        filt["circuit_id"] = circuit
+    return list(db["jolpica_pit_stops"].find(filt, {"_id": 0}).limit(6000))
+
+@app.get("/api/local/jolpica/sprint_results")
+async def jolpica_sprint_results(season: int | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if season:
+        filt["season"] = season
+    return list(db["jolpica_sprint_results"].find(filt, {"_id": 0}))
 
 @app.get("/api/local/jolpica/lap_times")
 async def jolpica_lap_times():
@@ -619,11 +675,71 @@ async def jolpica_lap_times():
 
 @app.get("/api/local/jolpica/drivers")
 async def jolpica_drivers():
-    return []
+    db = get_data_db()
+    pipeline = [
+        {"$group": {"_id": "$driver_id", "code": {"$first": "$driver_code"}, "constructor": {"$last": "$constructor_id"}, "races": {"$sum": 1}}},
+        {"$sort": {"races": -1}},
+    ]
+    return list(db["jolpica_race_results"].aggregate(pipeline))
 
 @app.get("/api/local/jolpica/seasons")
 async def jolpica_seasons():
-    return []
+    db = get_data_db()
+    return sorted(db["jolpica_race_results"].distinct("season"))
+
+# ── Driver Intelligence endpoints ─────────────────────────────────────
+
+@app.get("/api/local/driver_intel/performance_markers")
+async def driver_intel_performance_markers(driver: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if driver:
+        filt["Driver"] = driver.upper()
+    return list(db["driver_performance_markers"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/driver_intel/overtake_profiles")
+async def driver_intel_overtake_profiles(driver: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if driver:
+        filt["driver_code"] = driver.upper()
+    return list(db["driver_overtake_profiles"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/driver_intel/telemetry_profiles")
+async def driver_intel_telemetry_profiles(driver: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if driver:
+        filt["driver_code"] = driver.upper()
+    return list(db["driver_telemetry_profiles"].find(filt, {"_id": 0}))
+
+# ── Circuit Intelligence endpoints ────────────────────────────────────
+
+@app.get("/api/local/circuit_intel/circuits")
+async def circuit_intel_circuits(circuit: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if circuit:
+        filt["circuit_slug"] = circuit
+    return list(db["circuit_intelligence"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/circuit_intel/pit_loss")
+async def circuit_intel_pit_loss(circuit: str | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if circuit:
+        filt["circuit"] = circuit
+    return list(db["circuit_pit_loss_times"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/circuit_intel/air_density")
+async def circuit_intel_air_density(circuit: str | None = None, year: int | None = None):
+    db = get_data_db()
+    filt: dict = {}
+    if circuit:
+        filt["circuit_slug"] = circuit
+    if year:
+        filt["year"] = year
+    return list(db["race_air_density"].find(filt, {"_id": 0}))
 
 @app.get("/api/local/pipeline/anomaly")
 async def pipeline_anomaly():
@@ -769,7 +885,7 @@ def _build_session_map():
     session keys.
     """
     db = get_data_db()
-    sources = db["telemetry"].distinct("_source_file")
+    sources = db["telemetry_lap_summary"].distinct("_source_file")
     src_to_key = {}
     year_race_to_key = {}  # "2024|Monaco Grand Prix" → session_key
     session_key = 9000
@@ -867,7 +983,7 @@ _GP_TO_COUNTRY: dict[str, str] = {
 async def openf1_sessions():
     """Generate OpenF1-format sessions from telemetry data."""
     db = get_data_db()
-    sources = db["telemetry"].distinct("_source_file")
+    sources = db["telemetry_lap_summary"].distinct("_source_file")
     sessions = []
     session_key = 9000
     race_idx = 0
@@ -930,38 +1046,23 @@ async def openf1_drivers():
 
 @app.get("/api/local/openf1/laps")
 async def openf1_laps():
-    """Generate OpenF1-format lap data from telemetry."""
+    """Generate OpenF1-format lap data from pre-aggregated telemetry_lap_summary."""
     db = get_data_db()
     _, yr_to_key = _build_session_map()
-    pipeline_agg = [
-        {"$group": {
-            "_id": {"Driver": "$Driver", "Year": "$Year", "Race": "$Race", "LapNumber": "$LapNumber"},
-            "lap_time": {"$first": "$LapTime"},
-            "top_speed": {"$max": "$Speed"},
-            "date": {"$first": "$Date"},
-        }},
-        {"$sort": {"_id.Year": 1, "_id.Race": 1, "_id.LapNumber": 1}},
-    ]
-    results = list(db["telemetry"].aggregate(pipeline_agg, allowDiskUse=True))
+    results = list(db["telemetry_lap_summary"].find(
+        {}, {"_id": 0, "Driver": 1, "Year": 1, "Race": 1, "LapNumber": 1,
+             "LapTime": 1, "LapTime_s": 1, "top_speed": 1, "Date": 1}
+    ).sort([("Year", 1), ("Race", 1), ("LapNumber", 1)]))
     laps = []
     for r in results:
-        ident = r["_id"]
-        driver = ident.get("Driver", "")
-        year = ident.get("Year", "")
-        race = ident.get("Race", "")
-        lap_num = ident.get("LapNumber")
+        driver = r.get("Driver", "")
+        year = str(r.get("Year", ""))
+        race = r.get("Race", "")
+        lap_num = r.get("LapNumber")
         if lap_num is None:
             continue
         sk = _resolve_sk(yr_to_key, year, race)
-        lap_duration = None
-        lt = r.get("lap_time", "")
-        if lt and "days" in str(lt):
-            try:
-                time_part = str(lt).split(" ")[-1]
-                parts = time_part.split(":")
-                lap_duration = float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-            except (ValueError, IndexError):
-                pass
+        lap_duration = r.get("LapTime_s")
         laps.append({
             "session_key": sk, "meeting_key": sk,
             "driver_number": _DRIVER_NUMBERS.get(driver, 0),
@@ -969,34 +1070,28 @@ async def openf1_laps():
             "lap_duration": lap_duration,
             "duration_sector_1": None, "duration_sector_2": None, "duration_sector_3": None,
             "is_pit_out_lap": False,
-            "date_start": str(r.get("date", "")),
+            "date_start": str(r.get("Date", "")),
             "st_speed": float(r.get("top_speed", 0)) if r.get("top_speed") else None,
         })
     return laps
 
 @app.get("/api/local/openf1/position")
 async def openf1_positions():
-    """Generate OpenF1-format position data from telemetry."""
+    """Generate OpenF1-format position data from telemetry_lap_summary."""
     db = get_data_db()
     _, yr_to_key = _build_session_map()
-    pipeline_agg = [
-        {"$group": {
-            "_id": {"Driver": "$Driver", "Year": "$Year", "Race": "$Race", "LapNumber": "$LapNumber"},
-            "date": {"$last": "$Date"},
-        }},
-        {"$sort": {"_id.Year": 1, "_id.Race": 1, "_id.LapNumber": 1}},
-    ]
-    results = list(db["telemetry"].aggregate(pipeline_agg, allowDiskUse=True))
+    results = list(db["telemetry_lap_summary"].find(
+        {}, {"_id": 0, "Driver": 1, "Year": 1, "Race": 1, "LapNumber": 1, "Date": 1}
+    ).sort([("Year", 1), ("Race", 1), ("LapNumber", 1)]))
     from collections import defaultdict
     lap_groups = defaultdict(list)
     for r in results:
-        ident = r["_id"]
-        year = ident.get("Year", "")
-        race = ident.get("Race", "")
-        key = f'{year}_{race}_{ident.get("LapNumber", 0)}'
+        year = str(r.get("Year", ""))
+        race = r.get("Race", "")
+        key = f'{year}_{race}_{r.get("LapNumber", 0)}'
         lap_groups[key].append({
-            "driver": ident.get("Driver", ""),
-            "date": r.get("date", ""),
+            "driver": r.get("Driver", ""),
+            "date": r.get("Date", ""),
             "year": year,
             "race": race,
         })
@@ -1033,7 +1128,7 @@ async def openf1_intervals():
 
 @app.get("/api/local/openf1/pit")
 async def openf1_pit():
-    """Generate pit stop data from telemetry stint boundaries."""
+    """Generate pit stop data from telemetry_lap_summary stint boundaries."""
     db = get_data_db()
     _, yr_to_key = _build_session_map()
     pipeline_agg = [
@@ -1044,7 +1139,7 @@ async def openf1_pit():
         }},
         {"$sort": {"_id.Race": 1, "_id.Driver": 1, "min_lap": 1}},
     ]
-    results = list(db["telemetry"].aggregate(pipeline_agg))
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg))
     from collections import defaultdict
     driver_race_stints = defaultdict(list)
     for r in results:
@@ -1074,7 +1169,7 @@ async def openf1_pit():
 
 @app.get("/api/local/openf1/stints")
 async def openf1_stints():
-    """Generate stint data from telemetry."""
+    """Generate stint data from telemetry_lap_summary."""
     db = get_data_db()
     _, yr_to_key = _build_session_map()
     pipeline_agg = [
@@ -1087,7 +1182,7 @@ async def openf1_stints():
         }},
         {"$sort": {"_id.Year": 1, "_id.Race": 1, "_id.Driver": 1, "start_lap": 1}},
     ]
-    results = list(db["telemetry"].aggregate(pipeline_agg, allowDiskUse=True))
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg, allowDiskUse=True))
     stints = []
     from collections import defaultdict
     stint_counter = defaultdict(int)
@@ -1196,49 +1291,47 @@ def _aggregate_telemetry_summary(docs: list[dict]) -> list[dict]:
 
 @app.get("/api/local/mccar-summary/{year}/{driver}")
 async def mccar_summary(year: str, driver: str):
-    """Aggregate telemetry into CarSummary[] format grouped by race."""
+    """Aggregate telemetry into CarSummary[] format from telemetry_race_summary."""
     db = get_data_db()
-    docs = list(db["telemetry"].find(
-        {"Driver": driver, "Year": year},
-        {"_id": 0, "Speed": 1, "RPM": 1, "Throttle": 1, "Brake": 1,
-         "DRS": 1, "Compound": 1, "Race": 1}
+    # Try int and str for Year matching
+    year_int = int(year) if year.isdigit() else year
+    docs = list(db["telemetry_race_summary"].find(
+        {"Driver": driver, "Year": {"$in": [year, year_int]}},
+        {"_id": 0}
     ))
-    return _aggregate_telemetry_summary(docs)
+    summaries = []
+    for d in docs:
+        race = d.get("Race", "Unknown")
+        short_name = race.replace(" Grand Prix", "")
+        summaries.append({
+            "race": short_name,
+            "avgSpeed": d.get("avg_speed", 0),
+            "topSpeed": d.get("top_speed", 0),
+            "avgRPM": d.get("avg_rpm", 0),
+            "maxRPM": d.get("max_rpm", 0),
+            "avgThrottle": d.get("avg_throttle", 0),
+            "brakePct": d.get("brake_pct", 0),
+            "drsPct": d.get("drs_pct", 0),
+            "compounds": d.get("compounds", []),
+            "samples": d.get("samples", 0),
+        })
+    summaries.sort(key=lambda x: x["race"])
+    return summaries
 
 @app.get("/api/local/mcdriver-summary/{year}/{driver}")
 async def mcdriver_summary(year: str, driver: str):
-    """Aggregate telemetry into RaceSummary[] format for driver biometrics."""
+    """Aggregate telemetry into RaceSummary[] format from telemetry_race_summary."""
     db = get_data_db()
-    docs = list(db["telemetry"].find(
-        {"Driver": driver, "Year": year},
-        {"_id": 0, "Speed": 1, "RPM": 1, "Throttle": 1, "Brake": 1,
-         "DRS": 1, "Race": 1}
+    year_int = int(year) if year.isdigit() else year
+    docs = list(db["telemetry_race_summary"].find(
+        {"Driver": driver, "Year": {"$in": [year, year_int]}},
+        {"_id": 0}
     ))
-    from collections import defaultdict
-    races = defaultdict(lambda: {"speeds": [], "rpms": [], "total": 0})
+    summaries = []
     for d in docs:
         race = d.get("Race", "Unknown")
-        r = races[race]
-        speed = d.get("Speed")
-        if speed is not None:
-            try:
-                r["speeds"].append(float(speed))
-            except (ValueError, TypeError):
-                pass
-        rpm = d.get("RPM")
-        if rpm is not None:
-            try:
-                r["rpms"].append(float(rpm))
-            except (ValueError, TypeError):
-                pass
-        r["total"] += 1
-    summaries = []
-    for race_name, r in races.items():
-        if not r["speeds"]:
-            continue
-        short_name = race_name.replace(" Grand Prix", "")
-        avg_speed = sum(r["speeds"]) / len(r["speeds"]) if r["speeds"] else 0
-        # Simulate biometric data from telemetry intensity
+        short_name = race.replace(" Grand Prix", "")
+        avg_speed = d.get("avg_speed", 0)
         battle_intensity = min(100, round(avg_speed / 3.5, 1))
         summaries.append({
             "race": short_name,
@@ -1248,10 +1341,78 @@ async def mcdriver_summary(year: str, driver: str):
             "battleIntensity": battle_intensity,
             "airTemp": 25.0,
             "trackTemp": 40.0,
-            "samples": r["total"],
+            "samples": d.get("samples", 0),
         })
     summaries.sort(key=lambda x: x["race"])
     return summaries
+
+def _decompress_telemetry(db, source_file: str) -> list[dict]:
+    """Decompress telemetry from telemetry_compressed for a specific race.
+
+    source_file: e.g. "2024_Abu_Dhabi_Grand_Prix_Race.csv"
+    Returns list of dicts with telemetry fields.
+    """
+    import gzip as _gzip
+    import pickle as _pickle
+
+    # Parse year from source_file to find the right compressed chunk
+    parts = source_file.replace(".csv", "").split("_")
+    year = parts[0] if parts else ""
+    # The compressed filename is like "2024_R.parquet"
+    compressed_name = f"{year}_R.parquet"
+
+    # Build driver number → code mapping
+    num_to_code = {}
+    for doc in db["openf1_drivers"].find({}, {"driver_number": 1, "name_acronym": 1, "_id": 0}):
+        num_to_code[str(doc["driver_number"])] = doc["name_acronym"]
+
+    # Find and decompress chunks for this year's race
+    chunks = list(db["telemetry_compressed"].find(
+        {"filename": compressed_name},
+        {"data": 1, "chunk": 1, "_id": 0},
+    ))
+    chunks.sort(key=lambda d: d.get("chunk", 0))
+
+    import pandas as pd
+    frames = []
+    for doc in chunks:
+        try:
+            df = _pickle.loads(_gzip.decompress(doc["data"]))
+            frames.append(df)
+        except Exception:
+            pass
+
+    if not frames:
+        return []
+
+    tel = pd.concat(frames, ignore_index=True)
+    tel["Driver"] = tel["Driver"].astype(str).map(num_to_code)
+    tel = tel.dropna(subset=["Driver"])
+
+    # Filter to specific race from source_file
+    # "2024_Abu_Dhabi_Grand_Prix_Race.csv" → "Abu Dhabi Grand Prix"
+    race_parts = parts[1:]  # remove year
+    if race_parts and race_parts[-1] == "Race":
+        race_parts = race_parts[:-1]
+    race_name = " ".join(race_parts)
+    if race_name:
+        tel = tel[tel["Race"] == race_name]
+
+    if tel.empty:
+        return []
+
+    # Rename LapTime_s to LapTime string
+    if "LapTime_s" in tel.columns:
+        def _fmt_lt(s):
+            if pd.isna(s):
+                return ""
+            m, sec = divmod(float(s), 60)
+            return f"0 days 00:{int(m):02d}:{sec:06.3f}"
+        tel["LapTime"] = tel["LapTime_s"].apply(_fmt_lt)
+        tel = tel.drop(columns=["LapTime_s"])
+
+    return tel.to_dict("records")
+
 
 def _telemetry_to_csv(docs: list[dict]) -> str:
     """Convert telemetry documents to CSV string."""
@@ -1298,15 +1459,11 @@ def _biometrics_to_csv(docs: list[dict]) -> str:
 
 @app.get("/api/local/mccar/{year}/{filename}")
 async def mccar_csv(year: str, filename: str):
-    """Serve telemetry as CSV for a specific race."""
+    """Serve telemetry as CSV for a specific race (decompressed on-the-fly)."""
     from starlette.responses import PlainTextResponse
     db = get_data_db()
-    # filename like 2024_Abu_Dhabi_Grand_Prix_Race.csv
     source_file = filename.replace(".csv", "") + ".csv"
-    docs = list(db["telemetry"].find(
-        {"_source_file": source_file},
-        {"_id": 0}
-    ))
+    docs = _decompress_telemetry(db, source_file)
     return PlainTextResponse(_telemetry_to_csv(docs))
 
 @app.get("/api/local/mcdriver/{year}/{filename}")
@@ -1324,23 +1481,20 @@ async def mcdriver_csv(year: str, filename: str):
         {"_id": 0}
     ))
     if not docs:
-        # Fallback: try telemetry collection without _biometrics suffix
+        # Fallback: decompress telemetry on-the-fly
         fallback_file = filename.replace(".csv", "").replace("_biometrics", "") + ".csv"
-        docs = list(db["telemetry"].find(
-            {"_source_file": fallback_file},
-            {"_id": 0}
-        ))
+        docs = _decompress_telemetry(db, fallback_file)
         return PlainTextResponse(_telemetry_to_csv(docs))
     return PlainTextResponse(_biometrics_to_csv(docs))
 
 @app.get("/api/local/mcracecontext/{year}/tire_stints.csv")
 async def mcracecontext_tire_stints(year: str):
-    """Generate tire stints CSV from telemetry data."""
+    """Generate tire stints CSV from telemetry_lap_summary."""
     from starlette.responses import PlainTextResponse
     db = get_data_db()
-    # Aggregate stint data from telemetry
+    year_int = int(year) if year.isdigit() else year
     pipeline_agg = [
-        {"$match": {"Year": year}},
+        {"$match": {"Year": {"$in": [year, year_int]}, "Compound": {"$ne": None}}},
         {"$group": {
             "_id": {"Driver": "$Driver", "Race": "$Race", "Compound": "$Compound"},
             "start_lap": {"$min": "$LapNumber"},
@@ -1349,7 +1503,7 @@ async def mcracecontext_tire_stints(year: str):
         }},
         {"$sort": {"_id.Race": 1, "_id.Driver": 1, "start_lap": 1}},
     ]
-    results = list(db["telemetry"].aggregate(pipeline_agg))
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg))
     headers = ["Driver", "Race", "Compound", "StartLap", "EndLap", "TyreLife"]
     lines = [",".join(headers)]
     for r in results:
@@ -1517,9 +1671,9 @@ async def mc_pit_stops(year: str):
     """
     from starlette.responses import PlainTextResponse
     db = get_data_db()
-    # Get stint boundaries (compound changes) without heavy $sort+$push
+    year_int = int(year) if year.isdigit() else year
     pipeline_agg = [
-        {"$match": {"Year": year, "Compound": {"$ne": None}}},
+        {"$match": {"Year": {"$in": [year, year_int]}, "Compound": {"$ne": None}}},
         {"$group": {
             "_id": {"Driver": "$Driver", "Race": "$Race", "Compound": "$Compound"},
             "min_lap": {"$min": "$LapNumber"},
@@ -1527,7 +1681,7 @@ async def mc_pit_stops(year: str):
         }},
         {"$sort": {"_id.Race": 1, "_id.Driver": 1, "min_lap": 1}},
     ]
-    results = list(db["telemetry"].aggregate(pipeline_agg))
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg))
     # Group by driver+race, sort stints by min_lap, pit stop = gap between stints
     from collections import defaultdict
     driver_race_stints = defaultdict(list)
@@ -1629,8 +1783,9 @@ async def mc_tire_stints(year: str):
     """
     from starlette.responses import PlainTextResponse
     db = get_data_db()
+    year_int = int(year) if year.isdigit() else year
     pipeline_agg = [
-        {"$match": {"Year": year}},
+        {"$match": {"Year": {"$in": [year, year_int]}, "Compound": {"$ne": None}}},
         {"$group": {
             "_id": {"Driver": "$Driver", "Race": "$Race", "Compound": "$Compound"},
             "start_lap": {"$min": "$LapNumber"},
@@ -1638,7 +1793,7 @@ async def mc_tire_stints(year: str):
         }},
         {"$sort": {"_id.Race": 1, "_id.Driver": 1, "start_lap": 1}},
     ]
-    results = list(db["telemetry"].aggregate(pipeline_agg, allowDiskUse=True))
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg, allowDiskUse=True))
     headers = ["session_type", "compound", "driver_acronym", "meeting_name", "start_lap", "end_lap"]
     lines = [",".join(headers)]
     for r in results:

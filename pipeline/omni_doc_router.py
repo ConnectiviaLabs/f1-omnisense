@@ -151,14 +151,14 @@ async def upload_and_ingest(
                 },
             ))
 
-        # 3. Embed with NomicEmbedder (768-dim, matches Atlas vector_index)
-        from pipeline.embeddings import NomicEmbedder
-        embedder = NomicEmbedder()
+        # 3. Embed with BGE (1024-dim, matches Atlas vector_index)
+        from omnidoc.embedder import get_embedder
+        embedder = get_embedder(enable_clip=False)
         texts = [doc.page_content for doc in docs]
         embeddings = []
         for i in range(0, len(texts), 32):
             batch = texts[i:i + 32]
-            embeddings.extend(embedder.embed(batch))
+            embeddings.extend(embedder.embed_texts(batch))
 
         # 4. Upsert to Atlas
         from pipeline.vectorstore import AtlasVectorStore

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 URI = os.environ["MONGODB_URI"]
-DB_NAME = os.environ.get("MONGODB_DB", "McLaren_f1")
+DB_NAME = os.environ.get("MONGODB_DB", "marip_f1")
 
 client = MongoClient(URI)
 db = client[DB_NAME]

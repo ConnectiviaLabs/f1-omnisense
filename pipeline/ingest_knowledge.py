@@ -216,18 +216,18 @@ def _build_document_meta_docs(documents: list[dict]) -> list[Document]:
 # ── Batch Embedding ──────────────────────────────────────────────────────
 
 def embed_documents(docs: list[Document], batch_size: int = 32) -> list[list[float]]:
-    """Embed all documents using nomic-embed-text via Ollama."""
+    """Embed all documents using BGE-large-en-v1.5 (1024-dim)."""
     import sys, os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from pipeline.embeddings import NomicEmbedder
+    from omnidoc.embedder import get_embedder
 
-    embedder = NomicEmbedder()
+    embedder = get_embedder(enable_clip=False)
     texts = [doc.page_content for doc in docs]
     all_vecs: list[list[float]] = []
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
-        vecs = embedder.embed(batch)
+        vecs = embedder.embed_texts(batch)
         all_vecs.extend(vecs)
 
         if (i + batch_size) % 100 == 0 or i + batch_size >= len(texts):
@@ -287,7 +287,7 @@ def ingest(rebuild: bool = False):
     print(f"\n  Total documents: {len(all_docs)}")
 
     # Embed
-    print("\n[2/3] Embedding with nomic-embed-text (768-dim)...")
+    print("\n[2/3] Embedding with BGE-large-en-v1.5 (1024-dim)...")
     t0 = time.time()
     embeddings = embed_documents(all_docs)
     embed_time = time.time() - t0

@@ -76,7 +76,7 @@ def visualize_knowledge(
     from pymongo import MongoClient
 
     uri = os.getenv("MONGODB_URI", "")
-    db_name = os.getenv("MONGODB_DB", "McLaren_f1")
+    db_name = os.getenv("MONGODB_DB", "marip_f1")
 
     client = MongoClient(uri)
     db = client[db_name]

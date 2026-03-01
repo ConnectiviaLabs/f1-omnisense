@@ -11,6 +11,8 @@ import {
   Car,
   User,
   Box,
+  Users,
+  MapPin,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
@@ -22,6 +24,8 @@ interface SidebarProps {
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
   { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
+  { id: 'driver-intel', label: 'Driver Intel', icon: Users },
+  { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
   { id: 'car', label: 'Car Telemetry', icon: Car },
   { id: 'driver', label: 'Driver Bio', icon: User },
   { id: 'media', label: 'Media Intel', icon: Video },

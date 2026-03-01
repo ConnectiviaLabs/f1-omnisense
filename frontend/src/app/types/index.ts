@@ -270,5 +270,139 @@ export interface IntelligenceData {
   stats: PipelineStats;
 }
 
+// Driver Intelligence Types
+export interface DriverPerformanceMarker {
+  Driver: string;
+  degradation_slope_s_per_lap: number | null;
+  late_race_delta_s: number | null;
+  lap_time_consistency_std: number | null;
+  sector1_cv: number | null;
+  sector2_cv: number | null;
+  sector3_cv: number | null;
+  heat_lap_delta_s: number | null;
+  humidity_lap_delta_s: number | null;
+  throttle_smoothness: number | null;
+  brake_overlap_rate: number | null;
+  avg_top_speed_kmh: number | null;
+  avg_throttle_pct: number | null;
+  late_race_speed_drop_kmh: number | null;
+  avg_stint_length: number | null;
+  long_stint_lap_delta: number | null;
+}
+
+export interface DriverOvertakeProfile {
+  driver_code: string;
+  driver_number: number;
+  total_overtakes_made: number;
+  total_times_overtaken: number;
+  overtake_ratio: number;
+  overtakes_per_race: number;
+  times_overtaken_per_race: number;
+  overtake_net: number;
+  races_analysed: number;
+}
+
+export interface DriverTelemetryProfile {
+  driver_code: string;
+  avg_race_speed_kmh: number;
+  avg_throttle_pct: number;
+  avg_braking_g: number;
+  max_braking_g: number;
+  braking_consistency: number;
+  full_throttle_ratio: number;
+  drs_usage_ratio: number;
+  drs_speed_gain_kmh: number;
+  avg_gear: number;
+  avg_upshift_rpm: number;
+  avg_downshift_rpm: number;
+  brake_to_throttle_avg_s: number;
+  late_race_speed_drop_kmh: number;
+  late_race_braking_delta: number;
+  late_race_throttle_delta: number;
+}
+
+// Circuit Intelligence Types
+export interface CircuitIntelligence {
+  circuit_slug: string;
+  circuit_name: string;
+  centroid: [number, number];
+  computed_length_m: number;
+  coordinate_count: number;
+  coordinates: [number, number][];
+  drs_zones: number;
+  estimated_corners: number;
+  elevation_min_m: number | null;
+  elevation_max_m: number | null;
+  elevation_gain_m: number | null;
+  sectors: number;
+}
+
+export interface CircuitPitLoss {
+  circuit: string;
+  avg_total_pit_s: number;
+  est_pit_lane_loss_s: number;
+  median_total_pit_s: number;
+  sample_count: number;
+  jolpica_avg_pit_duration_s: number | null;
+  jolpica_median_pit_duration_s: number | null;
+  jolpica_pit_sample_count: number | null;
+}
+
+export interface RaceAirDensity {
+  race: string;
+  year: number;
+  circuit_slug: string;
+  air_density_kg_m3: number;
+  avg_temp_c: number;
+  avg_humidity_pct: number;
+  avg_surface_pressure_hpa: number;
+  density_loss_pct: number;
+  downforce_loss_pct: number;
+  elevation_m: number;
+  race_date: string;
+}
+
+export interface JolpicaQualifying {
+  season: number;
+  round: number;
+  race_name: string;
+  circuit_id: string;
+  driver_id: string;
+  driver_code: string;
+  constructor_id: string;
+  position: number;
+  q1: string | null;
+  q2: string | null;
+  q3: string | null;
+}
+
+export interface JolpicaPitStop {
+  season: number;
+  round: number;
+  race_name: string;
+  circuit_id: string;
+  driver_id: string;
+  stop: number;
+  lap: number;
+  duration_s: number;
+}
+
+export interface JolpicaSprintResult {
+  season: number;
+  round: number;
+  race_name: string;
+  circuit_id: string;
+  driver_id: string;
+  driver_code: string;
+  constructor_id: string;
+  constructor_name: string;
+  grid: number;
+  position: number;
+  points: number;
+  laps: number;
+  status: string;
+  positions_gained: number;
+}
+
 // View types
-export type ViewType = 'dashboard' | 'mclaren-analytics' | 'car' | 'driver' | 'ai-insights' | 'regulations' | 'media' | 'chat' | 'fleet-overview';
+export type ViewType = 'dashboard' | 'mclaren-analytics' | 'car' | 'driver' | 'ai-insights' | 'regulations' | 'media' | 'chat' | 'fleet-overview' | 'driver-intel' | 'circuit-intel';

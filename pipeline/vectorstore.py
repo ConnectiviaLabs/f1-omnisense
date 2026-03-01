@@ -41,7 +41,7 @@ def _load_env():
 
 COLLECTION_NAME = "f1_knowledge"
 INDEX_NAME = "vector_index"
-EMBEDDING_DIM = 768  # nomic-embed-text
+EMBEDDING_DIM = 1024  # BGE-large-en-v1.5
 
 
 class AtlasVectorStore:
@@ -55,7 +55,7 @@ class AtlasVectorStore:
     ):
         _load_env()
         self._uri = uri or os.environ.get("MONGODB_URI", "")
-        self._db_name = db_name or os.environ.get("MONGODB_DB", "McLaren_f1")
+        self._db_name = db_name or os.environ.get("MONGODB_DB", "marip_f1")
         self._collection_name = collection_name
 
         if not self._uri:
@@ -97,7 +97,7 @@ class AtlasVectorStore:
             {
               "type": "vector",
               "path": "embedding",
-              "numDimensions": 768,
+              "numDimensions": 1024,
               "similarity": "cosine"
             },
             {
@@ -135,7 +135,7 @@ class AtlasVectorStore:
                 type="vectorSearch",
             )
             self._collection.create_search_index(model=search_index)
-            print(f"  Created vector index '{INDEX_NAME}' (768-dim, cosine)")
+            print(f"  Created vector index '{INDEX_NAME}' ({EMBEDDING_DIM}-dim, cosine)")
         except Exception as e:
             print(f"  Vector index creation failed: {e}")
             print("  Create it manually in Atlas UI (see docstring above)")
@@ -196,10 +196,10 @@ class AtlasVectorStore:
         (requires embedding it externally first).
         """
         if query_embedding is None:
-            # Embed the query using nomic
-            from .embeddings import NomicEmbedder
-            embedder = NomicEmbedder()
-            query_embedding = embedder.embed_one(query)
+            # Embed the query using BGE
+            from omnidoc.embedder import get_embedder
+            embedder = get_embedder(enable_clip=False)
+            query_embedding = embedder.embed_query(query)
 
         pipeline = [
             {
