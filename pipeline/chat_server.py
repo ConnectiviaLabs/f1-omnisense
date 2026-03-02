@@ -112,15 +112,26 @@ def get_embedder() -> NomicEmbedder:
 
 
 def get_clip_index() -> dict:
-    """Load pre-built CLIP index from disk."""
+    """Load pre-built CLIP index from MongoDB (preferred) or disk fallback."""
     global _clip_index
     if _clip_index is None:
-        if not CLIP_INDEX_PATH.exists():
-            raise FileNotFoundError(
-                f"CLIP index not found. Run: python pipeline/clip_index.py"
-            )
-        with open(CLIP_INDEX_PATH) as f:
-            _clip_index = json.load(f)
+        # Try MongoDB first
+        try:
+            db = get_data_db()
+            doc = db["clip_index"].find_one({"_type": "clip_index"}, {"_id": 0, "_type": 0})
+            if doc and "images" in doc:
+                _clip_index = doc
+        except Exception:
+            pass
+        # Fall back to local file
+        if _clip_index is None:
+            if not CLIP_INDEX_PATH.exists():
+                raise FileNotFoundError(
+                    "CLIP index not found in MongoDB or on disk. "
+                    "Run: python pipeline/push_clip_index_to_mongo.py"
+                )
+            with open(CLIP_INDEX_PATH) as f:
+                _clip_index = json.load(f)
         # Pre-compute numpy arrays for fast search
         _clip_index["_image_vecs"] = np.array(
             [img["embedding"] for img in _clip_index["images"]]
@@ -342,7 +353,10 @@ def visual_search(q: str, k: int = 8):
 @app.get("/api/visual-tags")
 def visual_tags():
     """Return all images with their auto-tags for gallery filtering."""
-    index = get_clip_index()
+    try:
+        index = get_clip_index()
+    except FileNotFoundError:
+        return {"images": [], "tags": [], "stats": {}}
 
     images = []
     for img in index["images"]:
