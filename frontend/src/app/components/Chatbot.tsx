@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Send, Bot, User, Loader2, Sparkles,
-  FileText, BookOpen, Cog, Ruler, Database, RotateCcw,
+  FileText, BookOpen, Cog, Ruler, Database, RotateCcw, Filter,
 } from 'lucide-react';
 
 interface ChatMessage {
@@ -35,6 +35,14 @@ const typeIcons: Record<string, React.ReactNode> = {
   document_metadata: <FileText className="w-3 h-3" />,
 };
 
+const FILTER_LABELS: Record<string, string> = {
+  regulation: 'Regulations',
+  equipment: 'Equipment',
+  dimension: 'Dimensions',
+  material: 'Materials',
+  document_metadata: 'Documents',
+};
+
 export function Chatbot() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -42,6 +50,7 @@ export function Chatbot() {
   const [expandedSources, setExpandedSources] = useState<number | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(() => localStorage.getItem('omni_chat_session'));
   const [modelUsed, setModelUsed] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +76,7 @@ export function Chatbot() {
           body: JSON.stringify({
             message: text.trim(),
             session_id: sessionId,
+            ...(activeFilters.size > 0 && { data_types: [...activeFilters] }),
           }),
         });
         if (omniRes.ok) {
@@ -86,6 +96,7 @@ export function Chatbot() {
           body: JSON.stringify({
             message: text.trim(),
             history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+            ...(activeFilters.size > 0 && { data_types: [...activeFilters] }),
           }),
         });
         if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -155,6 +166,44 @@ export function Chatbot() {
 
       {/* Input Area */}
       <div className="shrink-0 pt-3 border-t border-[rgba(255,128,0,0.12)]">
+        {/* Topic Filters */}
+        <div className="flex items-center gap-1.5 mb-2 px-1 flex-wrap">
+          <Filter className="w-3 h-3 text-muted-foreground shrink-0" />
+          {Object.entries(FILTER_LABELS).map(([key, label]) => {
+            const isActive = activeFilters.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setActiveFilters(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  });
+                }}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-all ${
+                  isActive
+                    ? 'bg-[#FF8000]/15 border-[#FF8000]/40 text-[#FF8000]'
+                    : 'bg-[#1A1F2E] border-[rgba(255,128,0,0.08)] text-muted-foreground hover:border-[#FF8000]/20 hover:text-foreground'
+                }`}
+              >
+                {typeIcons[key]}
+                {label}
+              </button>
+            );
+          })}
+          {activeFilters.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveFilters(new Set())}
+              className="text-[10px] text-muted-foreground hover:text-[#FF8000] transition-colors ml-1"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors">
           <input
             ref={inputRef}

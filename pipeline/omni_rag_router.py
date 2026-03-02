@@ -93,6 +93,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     provider: Optional[str] = None
     k: int = 8
+    data_types: Optional[List[str]] = None
 
 
 class SearchRequest(BaseModel):
@@ -112,7 +113,7 @@ def chat(req: ChatRequest):
     sid = req.session_id or convos.create_session()
     history = convos.get_history(sid)
 
-    response = chain.ask_with_history(req.message, history, k=req.k)
+    response = chain.ask_with_history(req.message, history, k=req.k, data_types=req.data_types)
 
     convos.append(sid, "user", req.message)
     convos.append(sid, "assistant", response.answer)
