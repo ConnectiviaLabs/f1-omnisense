@@ -4,11 +4,8 @@ import {
   Brain,
   BookOpen,
   Activity,
-  Radio,
   Video,
   MessageCircle,
-  Car,
-  User,
   Box,
   Users,
   MapPin,
@@ -71,16 +68,6 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         <div className="text-[11px] text-muted-foreground mt-2 tracking-wide">Powered by Connectivia Labs</div>
       </div>
 
-      {/* Live Status */}
-      <div className="px-4 py-3 border-b border-[rgba(255,128,0,0.12)]">
-        <div className="flex items-center gap-2">
-          <Radio className="w-3 h-3 text-green-400 animate-pulse" />
-          <span className="text-[12px] text-green-400 tracking-wider">LIVE DATA FEED</span>
-        </div>
-        <div className="text-[12px] text-muted-foreground mt-1 font-mono">
-          OpenF1 + Jolpica APIs
-        </div>
-      </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-2 overflow-y-auto">
