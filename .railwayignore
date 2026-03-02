@@ -5,7 +5,6 @@ frontend/
 fienv/
 GroundingDINO/
 sam2/
-omnisuitef1/
 colabModels/
 Documentation/
 *.pt
