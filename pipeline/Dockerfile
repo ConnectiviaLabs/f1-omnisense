@@ -19,10 +19,8 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 # Copy pipeline source
 COPY pipeline/ /app/pipeline/
 
-# Copy omnisuite packages + install deps
+# Copy omnisuite packages (deps already covered by main requirements.txt)
 COPY omnisuitef1/ /app/omnisuitef1/
-COPY omnisuitef1/requirements.txt /tmp/omnisuite-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/omnisuite-requirements.txt
 
 EXPOSE 8100
 
