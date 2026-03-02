@@ -79,6 +79,7 @@ class RAGRetriever:
         min_score: float = 0.3,
         cliff_threshold: float = 0.15,
         category: Optional[str] = None,
+        data_types: Optional[List[str]] = None,
         expand_query: bool = True,
     ) -> List[SearchResult]:
         """Production search with cliff detection, dedup, and query expansion.
@@ -94,7 +95,13 @@ class RAGRetriever:
         """
         # 1. Primary search
         query_vec = self._embed(query)
-        filt = {"category": category} if category else None
+        filt: Optional[Dict[str, Any]] = {}
+        if category:
+            filt["category"] = category
+        if data_types:
+            filt["data_type"] = {"$in": data_types}
+        if not filt:
+            filt = None
         primary = self._store.similarity_search(query_vec, k=10, filter=filt)
 
         all_results: List[Tuple[RAGDocument, float]] = list(primary)

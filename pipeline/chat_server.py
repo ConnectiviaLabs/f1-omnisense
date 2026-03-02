@@ -147,6 +147,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    data_types: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -173,7 +174,7 @@ You are speaking with F1 engineers and technical staff — use appropriate techn
 
 # ── RAG Pipeline ─────────────────────────────────────────────────────────
 
-def _text_search_fallback(query: str, k: int = 8) -> list[dict]:
+def _text_search_fallback(query: str, k: int = 8, data_types: list[str] | None = None) -> list[dict]:
     """Fallback: keyword search on f1_knowledge when vector search is unavailable."""
     vs = get_vs()
     coll = vs.collection
@@ -182,9 +183,12 @@ def _text_search_fallback(query: str, k: int = 8) -> list[dict]:
         keywords = query.split()
     regex = "|".join(keywords)
     try:
+        match_filter: dict = {"page_content": {"$regex": regex, "$options": "i"}}
+        if data_types:
+            match_filter["metadata.data_type"] = {"$in": data_types}
         results = list(
             coll.find(
-                {"page_content": {"$regex": regex, "$options": "i"}},
+                match_filter,
                 {"page_content": 1, "metadata": 1, "_id": 0},
             ).limit(k)
         )
@@ -203,16 +207,17 @@ def _text_search_fallback(query: str, k: int = 8) -> list[dict]:
     return sources
 
 
-def retrieve_context(query: str, k: int = 8) -> list[dict]:
+def retrieve_context(query: str, k: int = 8, data_types: list[str] | None = None) -> list[dict]:
     """Retrieve relevant documents using text search (fast) with optional
     vector search upgrade if embedder is already loaded."""
     global _embedder
+    vs_filter = {"metadata.data_type": {"$in": data_types}} if data_types else None
     # If embedder is already loaded, use vector search
     if _embedder is not None:
         try:
             vs = get_vs()
             query_vec = _embedder.embed([query])[0]
-            docs = vs.similarity_search(query, k=k, query_embedding=query_vec)
+            docs = vs.similarity_search(query, k=k, query_embedding=query_vec, filter=vs_filter)
             sources = []
             for doc in docs:
                 sources.append({
@@ -226,7 +231,7 @@ def retrieve_context(query: str, k: int = 8) -> list[dict]:
         except Exception as e:
             print(f"  Vector search failed ({e}), falling back to text search")
     # Fast text search — no model loading required
-    return _text_search_fallback(query, k)
+    return _text_search_fallback(query, k, data_types=data_types)
 
 
 def build_rag_prompt(query: str, sources: list[dict], history: list[ChatMessage]) -> list[dict]:
@@ -270,7 +275,7 @@ def chat(req: ChatRequest):
         return ChatResponse(answer=result["answer"], sources=result.get("sources", []))
 
     # 1. Retrieve context
-    sources = retrieve_context(req.message, k=8)
+    sources = retrieve_context(req.message, k=8, data_types=req.data_types)
 
     # 2. Build prompt
     messages = build_rag_prompt(req.message, sources, req.history)

@@ -113,11 +113,12 @@ class RAGChain:
         history: List[ChatMessage],
         k: int = 5,
         category: Optional[str] = None,
+        data_types: Optional[List[str]] = None,
     ) -> ChatResponse:
         """Ask with conversation history included in the prompt."""
         # 1. Retrieve
         results = self._retriever.search_enhanced(
-            question, k=k, min_score=0.3, category=category,
+            question, k=k, min_score=0.3, category=category, data_types=data_types,
         )
 
         # 2. Build context
