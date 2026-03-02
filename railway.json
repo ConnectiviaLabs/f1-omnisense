@@ -1,7 +1,8 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "dockerfilePath": "pipeline/Dockerfile"
+    "dockerfilePath": "pipeline/Dockerfile",
+    "noCache": true
   },
   "deploy": {
     "startCommand": "python /app/pipeline/chat_server.py",
