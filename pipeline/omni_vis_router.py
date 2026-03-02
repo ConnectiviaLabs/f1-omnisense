@@ -283,6 +283,107 @@ async def analyze_video(
         os.unlink(tmp_path)
 
 
+class AnalyzeByNameRequest(BaseModel):
+    filename: str
+    tasks: str = "detect,classify"
+    confidence: float = 0.25
+    max_frames: int = 30
+
+
+@router.post("/analyze-video-by-name")
+async def analyze_video_by_name(req: AnalyzeByNameRequest):
+    """Analyze a video already on the server (f1data/McMedia/) by filename."""
+    import cv2
+    import os
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    media_dir = Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
+    video_path = media_dir / req.filename
+    if not video_path.exists() or not video_path.is_file():
+        raise HTTPException(404, f"Video not found: {req.filename}")
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise HTTPException(400, "Could not open video file")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frames = []
+    step = max(1, total_frames // req.max_frames)
+    idx = 0
+    while cap.isOpened() and len(frames) < req.max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if idx % step == 0:
+            frames.append(frame)
+        idx += 1
+    cap.release()
+
+    if not frames:
+        raise HTTPException(400, "No frames extracted from video")
+
+    task_list = [t.strip() for t in req.tasks.split(",")]
+    results: dict = {
+        "filename": req.filename,
+        "total_frames": total_frames,
+        "fps": round(fps, 2),
+        "sampled_frames": len(frames),
+    }
+
+    if "detect" in task_list:
+        from omnivis import detect as _detect
+        detections = []
+        for i, frame in enumerate(frames):
+            dets = _detect(frame, confidence=req.confidence)
+            detections.append({
+                "frame_index": i * step,
+                "detections": [d.to_dict() for d in dets],
+            })
+        results["gdino"] = detections
+
+    if "classify" in task_list:
+        from omnivis import classify_actions
+        actions = classify_actions(frames)
+        results["classification"] = [a.__dict__ if hasattr(a, "__dict__") else a for a in actions]
+
+    # Store results in MongoDB
+    try:
+        from pymongo import MongoClient
+        uri = os.environ.get("MONGODB_URI", "")
+        db_name = os.environ.get("MONGODB_DB", "marip_f1")
+        if uri:
+            client = MongoClient(uri)
+            db = client[db_name]
+            ts = datetime.now(timezone.utc)
+            if "gdino" in results:
+                db["pipeline_gdino_results"].update_one(
+                    {"filename": req.filename},
+                    {"$set": {"filename": req.filename, "timestamp": ts, "frames": results["gdino"]}},
+                    upsert=True,
+                )
+            if "classification" in results:
+                db["pipeline_videomae_results"].update_one(
+                    {"filename": req.filename},
+                    {"$set": {
+                        "filename": req.filename, "timestamp": ts,
+                        "total_frames": total_frames, "fps": round(fps, 2),
+                        "top_predictions": results["classification"],
+                    }},
+                    upsert=True,
+                )
+            # Mark video as analyzed
+            db["media_videos"].update_one(
+                {"filename": req.filename},
+                {"$set": {"analyzed": True, "last_analyzed": ts}},
+            )
+    except Exception as e:
+        logger.warning("Failed to store results in MongoDB: %s", e)
+
+    return results
+
+
 @router.get("/models")
 def list_models():
     """List currently loaded models and their status."""

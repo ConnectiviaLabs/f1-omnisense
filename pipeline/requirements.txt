@@ -31,7 +31,7 @@ pydantic==2.12.5
 PyMuPDF==1.26.7
 python-docx==1.2.0
 pdfplumber==0.11.9
-pypdf==3.17.4
+pypdf==5.6.0
 
 # 3D Model Generation (Hunyuan3D via HuggingFace Spaces)
 gradio-client==1.10.1
@@ -58,7 +58,7 @@ opencv-python-headless>=4.9.0
 supervision>=0.22.0
 
 # OmniSuite integration
-camelot-py[cv]==1.0.9
+camelot-py[cv]>=1.1.0
 umap-learn==0.5.11
 lightgbm==4.6.0
 shap==0.50.0
