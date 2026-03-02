@@ -18,11 +18,11 @@ services:
     networks:
       - f1net
     ports:
-      - "8100:8100"
+      - "8300:8300"
     env_file:
       - .env
     environment:
-      - API_PORT=8100
+      - API_PORT=8300
     volumes:
       - ./f1data:/app/f1data:ro
       - ./pipeline/output:/app/pipeline/output
@@ -32,7 +32,7 @@ services:
       - hf-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')"]
+             "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')"]
       interval: 30s
       timeout: 15s
       retries: 5
