@@ -4,7 +4,7 @@ Queries MongoDB Atlas vector search for context, then generates
 answers via Groq LLM (llama-3.3-70b-versatile).
 
 Usage:
-    python pipeline/chat_server.py          # Runs on port 8100
+    python pipeline/chat_server.py          # Runs on port 8300
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ from pipeline.updater.server import router as updater_router
 # ── Config ───────────────────────────────────────────────────────────────
 
 GROQ_MODEL = os.getenv("GROQ_REASONING_MODEL", "llama-3.3-70b-versatile")
-PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8100")))
+PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8300")))
 USE_OMNIRAG = os.getenv("USE_OMNIRAG", "").lower() in ("1", "true", "yes")
 
 app = FastAPI(title="F1 OmniSense API")
