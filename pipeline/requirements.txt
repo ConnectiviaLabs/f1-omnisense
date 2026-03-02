@@ -31,7 +31,7 @@ pydantic==2.12.5
 PyMuPDF==1.26.7
 python-docx==1.2.0
 pdfplumber==0.11.9
-pypdf==5.6.0
+pypdf==3.17.4
 
 # 3D Model Generation (Hunyuan3D via HuggingFace Spaces)
 gradio-client==1.10.1
