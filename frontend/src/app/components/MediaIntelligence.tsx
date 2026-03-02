@@ -327,7 +327,8 @@ export function MediaIntelligence() {
               </div>
               <div className="grid grid-cols-4 gap-2">
                 {Object.entries(fusedData ?? gdinoData!).flatMap(([video, frames]) =>
-                  frames.map((frame) => (
+                  (frames ?? []).map((frame) => ({ video, frame }))
+                ).slice(0, 4).map(({ video, frame }) => (
                     <button
                       key={`${video}-${frame.frame_index}`}
                       type="button"
@@ -347,8 +348,7 @@ export function MediaIntelligence() {
                         <span className="text-[9px] text-muted-foreground">f{frame.frame_index}</span>
                       </div>
                     </button>
-                  ))
-                )}
+                  ))}
               </div>
               {selectedImage && (
                 <div className="mt-4 space-y-2">
@@ -391,7 +391,7 @@ export function MediaIntelligence() {
                 VIDEO CLASSIFICATION
               </h3>
               <div className="space-y-3">
-                {Object.keys(videomaeData ?? timesformerData ?? {}).map(video => {
+                {Object.keys(videomaeData ?? timesformerData ?? {}).slice(0, 4).map(video => {
                   const vmae = videomaeData?.[video];
                   const tsf = timesformerData?.[video];
                   return (
@@ -449,7 +449,7 @@ export function MediaIntelligence() {
               {videos.length === 0 && (
                 <div className="text-[12px] text-muted-foreground py-4 text-center">No videos available</div>
               )}
-              {videos.map(v => {
+              {videos.slice(0, 4).map(v => {
                 const isSelected = selectedVideo === v.filename;
                 const hasResults = gdinoData?.[v.filename] || videomaeData?.[v.filename];
                 return (
