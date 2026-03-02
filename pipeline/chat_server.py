@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 
 from fastapi import FastAPI, Request, UploadFile, File
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -866,23 +867,33 @@ async def pipeline_intelligence():
 
 @app.get("/api/local/pipeline/gdino")
 async def pipeline_gdino():
-    return {}
+    db = get_data_db()
+    docs = list(db["pipeline_gdino_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+    return {"results": docs, "count": len(docs)}
 
 @app.get("/api/local/pipeline/fused")
 async def pipeline_fused():
-    return {}
+    db = get_data_db()
+    docs = list(db["pipeline_fused_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+    return {"results": docs, "count": len(docs)}
 
 @app.get("/api/local/pipeline/minicpm")
 async def pipeline_minicpm():
-    return {}
+    db = get_data_db()
+    docs = list(db["pipeline_minicpm_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+    return {"results": docs, "count": len(docs)}
 
 @app.get("/api/local/pipeline/videomae")
 async def pipeline_videomae():
-    return {}
+    db = get_data_db()
+    docs = list(db["pipeline_videomae_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+    return {"results": docs, "count": len(docs)}
 
 @app.get("/api/local/pipeline/timesformer")
 async def pipeline_timesformer():
-    return {}
+    db = get_data_db()
+    docs = list(db["pipeline_timesformer_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+    return {"results": docs, "count": len(docs)}
 
 def _build_session_map():
     """Build mapping from _source_file → session_key and (year, race) → session_key.
@@ -998,20 +1009,6 @@ def _openf1_filter(request) -> dict:
     return filt
 
 
-@app.get("/api/local/openf1/_debug")
-async def openf1_debug():
-    """Temporary debug endpoint — remove after fixing."""
-    db = get_data_db()
-    cols = db.list_collection_names()
-    session_count = db["openf1_sessions"].count_documents({})
-    sample = db["openf1_sessions"].find_one({}, {"_id": 0})
-    return {
-        "db_name": db.name,
-        "collections": sorted(cols),
-        "openf1_sessions_count": session_count,
-        "sample_keys": list(sample.keys()) if sample else None,
-    }
-
 @app.get("/api/local/openf1/sessions")
 async def openf1_sessions(request: Request):
     """Sessions from MongoDB openf1_sessions collection."""
@@ -1099,6 +1096,42 @@ async def openf1_race_control(request: Request):
     docs = list(db["openf1_race_control"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("date", 1).limit(2000))
     return docs
+
+@app.get("/api/fleet-vehicles")
+async def fleet_vehicles_get():
+    """List fleet vehicles from MongoDB."""
+    db = get_data_db()
+    docs = list(db["fleet_vehicles"].find({}, {"_id": 0}).sort("createdAt", -1))
+    return docs
+
+@app.post("/api/fleet-vehicles")
+async def fleet_vehicles_post(request: Request):
+    """Add a fleet vehicle to MongoDB."""
+    db = get_data_db()
+    body = await request.json()
+    model = body.get("model")
+    driver_name = body.get("driverName")
+    driver_number = body.get("driverNumber")
+    driver_code = body.get("driverCode")
+    if not all([model, driver_name, driver_number, driver_code]):
+        return JSONResponse({"error": "Missing required fields"}, status_code=400)
+    from datetime import datetime
+    doc = {
+        "model": str(model),
+        "driverName": str(driver_name),
+        "driverNumber": int(driver_number),
+        "driverCode": str(driver_code).upper()[:3],
+        "teamName": str(body.get("teamName", "McLaren")),
+        "chassisId": str(body.get("chassisId", "")),
+        "engineSpec": str(body.get("engineSpec", "")),
+        "season": int(body.get("season") or datetime.now().year),
+        "notes": str(body.get("notes", "")),
+        "createdAt": datetime.utcnow(),
+    }
+    db["fleet_vehicles"].insert_one(doc)
+    doc.pop("_id", None)
+    doc["createdAt"] = doc["createdAt"].isoformat()
+    return JSONResponse(doc, status_code=201)
 
 def _aggregate_telemetry_summary(docs: list[dict]) -> list[dict]:
     """Aggregate raw telemetry docs into CarSummary format grouped by race."""
