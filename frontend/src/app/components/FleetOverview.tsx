@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   AlertTriangle, CheckCircle2, XCircle, Activity,
-  Thermometer, Gauge, Zap, CircleDot, Shield, TrendingUp,
-  Cpu, Disc, Cog, Wrench, ShieldAlert, Eye, FileText, Bell,
-  Plus, X, Car, Save,
+  Gauge, CircleDot, Shield, TrendingUp,
+  Cpu, Disc, ShieldAlert, Eye, FileText, Bell,
+  Plus, X, Car, Save, Upload, Box, Loader2, Sparkles,
 } from 'lucide-react';
-import { ModelGen3D } from './ModelGen3D';
+import * as model3dApi from '../api/model3d';
+import type { Job } from '../api/model3d';
 
 // ─── Types (aligned with anomaly_scores.json) ──────────────────────
 type HealthLevel = 'nominal' | 'warning' | 'critical';
@@ -55,12 +56,9 @@ interface VehicleData {
 
 // ─── Map anomaly levels to UI levels ────────────────────────────────
 const SYSTEM_ICONS: Record<string, React.ElementType> = {
-  'Power Unit': Zap,
-  'Brakes': Disc,
-  'Drivetrain': Cog,
-  'Suspension': Wrench,
-  'Thermal': Thermometer,
-  'Electronics': Cpu,
+  'Speed': Gauge,
+  'Lap Pace': Activity,
+  'Tyre Management': Disc,
 };
 
 function mapLevel(anomalyLevel: string): HealthLevel {
@@ -186,6 +184,31 @@ export function FleetOverview() {
   const [submitting, setSubmitting] = useState(false);
   const [regError, setRegError] = useState('');
 
+  // 3D generation state (inside Register Car modal)
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [gen3dProvider, setGen3dProvider] = useState<'hunyuan' | 'meshy'>('hunyuan');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const handleFile = useCallback((file: File) => {
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  }, []);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) handleFile(file);
+  }, [handleFile]);
+
   // Fetch registered vehicles
   useEffect(() => {
     fetch('/api/fleet-vehicles')
@@ -193,6 +216,19 @@ export function FleetOverview() {
       .then(data => { if (Array.isArray(data)) setRegisteredVehicles(data); })
       .catch(() => {});
   }, []);
+
+  const startGen3dPolling = (jobId: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const updated = await model3dApi.getJobStatus(jobId);
+        setActiveJob(updated);
+        if (updated.status === 'completed' || updated.status === 'failed') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000);
+  };
 
   const handleRegister = async () => {
     if (!regForm.model || !regForm.driverName || !regForm.driverNumber || !regForm.driverCode) {
@@ -213,7 +249,36 @@ export function FleetOverview() {
       }
       const created = await res.json();
       setRegisteredVehicles(prev => [created, ...prev]);
+
+      // If reference image was uploaded, trigger 3D generation
+      if (imageFile) {
+        try {
+          const genName = regForm.model.replace(/[^a-zA-Z0-9_-]/g, '_') || 'car_model';
+          const result = await model3dApi.submitGeneration({
+            image: imageFile,
+            model_name: genName,
+            provider: gen3dProvider,
+            enable_pbr: true,
+          });
+          const job: Job = {
+            job_id: result.job_id,
+            model_name: result.model_name,
+            provider: result.provider,
+            status: 'queued',
+            progress: 0,
+            glb_url: null,
+            error: null,
+            created_at: new Date().toISOString(),
+            completed_at: null,
+          };
+          setActiveJob(job);
+          startGen3dPolling(result.job_id);
+        } catch { /* 3D gen is optional, don't block registration */ }
+      }
+
       setRegForm(EMPTY_FORM);
+      setImageFile(null);
+      setImagePreview(null);
       setShowRegister(false);
     } catch (e: any) {
       setRegError(e.message);
@@ -308,30 +373,25 @@ export function FleetOverview() {
     if (!selectedCar) return [];
     return selectedCar.races.map(r => {
       const systems = r.systems;
-      const puFeats = systems['Power Unit']?.features ?? {};
-      const brakeFeats = systems['Brakes']?.features ?? {};
-      const thermalFeats = systems['Thermal']?.features ?? {};
+      const speedFeats = systems['Speed']?.features ?? {};
+      const paceFeats = systems['Lap Pace']?.features ?? {};
+      const tyreFeats = systems['Tyre Management']?.features ?? {};
 
       // Collect maintenance actions across all systems for this race
       const actions = Object.values(systems)
         .map(s => s.maintenance_action)
         .filter((a): a is string => !!a && a !== 'none');
-      // Pick the most urgent action
       const actionPriority = ['alert_and_remediate', 'alert', 'log_and_monitor', 'log'];
       const topAction = actionPriority.find(a => actions.includes(a)) ?? 'none';
 
       return {
         race: r.race,
-        puHealth: systems['Power Unit']?.health ?? 0,
-        brakeHealth: systems['Brakes']?.health ?? 0,
-        dtHealth: systems['Drivetrain']?.health ?? 0,
-        suspHealth: systems['Suspension']?.health ?? 0,
-        thermalHealth: systems['Thermal']?.health ?? 0,
-        elecHealth: systems['Electronics']?.health ?? 0,
-        rpm: puFeats['RPM'] ?? 0,
-        speed: brakeFeats['Speed'] ?? 0,
-        cockpitTemp: thermalFeats['CockpitTemp_C'] ?? 0,
-        heartRate: thermalFeats['HeartRate_bpm'] ?? 0,
+        speedHealth: systems['Speed']?.health ?? 0,
+        paceHealth: systems['Lap Pace']?.health ?? 0,
+        tyreHealth: systems['Tyre Management']?.health ?? 0,
+        speedST: speedFeats['SpeedST'] ?? 0,
+        lapTime: paceFeats['LapTime'] ?? 0,
+        tyreLife: tyreFeats['TyreLife'] ?? 0,
         maintenanceAction: topAction,
       };
     });
@@ -410,7 +470,7 @@ export function FleetOverview() {
                     <div className={`text-sm font-medium transition-colors ${
                       isSelected ? 'text-[#FF8000]' : 'text-foreground group-hover:text-[#FF8000]'
                     }`}>{v.driver}</div>
-                    <div className="text-[12px] text-muted-foreground">McLaren {(DRIVER_CAR_MODEL[v.number] ?? DRIVER_CAR_MODEL[4]).label} · Last: {v.lastRace}</div>
+                    <div className="text-[12px] text-muted-foreground">Last: {v.lastRace}</div>
                   </div>
                 </div>
                 <div className="text-right">
@@ -571,14 +631,12 @@ export function FleetOverview() {
                   <thead className="sticky top-0 bg-[#1A1F2E]">
                     <tr className="border-b border-[rgba(255,128,0,0.12)]">
                       <th className="text-left py-1 text-muted-foreground font-normal">Race</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">PU</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Brakes</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">DT</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Susp</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Therm</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Elec</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">RPM</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">°C</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Speed</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Pace</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Tyres</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Trap km/h</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Lap (s)</th>
+                      <th className="text-right py-1 text-muted-foreground font-normal">Tyre Life</th>
                       <th className="text-right py-1 text-muted-foreground font-normal">Action</th>
                     </tr>
                   </thead>
@@ -588,16 +646,12 @@ export function FleetOverview() {
                       return (
                         <tr key={i} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[rgba(255,128,0,0.02)]">
                           <td className="py-0.5 text-foreground">{d.race}</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.puHealth) }}>{d.puHealth}%</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.brakeHealth) }}>{d.brakeHealth}%</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.dtHealth) }}>{d.dtHealth}%</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.suspHealth) }}>{d.suspHealth}%</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.thermalHealth) }}>{d.thermalHealth}%</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.elecHealth) }}>{d.elecHealth}%</td>
-                          <td className="py-0.5 text-right font-mono text-foreground">{d.rpm ? Math.round(d.rpm).toLocaleString() : '—'}</td>
-                          <td className="py-0.5 text-right font-mono" style={{ color: d.cockpitTemp > 42 ? '#ef4444' : d.cockpitTemp > 38 ? '#FF8000' : '#22c55e' }}>
-                            {d.cockpitTemp ? `${d.cockpitTemp}°` : '—'}
-                          </td>
+                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.speedHealth) }}>{d.speedHealth}%</td>
+                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.paceHealth) }}>{d.paceHealth}%</td>
+                          <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.tyreHealth) }}>{d.tyreHealth}%</td>
+                          <td className="py-0.5 text-right font-mono text-foreground">{d.speedST ? Math.round(d.speedST) : '—'}</td>
+                          <td className="py-0.5 text-right font-mono text-foreground">{d.lapTime ? d.lapTime.toFixed(1) : '—'}</td>
+                          <td className="py-0.5 text-right font-mono text-foreground">{d.tyreLife ? Math.round(d.tyreLife) : '—'}</td>
                           <td className="py-0.5 text-right">
                             {d.maintenanceAction !== 'none' && <MaintenanceBadge action={d.maintenanceAction} />}
                           </td>
@@ -653,8 +707,51 @@ export function FleetOverview() {
         </div>
       )}
 
-      {/* AI 3D Model Generation */}
-      <ModelGen3D />
+      {/* 3D Generation Progress (shown after registration with image) */}
+      {activeJob && (
+        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+              {activeJob.status === 'completed' ? (
+                <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+              ) : activeJob.status === 'failed' ? (
+                <XCircle className="w-3.5 h-3.5 text-red-400" />
+              ) : (
+                <Loader2 className="w-3.5 h-3.5 text-[#FF8000] animate-spin" />
+              )}
+              3D Generation: {activeJob.model_name}
+            </h3>
+            <span className="text-[12px] px-2 py-0.5 rounded-full bg-[#FF8000]/10 text-[#FF8000]">
+              {activeJob.provider}
+            </span>
+          </div>
+          <div className="h-1.5 bg-[#0D1117] rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${activeJob.progress}%`,
+                background: activeJob.status === 'failed' ? '#ef4444' : '#FF8000',
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-muted-foreground">
+              {activeJob.status === 'queued' ? 'Queued...' : activeJob.status === 'generating' ? 'Generating 3D...' : activeJob.status === 'completed' ? 'Complete' : activeJob.status === 'failed' ? 'Failed' : activeJob.status}
+            </span>
+            <span className="text-muted-foreground">{activeJob.progress}%</span>
+          </div>
+          {activeJob.error && <p className="text-[12px] text-red-400 mt-2">{activeJob.error}</p>}
+          {activeJob.status === 'completed' && activeJob.glb_url && (
+            <a
+              href={activeJob.glb_url}
+              download
+              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-[12px] bg-[#FF8000]/10 text-[#FF8000] border border-[#FF8000]/20 hover:bg-[#FF8000]/20 transition-all"
+            >
+              Download GLB
+            </a>
+          )}
+        </div>
+      )}
 
       {/* ─── Registration Modal ───────────────────────────────────────── */}
       {showRegister && (
@@ -761,13 +858,79 @@ export function FleetOverview() {
                   className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50 resize-none"
                 />
               </label>
+
+              {/* 3D Reference Image */}
+              <div className="pt-3 border-t border-[rgba(255,128,0,0.08)]">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <Upload className="w-3 h-3 text-[#FF8000]" />
+                  Reference Image (optional — generates 3D model)
+                </span>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={onDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
+                    isDragOver
+                      ? 'border-[#FF8000] bg-[#FF8000]/5'
+                      : imagePreview
+                        ? 'border-[rgba(255,128,0,0.2)] bg-[#0D1117]'
+                        : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.3)] bg-[#0D1117]'
+                  }`}
+                >
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Preview" className="max-h-32 mx-auto rounded-lg object-contain" />
+                  ) : (
+                    <div className="space-y-1">
+                      <Box className="w-6 h-6 mx-auto text-muted-foreground" />
+                      <p className="text-[12px] text-muted-foreground">Drop an F1 car image or click to browse</p>
+                      <p className="text-[11px] text-muted-foreground/50">PNG, JPG up to 10MB</p>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    aria-label="Upload reference image"
+                    className="hidden"
+                    onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
+                  />
+                </div>
+
+                {imagePreview && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setGen3dProvider('hunyuan')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] border transition-all ${
+                        gen3dProvider === 'hunyuan'
+                          ? 'bg-[#3b82f6]/10 border-[#3b82f6]/30 text-[#3b82f6]'
+                          : 'bg-transparent border-[rgba(255,128,0,0.12)] text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Cpu className="w-3 h-3" /> Hunyuan3D (Free)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGen3dProvider('meshy')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] border transition-all ${
+                        gen3dProvider === 'meshy'
+                          ? 'bg-[#FF8000]/10 border-[#FF8000]/30 text-[#FF8000]'
+                          : 'bg-transparent border-[rgba(255,128,0,0.12)] text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" /> Meshy.ai (Pro)
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[rgba(255,128,0,0.12)]">
               <button
                 type="button"
-                onClick={() => { setShowRegister(false); setRegError(''); }}
+                onClick={() => { setShowRegister(false); setRegError(''); setImageFile(null); setImagePreview(null); }}
                 className="px-4 py-2 text-[12px] text-muted-foreground hover:text-foreground rounded-lg transition-colors"
               >
                 Cancel
