@@ -998,6 +998,20 @@ def _openf1_filter(request) -> dict:
     return filt
 
 
+@app.get("/api/local/openf1/_debug")
+async def openf1_debug():
+    """Temporary debug endpoint — remove after fixing."""
+    db = get_data_db()
+    cols = db.list_collection_names()
+    session_count = db["openf1_sessions"].count_documents({})
+    sample = db["openf1_sessions"].find_one({}, {"_id": 0})
+    return {
+        "db_name": db.name,
+        "collections": sorted(cols),
+        "openf1_sessions_count": session_count,
+        "sample_keys": list(sample.keys()) if sample else None,
+    }
+
 @app.get("/api/local/openf1/sessions")
 async def openf1_sessions(request: Request):
     """Sessions from MongoDB openf1_sessions collection."""

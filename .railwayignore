@@ -1,6 +1,8 @@
 f1data/
 data/
 output/
+pipeline/output/
+omnisuitef1/Data/
 frontend/
 fienv/
 GroundingDINO/

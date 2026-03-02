@@ -13,12 +13,10 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install remaining Python deps
-ARG CACHE_BUST=v2
 COPY pipeline/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy pipeline source
-ARG SOURCE_BUST=v3
 COPY pipeline/ /app/pipeline/
 
 # Copy omnisuite packages + install deps
