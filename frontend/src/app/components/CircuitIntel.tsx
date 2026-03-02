@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid,
+  CartesianGrid, Cell,
 } from 'recharts';
 import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight } from 'lucide-react';
 import type { CircuitIntelligence, CircuitPitLoss, RaceAirDensity } from '../types';
@@ -67,6 +67,16 @@ export function CircuitIntel() {
     [...pitLoss].sort((a, b) => b.est_pit_lane_loss_s - a.est_pit_lane_loss_s),
     [pitLoss]
   );
+
+  // Color scale: green (low loss) → yellow → red (high loss)
+  const pitLossColor = (value: number) => {
+    const min = pitLossRanking.length ? pitLossRanking[pitLossRanking.length - 1].est_pit_lane_loss_s : 16;
+    const max = pitLossRanking.length ? pitLossRanking[0].est_pit_lane_loss_s : 30;
+    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    const r = Math.round(t < 0.5 ? t * 2 * 255 : 255);
+    const g = Math.round(t < 0.5 ? 255 : (1 - t) * 2 * 255);
+    return `rgb(${r},${g},60)`;
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
@@ -187,9 +197,12 @@ export function CircuitIntel() {
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="est_pit_lane_loss_s" name="Pit Loss (s)" radius={[0, 4, 4, 0]}>
                     {pitLossRanking.map((entry) => (
-                      <rect
+                      <Cell
                         key={entry.circuit}
-                        fill={entry.circuit === selected ? '#FF8000' : '#444'}
+                        fill={entry.circuit === selected ? '#FF8000' : pitLossColor(entry.est_pit_lane_loss_s)}
+                        stroke={entry.circuit === selected ? '#FF8000' : 'none'}
+                        strokeWidth={entry.circuit === selected ? 2 : 0}
+                        opacity={entry.circuit === selected ? 1 : 0.75}
                       />
                     ))}
                   </Bar>

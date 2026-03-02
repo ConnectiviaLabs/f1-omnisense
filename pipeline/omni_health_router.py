@@ -12,10 +12,9 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from pipeline.anomaly.run_f1_anomaly import (
-    load_car_race_data,
-    load_bio_race_data,
-    merge_telemetry,
+from pipeline.anomaly.mongo_loader import (
+    load_driver_race_telemetry,
+    get_grid_drivers,
 )
 from omnihealth import assess
 
@@ -23,26 +22,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/omni/health", tags=["OmniHealth"])
 
-# Remapped SYSTEM_FEATURES using aggregated column names from load_car_race_data / load_bio_race_data
+# Component map using fastf1_laps aggregated column names
 COMPONENT_MAP = {
-    "Power Unit":   ["RPM_mean", "RPM_max", "RPM_std", "nGear_mean", "nGear_std"],
-    "Brakes":       ["Brake_pct", "Speed_mean", "Speed_std"],
-    "Drivetrain":   ["Throttle_mean", "Throttle_max", "Throttle_std", "DRS_pct"],
-    "Suspension":   ["Speed_mean", "Speed_max", "Distance_mean", "Distance_std"],
-    "Thermal":      ["HeartRate_bpm_mean", "CockpitTemp_C_mean", "AirTemp_C_mean", "TrackTemp_C_mean"],
-    "Electronics":  ["DRS_pct", "RPM_mean", "nGear_mean"],
+    "Speed": ["SpeedI1_mean", "SpeedI2_mean", "SpeedFL_mean", "SpeedST_mean",
+              "SpeedI1_max", "SpeedST_max"],
+    "Lap Pace": ["LapTime_mean", "LapTime_std",
+                 "Sector1Time_mean", "Sector2Time_mean", "Sector3Time_mean"],
+    "Tyre Management": ["TyreLife_mean", "TyreLife_max", "TyreLife_std",
+                        "stint_count", "compound_variety"],
 }
 
-DRIVERS = {"NOR": "Lando Norris", "PIA": "Oscar Piastri"}
 
-
-def _load_merged(driver_code: str):
-    """Load and merge car + bio telemetry for a driver."""
-    car_df = load_car_race_data(driver_code)
-    if car_df.empty:
+def _load_telemetry(driver_code: str):
+    """Load race telemetry for a driver from MongoDB."""
+    df = load_driver_race_telemetry(driver_code)
+    if df.empty:
         raise HTTPException(404, f"No telemetry data for driver {driver_code}")
-    bio_df = load_bio_race_data(driver_code)
-    return merge_telemetry(car_df, bio_df)
+    return df
 
 
 def _filter_component_map(df):
@@ -62,10 +58,7 @@ def assess_driver(
 ):
     """Run omnihealth.assess() on a driver's aggregated race telemetry."""
     driver_code = driver_code.upper()
-    if driver_code not in DRIVERS:
-        raise HTTPException(404, f"Unknown driver: {driver_code}. Valid: {list(DRIVERS)}")
-
-    merged = _load_merged(driver_code)
+    merged = _load_telemetry(driver_code)
     cmap = _filter_component_map(merged)
 
     report = assess(
@@ -74,7 +67,7 @@ def assess_driver(
         forecast_method=forecast_method,
     )
     return {
-        "driver": DRIVERS[driver_code],
+        "driver": driver_code,
         "code": driver_code,
         "races": len(merged),
         **report.to_dict(),
@@ -82,22 +75,33 @@ def assess_driver(
 
 
 @router.get("/fleet")
-def fleet_health(horizon: int = Query(10, ge=1, le=50)):
-    """Run health assessment for all drivers. Used by FleetOverview."""
+def fleet_health(
+    year: int = Query(2024),
+    horizon: int = Query(10, ge=1, le=50),
+):
+    """Run health assessment for all grid drivers."""
+    grid = get_grid_drivers(year)
     results = []
-    for code, name in DRIVERS.items():
+    for driver_info in grid:
+        code = driver_info["code"]
         try:
-            merged = _load_merged(code)
+            merged = _load_telemetry(code)
             cmap = _filter_component_map(merged)
             report = assess(merged, cmap, horizon=horizon)
             results.append({
-                "driver": name,
+                "driver": driver_info["name"],
                 "code": code,
-                "number": {"NOR": 4, "PIA": 81}.get(code),
+                "team": driver_info["team"],
+                "number": driver_info["number"],
                 "races": len(merged),
                 **report.to_dict(),
             })
         except Exception as e:
             logger.warning(f"OmniHealth assess failed for {code}: {e}")
-            results.append({"driver": name, "code": code, "error": str(e)})
-    return {"drivers": results}
+            results.append({
+                "driver": driver_info["name"],
+                "code": code,
+                "team": driver_info["team"],
+                "error": str(e),
+            })
+    return {"drivers": results, "year": year}

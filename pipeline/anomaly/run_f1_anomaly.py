@@ -1,21 +1,23 @@
 """
-F1 Anomaly Scoring Pipeline.
+F1 Anomaly Scoring Pipeline — All Drivers.
 
-Loads McCar telemetry + McDriver biometric CSVs, runs the ensemble
-anomaly detection from OmniSense DataSense, and outputs per-driver
-per-race per-system anomaly scores as JSON for the Fleet Overview UI.
+Loads race telemetry from MongoDB (fastf1_laps), runs the ensemble
+anomaly detection, and outputs per-driver per-race per-system anomaly
+scores as JSON for the Fleet Overview UI.
 
 Usage:
-    python -m pipeline.anomaly.run_f1_anomaly
+    python -m pipeline.anomaly.run_f1_anomaly                # all grid drivers
+    python -m pipeline.anomaly.run_f1_anomaly --team McLaren # specific team
+    python -m pipeline.anomaly.run_f1_anomaly --driver VER   # single driver
 
 Output:
     pipeline/output/anomaly_scores.json
 """
 
+import argparse
 import json
 import logging
 import os
-import re
 from pathlib import Path
 
 import numpy as np
@@ -28,122 +30,32 @@ from pipeline.anomaly.ensemble import (
     severity_from_votes,
 )
 from pipeline.anomaly.classifier import ClassifierPipeline
+from pipeline.anomaly.mongo_loader import (
+    load_driver_race_telemetry,
+    get_grid_drivers,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]  # f1/
-MCCAR_DIR = ROOT / "f1data" / "McCar" / "2024"
-MCDRIVER_DIR = ROOT / "f1data" / "McDriver" / "2024"
 OUTPUT = ROOT / "pipeline" / "output" / "anomaly_scores.json"
 
-DRIVERS = {"NOR": {"name": "Lando Norris", "number": 4},
-           "PIA": {"name": "Oscar Piastri", "number": 81}}
-
-# System groupings — map telemetry columns to vehicle systems
+# System groupings — map fastf1_laps aggregated columns to vehicle systems
 SYSTEM_FEATURES = {
-    "Power Unit":   ["RPM", "nGear"],
-    "Brakes":       ["Brake", "Speed"],  # brake application + deceleration
-    "Drivetrain":   ["Throttle", "DRS"],
-    "Suspension":   ["Speed", "Distance"],
-    "Thermal":      ["HeartRate_bpm", "CockpitTemp_C", "AirTemp_C", "TrackTemp_C"],
-    "Electronics":  ["DRS", "RPM", "nGear"],
+    "Speed": ["SpeedI1", "SpeedI2", "SpeedFL", "SpeedST"],
+    "Lap Pace": ["LapTime", "Sector1Time", "Sector2Time", "Sector3Time"],
+    "Tyre Management": ["TyreLife"],
 }
 
 
 def load_car_race_data(driver_code: str) -> pd.DataFrame:
-    """Load and aggregate per-race car telemetry for a driver."""
-    if not MCCAR_DIR.exists():
-        logger.warning(f"McCar directory not found: {MCCAR_DIR}")
-        return pd.DataFrame()
-
-    rows = []
-    for csv_file in sorted(MCCAR_DIR.glob("2024_*_Race.csv")):
-        race_match = re.match(r"2024_(.+)_Grand_Prix_Race\.csv", csv_file.name)
-        if not race_match:
-            continue
-        race_name = race_match.group(1).replace("_", " ")
-
-        try:
-            df = pd.read_csv(csv_file, low_memory=False)
-            df = df[df["Driver"] == driver_code]
-            if df.empty:
-                continue
-
-            # Aggregate per-race
-            row = {"race": race_name, "driver": driver_code}
-            for col in ["RPM", "Speed", "Throttle", "nGear", "Distance"]:
-                if col in df.columns:
-                    vals = pd.to_numeric(df[col], errors="coerce").dropna()
-                    row[f"{col}_mean"] = vals.mean() if len(vals) else 0
-                    row[f"{col}_max"] = vals.max() if len(vals) else 0
-                    row[f"{col}_std"] = vals.std() if len(vals) else 0
-            if "Brake" in df.columns:
-                brake_vals = df["Brake"].astype(str).isin(["True", "1", "true"])
-                row["Brake_pct"] = brake_vals.mean() * 100
-            if "DRS" in df.columns:
-                drs_vals = pd.to_numeric(df["DRS"], errors="coerce").fillna(0)
-                row["DRS_pct"] = (drs_vals >= 10).mean() * 100
-            if "TyreLife" in df.columns:
-                tl = pd.to_numeric(df["TyreLife"], errors="coerce").dropna()
-                row["TyreLife_max"] = tl.max() if len(tl) else 0
-            row["samples"] = len(df)
-            rows.append(row)
-        except Exception as e:
-            logger.warning(f"Error loading {csv_file.name}: {e}")
-
-    return pd.DataFrame(rows)
-
-
-def load_bio_race_data(driver_code: str) -> pd.DataFrame:
-    """Load and aggregate per-race biometric data for a driver."""
-    if not MCDRIVER_DIR.exists():
-        return pd.DataFrame()
-
-    rows = []
-    for csv_file in sorted(MCDRIVER_DIR.glob("*_biometrics.csv")):
-        race_match = re.match(r"2024_(.+)_Grand_Prix_Race_biometrics\.csv", csv_file.name)
-        if not race_match:
-            continue
-        race_name = race_match.group(1).replace("_", " ")
-
-        try:
-            df = pd.read_csv(csv_file, low_memory=False)
-            if "Driver" in df.columns:
-                df = df[df["Driver"] == driver_code]
-            if df.empty:
-                continue
-
-            row = {"race": race_name, "driver": driver_code}
-            for col in ["HeartRate_bpm", "CockpitTemp_C", "BattleIntensity", "AirTemp_C", "TrackTemp_C"]:
-                if col in df.columns:
-                    vals = pd.to_numeric(df[col], errors="coerce").dropna()
-                    row[f"{col}_mean"] = vals.mean() if len(vals) else 0
-                    row[f"{col}_max"] = vals.max() if len(vals) else 0
-            row["bio_samples"] = len(df)
-            rows.append(row)
-        except Exception as e:
-            logger.warning(f"Error loading {csv_file.name}: {e}")
-
-    return pd.DataFrame(rows)
-
-
-def merge_telemetry(car_df: pd.DataFrame, bio_df: pd.DataFrame) -> pd.DataFrame:
-    """Merge car + biometric data per race."""
-    if car_df.empty:
-        return car_df
-    if bio_df.empty:
-        return car_df
-
-    merged = car_df.merge(bio_df, on=["race", "driver"], how="left")
-    return merged.fillna(0)
+    """Load per-race telemetry for any driver from MongoDB."""
+    return load_driver_race_telemetry(driver_code)
 
 
 def run_ensemble_per_system(merged_df: pd.DataFrame) -> tuple:
-    """
-    Run the anomaly ensemble on per-system feature groups.
-    Returns (results_dict, system_col_map) for downstream classifier.
-    """
+    """Run the anomaly ensemble on per-system feature groups."""
     if merged_df.empty or len(merged_df) < 3:
         logger.warning("Not enough data for ensemble (need >= 3 races)")
         return {}, {}
@@ -151,15 +63,13 @@ def run_ensemble_per_system(merged_df: pd.DataFrame) -> tuple:
     ensemble = AnomalyDetectionEnsemble()
     stats = AnomalyStatistics()
 
-    # Map system features to actual column patterns in merged data
     system_col_map = {}
     for system, raw_features in SYSTEM_FEATURES.items():
         cols = []
         for feat in raw_features:
             matching = [c for c in merged_df.columns
-                        if c.startswith(feat) and c != "driver" and c != "race"]
+                        if c.startswith(feat) and c not in ("driver", "race", "Year", "Race")]
             cols.extend(matching)
-        # Deduplicate preserving order
         seen = set()
         deduped = []
         for c in cols:
@@ -237,25 +147,20 @@ def compute_system_health(system_results: dict, merged_df: pd.DataFrame) -> list
             score_mean = row.get("Anomaly_Score_Mean", 0)
             voting = row.get("Voting_Score", 0)
 
-            # Health = 100 - (anomaly_score * 100), clamped
             health = max(10, min(100, int(100 - score_mean * 80)))
 
-            # Count model votes
             vote_count = sum(1 for col in result_df.columns
                            if col.endswith("_Anomaly") and row.get(col, 0) == 1)
             total_models = sum(1 for col in result_df.columns if col.endswith("_Anomaly"))
 
-            # Use vote-based severity (from broadcaster)
             vote_severity = severity_from_votes(vote_count, total_models)
 
-            # Top deviating features
             score_cols = [c for c in result_df.columns if c.endswith("_AnomalyScore")]
             top_model = ""
             if score_cols:
                 max_col = max(score_cols, key=lambda c: row.get(c, 0))
                 top_model = max_col.replace("_AnomalyScore", "")
 
-            # Get actual feature values for this system
             feature_vals = {}
             if system in SYSTEM_FEATURES:
                 for feat in SYSTEM_FEATURES[system]:
@@ -275,7 +180,6 @@ def compute_system_health(system_results: dict, merged_df: pd.DataFrame) -> list
                 "features": feature_vals,
             }
 
-            # Enrich with classifier predictions if available
             if "classifier_severity" in result_df.columns:
                 ClassifierPipeline.enrich_health_entry(entry, row)
 
@@ -286,15 +190,17 @@ def compute_system_health(system_results: dict, merged_df: pd.DataFrame) -> list
     return per_race
 
 
-def run_driver(driver_code: str) -> dict:
+def run_driver(driver_code: str, driver_info: dict | None = None) -> dict:
     """Full pipeline for a single driver."""
+    name = driver_info.get("name", driver_code) if driver_info else driver_code
+    number = driver_info.get("number", 0) if driver_info else 0
+    team = driver_info.get("team", "Unknown") if driver_info else "Unknown"
+
     logger.info(f"\n{'='*60}")
-    logger.info(f"Processing {DRIVERS[driver_code]['name']} (#{DRIVERS[driver_code]['number']})")
+    logger.info(f"Processing {name} ({driver_code}) — {team}")
     logger.info(f"{'='*60}")
 
-    car_df = load_car_race_data(driver_code)
-    bio_df = load_bio_race_data(driver_code)
-    merged = merge_telemetry(car_df, bio_df)
+    merged = load_car_race_data(driver_code)
 
     if merged.empty:
         logger.warning(f"No data for {driver_code}")
@@ -304,8 +210,10 @@ def run_driver(driver_code: str) -> dict:
 
     system_results, system_col_map = run_ensemble_per_system(merged)
 
-    # Supervised classifier: train on ensemble pseudo-labels, produce
-    # calibrated severity probabilities for preventative maintenance
+    if not system_results:
+        logger.warning(f"No system results for {driver_code}")
+        return {}
+
     logger.info("Running severity classifier...")
     system_results = run_classifier_per_system(
         merged, system_results, system_col_map, driver_code,
@@ -313,7 +221,6 @@ def run_driver(driver_code: str) -> dict:
 
     per_race_health = compute_system_health(system_results, merged)
 
-    # Compute overall health (latest race, average of systems)
     latest = per_race_health[-1] if per_race_health else {}
     system_healths = [s["health"] for s in latest.get("systems", {}).values()]
     overall_health = int(np.mean(system_healths)) if system_healths else 0
@@ -331,9 +238,10 @@ def run_driver(driver_code: str) -> dict:
         overall_level = "normal"
 
     return {
-        "driver": DRIVERS[driver_code]["name"],
-        "number": DRIVERS[driver_code]["number"],
+        "driver": name,
+        "number": number,
         "code": driver_code,
+        "team": team,
         "overall_health": overall_health,
         "overall_level": overall_level,
         "last_race": per_race_health[-1]["race"] if per_race_health else "",
@@ -343,46 +251,50 @@ def run_driver(driver_code: str) -> dict:
 
 
 def _push_to_mongo(output_data: dict):
-    """Push anomaly scores to MongoDB for the Vercel API."""
+    """Push anomaly scores to MongoDB."""
     try:
-        from dotenv import load_dotenv
-        from pymongo import MongoClient
-
-        load_dotenv(ROOT / ".env")
-        uri = os.environ.get("MONGODB_URI")
-        if not uri:
-            logger.warning("MONGODB_URI not set — skipping MongoDB push")
-            return
-
-        db_name = os.environ.get("MONGODB_DB", "marip_f1")
-        client = MongoClient(uri)
-        db = client[db_name]
-
+        from updater._db import get_db
+        db = get_db()
         db["anomaly_scores_snapshot"].drop()
         db["anomaly_scores_snapshot"].insert_one(output_data)
-
-        logger.info(f"Pushed to MongoDB {db_name}.anomaly_scores_snapshot")
-        client.close()
-    except ImportError:
-        logger.warning("pymongo/dotenv not installed — skipping MongoDB push")
+        logger.info("Pushed to MongoDB marip_f1.anomaly_scores_snapshot")
     except Exception as e:
         logger.warning(f"MongoDB push failed: {e}")
 
 
 def main():
-    """Run anomaly pipeline for all McLaren drivers."""
-    logger.info("F1 Anomaly Scoring Pipeline")
-    logger.info(f"McCar dir: {MCCAR_DIR}")
-    logger.info(f"McDriver dir: {MCDRIVER_DIR}")
+    """Run anomaly pipeline for all drivers (or filtered by team/driver)."""
+    parser = argparse.ArgumentParser(description="F1 Anomaly Scoring Pipeline")
+    parser.add_argument("--driver", help="Single driver code (e.g. VER)")
+    parser.add_argument("--team", help="Filter by team (e.g. McLaren)")
+    parser.add_argument("--year", type=int, default=2024, help="Grid year (default 2024)")
+    args = parser.parse_args()
+
+    logger.info("F1 Anomaly Scoring Pipeline — All Drivers")
+
+    grid = get_grid_drivers(args.year)
+    logger.info(f"Grid: {len(grid)} drivers for {args.year}")
+
+    if args.driver:
+        grid = [d for d in grid if d["code"] == args.driver.upper()]
+    elif args.team:
+        grid = [d for d in grid if args.team.lower() in d["team"].lower()]
+
+    if not grid:
+        logger.error("No drivers matched filters")
+        return
+
+    logger.info(f"Processing {len(grid)} driver(s): {[d['code'] for d in grid]}")
 
     output_data = {"drivers": [], "metadata": {
         "systems": list(SYSTEM_FEATURES.keys()),
         "models": ["IsolationForest", "OneClassSVM", "KNN", "PCA_Reconstruction"],
         "model_weights": {"IsolationForest": 1.0, "OneClassSVM": 0.6, "KNN": 0.8, "PCA_Reconstruction": 0.9},
+        "year": args.year,
     }}
 
-    for code in DRIVERS:
-        result = run_driver(code)
+    for driver_info in grid:
+        result = run_driver(driver_info["code"], driver_info)
         if result:
             output_data["drivers"].append(result)
 
@@ -394,9 +306,8 @@ def main():
     logger.info(f"\nOutput written to {OUTPUT}")
     logger.info(f"Drivers: {len(output_data['drivers'])}")
     for d in output_data["drivers"]:
-        logger.info(f"  {d['driver']}: {d['overall_health']}% ({d['overall_level']}) — {d['race_count']} races")
+        logger.info(f"  {d['code']:5s} {d.get('team',''):20s} {d['overall_health']}% ({d['overall_level']}) — {d['race_count']} races")
 
-    # Push to MongoDB so Vercel API serves fresh data
     _push_to_mongo(output_data)
 
 

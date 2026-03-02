@@ -15,6 +15,16 @@ echo -e "${O}══════════════════════�
 echo -e "${O}  F1 OmniSense — Starting Services${C}"
 echo -e "${O}════════════════════════════════════════════════════${C}"
 
+# Kill any existing instances on our ports
+for PORT in 8100 5173; do
+  PIDS=$(lsof -ti:$PORT 2>/dev/null || true)
+  if [ -n "$PIDS" ]; then
+    echo -e "${O}  [~] Killing existing process on port $PORT${C}"
+    echo "$PIDS" | xargs kill 2>/dev/null || true
+    sleep 1
+  fi
+done
+
 cleanup() {
   echo -e "\n${O}Shutting down...${C}"
   kill $API_PID $VITE_PID 2>/dev/null
