@@ -343,7 +343,7 @@ export function MediaIntelligence() {
                         onError={(e) => { (e.target as HTMLImageElement).src = `/media/gdino_results/${frame.output_image}`; }}
                       />
                       <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1.5 py-0.5 flex items-center justify-between">
-                        <span className="text-[10px] text-foreground font-mono">{frame.detections.length} det</span>
+                        <span className="text-[10px] text-foreground font-mono">{frame.detections?.length ?? 0} det</span>
                         <span className="text-[9px] text-muted-foreground">f{frame.frame_index}</span>
                       </div>
                     </button>
@@ -366,7 +366,7 @@ export function MediaIntelligence() {
                     return (
                       <div className="bg-[#0D1117] rounded-lg p-3 space-y-1">
                         <div className="text-[11px] text-muted-foreground tracking-wider mb-1">DETECTIONS — Frame {frame.frame_index}</div>
-                        {frame.detections.map((det, i) => (
+                        {(frame.detections ?? []).map((det, i) => (
                           <div key={i} className="flex items-center gap-3 text-[11px]">
                             <span className="text-[#FF8000] font-mono w-8">{(det.score * 100).toFixed(0)}%</span>
                             <span className="text-foreground">{det.category}</span>
