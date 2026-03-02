@@ -895,6 +895,13 @@ async def pipeline_timesformer():
     docs = list(db["pipeline_timesformer_results"].find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
     return {"results": docs, "count": len(docs)}
 
+@app.get("/api/local/pipeline/videos")
+async def pipeline_videos():
+    """List available videos from media_videos collection."""
+    db = get_data_db()
+    docs = list(db["media_videos"].find({}, {"_id": 0}).sort("added", -1))
+    return {"videos": docs, "count": len(docs)}
+
 def _build_session_map():
     """Build mapping from _source_file → session_key and (year, race) → session_key.
 

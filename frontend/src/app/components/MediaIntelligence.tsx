@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Brain, Eye, Video, Scan, Loader2, Search, Tag, ImageIcon,
+  Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Play, Film,
 } from 'lucide-react';
 import { pipeline } from '../api/local';
 
@@ -15,14 +15,6 @@ interface VideoModelResult {
   fps: number;
   inference_time_s: number;
   top_predictions: { label: string; score: number }[];
-}
-
-interface MiniCPMFrame {
-  frame_index: number;
-  narration: string;
-  tokens: number;
-  time_s: number;
-  tok_per_s: number;
 }
 
 interface VisualSearchResult {
@@ -40,24 +32,20 @@ interface VisualTagImage {
   frame_index: number;
 }
 
-const modelStatus = [
-  { name: 'Gemma 3 4B', type: 'Vision-Language', status: 'ready', framework: 'Ollama', purpose: 'Scene narration, tire commentary, pit lane description' },
-  { name: 'CLIP', type: 'Image-Text Similarity', status: 'ready', framework: 'PyTorch', purpose: 'Gemma narration ↔ frame embedding similarity scoring' },
-  { name: 'GroundingDINO', type: 'Object Detection', status: 'ready', framework: 'PyTorch', purpose: 'Text-grounded object detection in F1 media' },
-  { name: 'SAM2', type: 'Segmentation', status: 'ready', framework: 'PyTorch', purpose: 'Segment Anything for component isolation' },
-  { name: 'VideoMAE', type: 'Video Understanding', status: 'ready', framework: 'Transformers', purpose: 'Self-supervised video representation learning' },
-  { name: 'TimeSformer', type: 'Temporal Analysis', status: 'ready', framework: 'Transformers', purpose: 'Divided space-time attention for video' },
-];
+interface MediaVideo {
+  filename: string;
+  size_mb: number;
+  added: string;
+  analyzed: boolean;
+}
 
 export function MediaIntelligence() {
   const [gdinoData, setGdinoData] = useState<Record<string, GDinoFrame[]> | null>(null);
   const [fusedData, setFusedData] = useState<Record<string, GDinoFrame[]> | null>(null);
-  const [minicpmData, setMinicpmData] = useState<Record<string, MiniCPMFrame[]> | null>(null);
   const [videomaeData, setVideomaeData] = useState<Record<string, VideoModelResult> | null>(null);
   const [timesformerData, setTimesformerData] = useState<Record<string, VideoModelResult> | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   const [clipQuery, setClipQuery] = useState('');
   const [clipResults, setClipResults] = useState<VisualSearchResult[] | null>(null);
   const [clipSearching, setClipSearching] = useState(false);
@@ -65,16 +53,41 @@ export function MediaIntelligence() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [topTags, setTopTags] = useState<{ label: string; max_score: number }[]>([]);
 
+  // Video picker state
+  const [videos, setVideos] = useState<MediaVideo[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState<any>(null);
+
   useEffect(() => {
     Promise.allSettled([
-      pipeline.gdino().then(setGdinoData),
-      pipeline.fused().then(setFusedData),
-      pipeline.minicpm().then(setMinicpmData),
-      pipeline.videomae().then(setVideomaeData),
-      pipeline.timesformer().then(setTimesformerData),
+      pipeline.gdino().then(d => setGdinoData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d)),
+      pipeline.fused().then(d => setFusedData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d)),
+      pipeline.videomae().then(d => {
+        if (d?.results) {
+          const mapped: Record<string, VideoModelResult> = {};
+          for (const r of d.results) {
+            mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
+          }
+          setVideomaeData(mapped);
+        } else {
+          setVideomaeData(d);
+        }
+      }),
+      pipeline.timesformer().then(d => {
+        if (d?.results) {
+          const mapped: Record<string, VideoModelResult> = {};
+          for (const r of d.results) {
+            mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
+          }
+          setTimesformerData(mapped);
+        } else {
+          setTimesformerData(d);
+        }
+      }),
+      pipeline.videos().then(d => setVideos(d?.videos ?? [])),
     ]).finally(() => setLoading(false));
 
-    // Load CLIP auto-tags
     fetch('/api/visual-tags')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -99,6 +112,35 @@ export function MediaIntelligence() {
     finally { setClipSearching(false); }
   };
 
+  const analyzeVideo = async (filename: string) => {
+    setAnalyzing(true);
+    setAnalyzeResult(null);
+    try {
+      const res = await fetch(`/api/omni/vis/analyze-video-by-name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, tasks: 'detect,classify' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyzeResult(data);
+        // Refresh pipeline data after analysis
+        pipeline.gdino().then(d => setGdinoData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d));
+        pipeline.videomae().then(d => {
+          if (d?.results) {
+            const mapped: Record<string, VideoModelResult> = {};
+            for (const r of d.results) mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
+            setVideomaeData(mapped);
+          }
+        });
+      }
+    } catch (e) {
+      setAnalyzeResult({ error: String(e) });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const filteredByTag = selectedTag && allTags
     ? allTags.filter(img => img.auto_tags.some(t => t.label === selectedTag))
     : null;
@@ -116,7 +158,6 @@ export function MediaIntelligence() {
     ? Object.values(gdinoData).flat().reduce((s, f) => s + f.detections.length, 0)
     : 0;
   const totalFramesAnalyzed = gdinoData ? Object.values(gdinoData).flat().length : 0;
-  const totalNarrations = minicpmData ? Object.values(minicpmData).flat().length : 0;
   const categories = gdinoData
     ? [...new Set(Object.values(gdinoData).flat().flatMap(f => f.detections.map(d => d.category)))]
     : [];
@@ -125,9 +166,8 @@ export function MediaIntelligence() {
     { label: 'Videos Processed', value: gdinoData ? String(Object.keys(gdinoData).length) : '—' },
     { label: 'Frames Analyzed', value: String(totalFramesAnalyzed) },
     { label: 'Detections', value: String(totalDetections) },
-    { label: 'VLM Narrations', value: String(totalNarrations) },
     { label: 'VideoMAE Runs', value: videomaeData ? String(Object.keys(videomaeData).length) : '—' },
-    { label: 'Models Available', value: String(modelStatus.length) },
+    { label: 'Videos Available', value: String(videos.length) },
   ];
 
   return (
@@ -141,7 +181,7 @@ export function MediaIntelligence() {
             </div>
             <div>
               <h3 className="text-sm text-foreground">Media Analysis Pipeline</h3>
-              <div className="text-[12px] text-muted-foreground">GroundingDINO + SAM2 + VideoMAE + TimeSformer + Gemma 3 + CLIP</div>
+              <div className="text-[12px] text-muted-foreground">GroundingDINO + SAM2 + VideoMAE + TimeSformer + CLIP</div>
             </div>
           </div>
           <span className="flex items-center gap-1.5 text-[12px] text-green-400 bg-green-500/10 px-2 py-1 rounded-full">
@@ -149,7 +189,7 @@ export function MediaIntelligence() {
             Results Loaded
           </span>
         </div>
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-5 gap-3">
           {pipelineStats.map((stat) => (
             <div key={stat.label} className="bg-[#0D1117] rounded-lg p-2">
               <div className="text-[11px] text-muted-foreground tracking-wider mb-1">{stat.label}</div>
@@ -323,7 +363,6 @@ export function MediaIntelligence() {
                       onError={(e) => { (e.target as HTMLImageElement).src = `/media/gdino_results/${selectedImage}`; }}
                     />
                   </div>
-                  {/* Show detections for selected frame */}
                   {(() => {
                     const frame = Object.values(fusedData ?? gdinoData!).flat().find(f => f.output_image === selectedImage);
                     if (!frame) return null;
@@ -402,110 +441,119 @@ export function MediaIntelligence() {
           )}
         </div>
 
-        {/* Right Column */}
-        <div className="col-span-5 space-y-3">
-          {/* VLM Narrations */}
-          {minicpmData && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-              <h3 className="text-sm text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
-                <Eye className="w-3 h-3" />
-                VLM NARRATIONS — Gemma 3 4B + CLIP
-              </h3>
-              <div className="space-y-3">
-                {Object.entries(minicpmData).map(([video, frames]) => (
-                  <div key={video}>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedVideo(expandedVideo === video ? null : video)}
-                      className="w-full text-left"
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] text-[#FF8000] font-mono">{video}</span>
-                        <span className="text-[11px] text-muted-foreground">{frames.length} frames</span>
+        {/* Right Column — Video Picker */}
+        <div className="col-span-5 space-y-4">
+          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <h3 className="text-sm text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+              <Film className="w-3 h-3" />
+              VIDEO LIBRARY
+            </h3>
+            <div className="space-y-2">
+              {videos.length === 0 && (
+                <div className="text-[12px] text-muted-foreground py-4 text-center">No videos available</div>
+              )}
+              {videos.map(v => {
+                const isSelected = selectedVideo === v.filename;
+                const hasResults = gdinoData?.[v.filename] || videomaeData?.[v.filename];
+                return (
+                  <button
+                    key={v.filename}
+                    type="button"
+                    onClick={() => setSelectedVideo(isSelected ? null : v.filename)}
+                    className={`w-full text-left rounded-lg p-3 transition-all border ${
+                      isSelected
+                        ? 'bg-[#FF8000]/10 border-[#FF8000]/30'
+                        : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] hover:border-[#FF8000]/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                        hasResults ? 'bg-green-500/10' : 'bg-[#FF8000]/10'
+                      }`}>
+                        <Play className={`w-3.5 h-3.5 ${hasResults ? 'text-green-400' : 'text-[#FF8000]'}`} />
                       </div>
-                    </button>
-                    {expandedVideo === video ? (
-                      <div className="space-y-2 mt-2">
-                        {frames.map((frame) => {
-                          const narration = frame.narration.trim().replace(/^<think>[\s\S]*?<\/think>\s*/i, '');
-                          const firstParagraph = narration.split('\n').filter(l => l.trim())[0] ?? '';
-                          return (
-                            <div key={frame.frame_index} className="bg-[#0D1117] rounded-lg p-2">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[11px] text-[#FF8000] font-mono">Frame {frame.frame_index}</span>
-                                <span className="text-[11px] text-muted-foreground">{frame.tokens} tok | {frame.tok_per_s.toFixed(1)} tok/s</span>
-                              </div>
-                              <p className="text-[12px] text-muted-foreground leading-relaxed">{firstParagraph.slice(0, 300)}</p>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[12px] text-foreground truncate">{v.filename}</div>
+                        <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                          <span>{v.size_mb} MB</span>
+                          {hasResults && (
+                            <span className="text-green-400">analyzed</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Analyze Button */}
+            {selectedVideo && (
+              <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)]">
+                <div className="text-[12px] text-muted-foreground mb-2">
+                  Selected: <span className="text-[#FF8000] font-mono">{selectedVideo}</span>
+                </div>
+                <button
+                  onClick={() => analyzeVideo(selectedVideo)}
+                  disabled={analyzing}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#FF8000]/20 text-[#FF8000] text-sm rounded-lg hover:bg-[#FF8000]/30 disabled:opacity-40 transition-colors"
+                >
+                  {analyzing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Analyzing on GPU...
+                    </>
+                  ) : (
+                    <>
+                      <Scan className="w-4 h-4" />
+                      Analyze Video
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Analysis Result */}
+            {analyzeResult && (
+              <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)]">
+                {analyzeResult.error ? (
+                  <div className="text-[12px] text-red-400">{analyzeResult.error}</div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="text-[11px] text-muted-foreground tracking-wider">ANALYSIS COMPLETE</div>
+                    <div className="grid grid-cols-2 gap-2 text-[12px]">
+                      <div className="bg-[#0D1117] rounded-lg p-2">
+                        <div className="text-muted-foreground">Frames</div>
+                        <div className="text-foreground font-mono">{analyzeResult.sampled_frames ?? '—'} / {analyzeResult.total_frames ?? '—'}</div>
+                      </div>
+                      <div className="bg-[#0D1117] rounded-lg p-2">
+                        <div className="text-muted-foreground">FPS</div>
+                        <div className="text-foreground font-mono">{analyzeResult.fps ?? '—'}</div>
+                      </div>
+                    </div>
+                    {analyzeResult.classification && (
+                      <div>
+                        <div className="text-[11px] text-purple-400 tracking-wider mb-1">Classifications</div>
+                        {analyzeResult.classification.slice(0, 3).map((c: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-[12px]">
+                            <div className="w-16 h-1 bg-[#222838] rounded-full overflow-hidden">
+                              <div className="h-full bg-purple-400 rounded-full" style={{ width: `${(c.score ?? 0) * 100}%` }} />
                             </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-[12px] text-muted-foreground leading-relaxed line-clamp-2">
-                        {frames[0]?.narration.trim().replace(/^<think>[\s\S]*?<\/think>\s*/i, '').split('\n').filter(l => l.trim())[0]?.slice(0, 150)}...
+                            <span className="font-mono text-foreground">{((c.score ?? 0) * 100).toFixed(1)}%</span>
+                            <span className="text-muted-foreground truncate">{c.label}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    <div className="text-[11px] text-muted-foreground mt-1">
-                      avg {(frames.reduce((s, f) => s + f.tok_per_s, 0) / frames.length).toFixed(1)} tok/s
-                    </div>
+                    {analyzeResult.gdino && (
+                      <div className="text-[12px] text-muted-foreground">
+                        {analyzeResult.gdino.length} frames with detections
+                      </div>
+                    )}
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
-
-          {/* Model Status */}
-          <h3 className="text-sm text-muted-foreground tracking-widest">MODEL STATUS</h3>
-          {modelStatus.map((model) => (
-            <div key={model.name} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="text-sm text-foreground">{model.name}</div>
-                  <div className="text-[12px] text-[#FF8000]">{model.type}</div>
-                </div>
-                <span className={`text-[11px] px-1.5 py-0.5 rounded-full uppercase ${
-                  model.status === 'active' ? 'text-green-400 bg-green-500/10' : 'text-cyan-400 bg-cyan-500/10'
-                }`}>
-                  {model.status}
-                </span>
-              </div>
-              <div className="text-[12px] text-muted-foreground mb-1">{model.purpose}</div>
-              <div className="text-[11px] text-muted-foreground">
-                Framework: <span className="font-mono text-foreground">{model.framework}</span>
-              </div>
-            </div>
-          ))}
-
-          {/* Architecture */}
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-            <h4 className="text-[12px] text-muted-foreground tracking-widest mb-3">MEDIA PIPELINE</h4>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF8000]" />
-                <span className="text-muted-foreground">Detection:</span>
-                <span className="text-foreground">GroundingDINO (text-grounded)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-cyan-400" />
-                <span className="text-muted-foreground">Segmentation:</span>
-                <span className="text-foreground">SAM2 (fused with detection)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-400" />
-                <span className="text-muted-foreground">Video:</span>
-                <span className="text-foreground">VideoMAE + TimeSformer</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-400" />
-                <span className="text-muted-foreground">VLM:</span>
-                <span className="text-foreground">Gemma 3 4B (Ollama) + CLIP scoring</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
-                <span className="text-muted-foreground">Source:</span>
-                <span className="text-foreground">f1data/McMedia/</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

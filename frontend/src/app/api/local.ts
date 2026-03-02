@@ -44,6 +44,7 @@ export const pipeline = {
   minicpm: () => fetchLocal<any>('pipeline/minicpm'),
   videomae: () => fetchLocal<any>('pipeline/videomae'),
   timesformer: () => fetchLocal<any>('pipeline/timesformer'),
+  videos: () => fetchLocal<any>('pipeline/videos'),
 };
 
 // CSV data fetch helper
