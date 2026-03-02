@@ -5,6 +5,9 @@ frontend/
 fienv/
 GroundingDINO/
 sam2/
+omnisuitef1/
+colabModels/
+Documentation/
 *.pt
 *.pth
 *.bin
@@ -12,6 +15,13 @@ sam2/
 *.safetensors
 *.glb
 *.tar
+*.zip
+*.mp4
+*.webm
+*.csv
+*.parquet
+*.pkl
+*.wasm
 node_modules/
 __pycache__/
 .git/
