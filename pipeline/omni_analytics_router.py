@@ -1,8 +1,11 @@
-"""OmniAnalytics APIRouter — anomaly detection and forecasting for F1 telemetry.
+"""OmniAnalytics APIRouter — anomaly detection and forecasting for all F1 drivers.
 
 Endpoints:
     POST /api/omni/analytics/anomaly/{driver_code}   — run anomaly ensemble
     POST /api/omni/analytics/forecast/{driver_code}   — forecast a telemetry column
+    GET  /api/omni/analytics/grid                     — anomaly summary for all grid drivers
+    GET  /api/omni/analytics/team/{team}              — anomaly summary for a team
+    GET  /api/omni/analytics/rivals/{driver_code}     — compare a driver vs the field
 """
 
 from __future__ import annotations
@@ -14,20 +17,34 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from pipeline.anomaly.run_f1_anomaly import load_car_race_data
+from pipeline.anomaly.mongo_loader import (
+    load_driver_race_telemetry,
+    get_grid_drivers,
+)
 from omnidata._types import TabularDataset, DatasetProfile, ColumnProfile, ColumnRole, DType
 from omnianalytics import AnomalyEnsemble, forecast
+
+import math
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/omni/analytics", tags=["OmniAnalytics"])
 
-DRIVERS = {"NOR": "Lando Norris", "PIA": "Oscar Piastri"}
+
+def _sanitize(obj):
+    """Replace NaN/Inf with None for JSON serialization."""
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
 
 
 def _build_dataset(driver_code: str) -> TabularDataset:
-    """Load race telemetry and wrap in a TabularDataset for omnianalytics."""
-    df = load_car_race_data(driver_code)
+    """Load race telemetry from MongoDB and wrap in a TabularDataset."""
+    df = load_driver_race_telemetry(driver_code)
     if df.empty:
         raise HTTPException(404, f"No telemetry data for driver {driver_code}")
 
@@ -52,25 +69,42 @@ def _build_dataset(driver_code: str) -> TabularDataset:
     return TabularDataset(df=df, profile=profile)
 
 
+def _quick_anomaly_summary(driver_code: str) -> dict | None:
+    """Run a fast anomaly check and return summary dict, or None if no data."""
+    try:
+        ds = _build_dataset(driver_code)
+        ensemble = AnomalyEnsemble()
+        result = ensemble.run(ds)
+    except (HTTPException, ValueError, Exception) as e:
+        logger.debug("Skipping %s: %s", driver_code, e)
+        return None
+
+    return {
+        "code": driver_code,
+        "total_rows": result.total_rows,
+        "anomaly_count": result.anomaly_count,
+        "anomaly_pct": round(result.anomaly_count / max(result.total_rows, 1) * 100, 1),
+        "severity_distribution": result.severity_distribution,
+        "threshold": result.threshold,
+    }
+
+
 class AnomalyRequest(BaseModel):
     columns: Optional[List[str]] = None
 
 
 @router.post("/anomaly/{driver_code}")
 def detect_anomalies(driver_code: str, body: AnomalyRequest = AnomalyRequest()):
-    """Run the OmniAnalytics anomaly ensemble on a driver's race telemetry."""
+    """Run the OmniAnalytics anomaly ensemble on any driver's race telemetry."""
     driver_code = driver_code.upper()
-    if driver_code not in DRIVERS:
-        raise HTTPException(404, f"Unknown driver: {driver_code}")
-
     ds = _build_dataset(driver_code)
     ensemble = AnomalyEnsemble()
     result = ensemble.run(ds, columns=body.columns)
-    return {
-        "driver": DRIVERS[driver_code],
+    return _sanitize({
+        "driver": driver_code,
         "code": driver_code,
         **result.to_dict(),
-    }
+    })
 
 
 @router.post("/forecast/{driver_code}")
@@ -80,18 +114,89 @@ def forecast_column(
     horizon: int = Query(5, ge=1, le=50),
     method: str = Query("auto", description="auto, arima, linear, or lightgbm"),
 ):
-    """Forecast a specific telemetry column for a driver."""
+    """Forecast a specific telemetry column for any driver."""
     driver_code = driver_code.upper()
-    if driver_code not in DRIVERS:
-        raise HTTPException(404, f"Unknown driver: {driver_code}")
-
     ds = _build_dataset(driver_code)
     if column not in ds.df.columns:
         raise HTTPException(400, f"Column '{column}' not found. Available: {list(ds.df.columns)}")
 
     result = forecast(ds, column=column, horizon=horizon, method=method)
-    return {
-        "driver": DRIVERS[driver_code],
+    return _sanitize({
+        "driver": driver_code,
         "code": driver_code,
         **result.to_dict(),
-    }
+    })
+
+
+@router.get("/grid")
+def grid_anomaly_summary(year: int = Query(2024)):
+    """Anomaly summary for all drivers on the grid."""
+    grid = get_grid_drivers(year)
+    results = []
+    for driver_info in grid:
+        summary = _quick_anomaly_summary(driver_info["code"])
+        if summary:
+            summary["name"] = driver_info["name"]
+            summary["team"] = driver_info["team"]
+            summary["number"] = driver_info["number"]
+            results.append(summary)
+
+    results.sort(key=lambda x: x["anomaly_pct"], reverse=True)
+    return _sanitize({"year": year, "drivers": results, "count": len(results)})
+
+
+@router.get("/team/{team}")
+def team_anomaly_summary(team: str, year: int = Query(2024)):
+    """Anomaly summary for all drivers in a specific team."""
+    grid = get_grid_drivers(year)
+    team_drivers = [d for d in grid if team.lower() in d["team"].lower()]
+
+    if not team_drivers:
+        raise HTTPException(404, f"No drivers found for team '{team}' in {year}")
+
+    results = []
+    for driver_info in team_drivers:
+        summary = _quick_anomaly_summary(driver_info["code"])
+        if summary:
+            summary["name"] = driver_info["name"]
+            summary["team"] = driver_info["team"]
+            summary["number"] = driver_info["number"]
+            results.append(summary)
+
+    return _sanitize({"team": team, "year": year, "drivers": results, "count": len(results)})
+
+
+@router.get("/rivals/{driver_code}")
+def rivals_comparison(driver_code: str, year: int = Query(2024)):
+    """Compare a driver's anomaly profile against the rest of the field."""
+    driver_code = driver_code.upper()
+
+    grid = get_grid_drivers(year)
+    target_info = next((d for d in grid if d["code"] == driver_code), None)
+
+    target_summary = _quick_anomaly_summary(driver_code)
+    if not target_summary:
+        raise HTTPException(404, f"No data for driver {driver_code}")
+
+    if target_info:
+        target_summary["name"] = target_info["name"]
+        target_summary["team"] = target_info["team"]
+
+    # Run for all other drivers
+    rivals = []
+    for driver_info in grid:
+        if driver_info["code"] == driver_code:
+            continue
+        summary = _quick_anomaly_summary(driver_info["code"])
+        if summary:
+            summary["name"] = driver_info["name"]
+            summary["team"] = driver_info["team"]
+            rivals.append(summary)
+
+    rivals.sort(key=lambda x: x["anomaly_pct"], reverse=True)
+
+    return _sanitize({
+        "target": target_summary,
+        "rivals": rivals,
+        "year": year,
+    })

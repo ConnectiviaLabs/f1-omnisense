@@ -919,15 +919,8 @@ def _resolve_sk(year_race_to_key: dict, year: str, race: str) -> int:
         return year_race_to_key[key2]
     return 9000
 
-_DRIVER_NUMBERS = {"NOR": 4, "PIA": 81}
-_DRIVER_META = {
-    "NOR": {"number": 4, "full_name": "Lando NORRIS", "broadcast_name": "L NORRIS",
-            "first_name": "Lando", "last_name": "Norris", "team_name": "McLaren",
-            "team_colour": "FF8000", "country_code": "GBR", "headshot_url": ""},
-    "PIA": {"number": 81, "full_name": "Oscar PIASTRI", "broadcast_name": "O PIASTRI",
-            "first_name": "Oscar", "last_name": "Piastri", "team_name": "McLaren",
-            "team_colour": "FF8000", "country_code": "AUS", "headshot_url": ""},
-}
+# McLaren driver codes for McLaren Analytics endpoints
+_MCLAREN_DRIVERS = ["NOR", "PIA"]
 
 # Map CSV GP names to OpenF1 circuit_short_name values
 _GP_TO_CIRCUIT: dict[str, str] = {
@@ -1427,7 +1420,7 @@ async def mccsv_driver_career():
     from collections import defaultdict
     db = get_data_db()
     races = list(db["race_results"].find(
-        {"Results.Driver.code": {"$in": ["NOR", "PIA"]}},
+        {"Results.Driver.code": {"$in": _MCLAREN_DRIVERS}},
         {"_id": 0}
     ))
     drivers = defaultdict(lambda: {
@@ -1439,7 +1432,7 @@ async def mccsv_driver_career():
         for result in race.get("Results", []):
             drv = result.get("Driver", {})
             code = drv.get("code", "")
-            if code not in ["NOR", "PIA"]:
+            if code not in _MCLAREN_DRIVERS:
                 continue
             d = drivers[code]
             d["seasons"].add(race.get("season", ""))
@@ -1493,7 +1486,7 @@ async def mc_championship_drivers(year: str):
     headers = ["meeting_name", "driver_acronym", "points_current", "position_current"]
     lines = [",".join(headers)]
     # Build cumulative points race by race for NOR and PIA
-    cumulative = {"NOR": 0, "PIA": 0}
+    cumulative = {code: 0 for code in _MCLAREN_DRIVERS}
     for race in races:
         race_name = race.get("raceName", "")
         for result in race.get("Results", []):
@@ -1505,7 +1498,7 @@ async def mc_championship_drivers(year: str):
         # Determine positions based on cumulative
         sorted_drivers = sorted(cumulative.items(), key=lambda x: -x[1])
         pos_map = {code: str(idx + 1) for idx, (code, _) in enumerate(sorted_drivers)}
-        for code in ["NOR", "PIA"]:
+        for code in _MCLAREN_DRIVERS:
             lines.append(",".join([
                 race_name, code, str(cumulative[code]), pos_map.get(code, "0"),
             ]))
