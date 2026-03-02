@@ -341,7 +341,7 @@ export function MediaIntelligence() {
                         src={`/media/fused_results/${frame.output_image}`}
                         alt={frame.output_image}
                         className="w-full h-20 object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).src = `/media/gdino_results/${frame.output_image}`; }}
+                        onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/gdino_results/${frame.output_image}`; } }}
                       />
                       <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1.5 py-0.5 flex items-center justify-between">
                         <span className="text-[10px] text-foreground font-mono">{frame.detections?.length ?? 0} det</span>
@@ -357,7 +357,7 @@ export function MediaIntelligence() {
                       src={`/media/fused_results/${selectedImage}`}
                       alt="Detection detail"
                       className="w-full"
-                      onError={(e) => { (e.target as HTMLImageElement).src = `/media/gdino_results/${selectedImage}`; }}
+                      onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/gdino_results/${selectedImage}`; } }}
                     />
                   </div>
                   {(() => {
