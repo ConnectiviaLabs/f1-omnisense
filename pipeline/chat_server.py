@@ -1002,6 +1002,20 @@ _GP_TO_COUNTRY: dict[str, str] = {
     "Brazilian Grand Prix": "Brazil",
 }
 
+import math as _math
+
+def _sanitize(obj):
+    """Replace NaN/Infinity floats with None so JSON serialization succeeds."""
+    if isinstance(obj, float):
+        if _math.isnan(obj) or _math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    return obj
+
 def _openf1_filter(request) -> dict:
     """Build a MongoDB filter from query params (session_key, year, driver_number, etc.)."""
     filt = {}
@@ -1028,7 +1042,7 @@ async def openf1_sessions(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_sessions"].find(filt, {"_id": 0, "_ingested_at": 0})
                 .sort("date_start", -1).limit(500))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/drivers")
@@ -1037,7 +1051,7 @@ async def openf1_drivers(request: Request):
     db = get_data_db()
     filt = _openf1_filter(request)
     docs = list(db["openf1_drivers"].find(filt, {"_id": 0, "ingested_at": 0}))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/laps")
@@ -1047,7 +1061,7 @@ async def openf1_laps(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_laps"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("lap_number", 1).limit(5000))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/position")
@@ -1057,7 +1071,7 @@ async def openf1_positions(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_position"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("date", -1).limit(5000))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/weather")
@@ -1067,7 +1081,7 @@ async def openf1_weather(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_weather"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("date", -1).limit(500))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/intervals")
@@ -1077,7 +1091,7 @@ async def openf1_intervals(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_intervals"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("date", -1).limit(5000))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/pit")
@@ -1087,7 +1101,7 @@ async def openf1_pit(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_pit"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("lap_number", 1).limit(2000))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/stints")
@@ -1097,7 +1111,7 @@ async def openf1_stints(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_stints"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort([("driver_number", 1), ("stint_number", 1)]).limit(2000))
-    return docs
+    return _sanitize(docs)
 
 
 @app.get("/api/local/openf1/race_control")
@@ -1107,7 +1121,7 @@ async def openf1_race_control(request: Request):
     filt = _openf1_filter(request)
     docs = list(db["openf1_race_control"].find(filt, {"_id": 0, "ingested_at": 0})
                 .sort("date", 1).limit(2000))
-    return docs
+    return _sanitize(docs)
 
 @app.get("/api/fleet-vehicles")
 async def fleet_vehicles_get():
