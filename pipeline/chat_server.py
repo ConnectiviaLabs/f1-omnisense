@@ -67,6 +67,12 @@ app.add_middleware(
 app.include_router(model_3d_router)
 mount_3d_static(app)
 
+# Serve media files (pipeline output images)
+from starlette.staticfiles import StaticFiles as _StaticFiles
+_media_root = Path(__file__).parent.parent / "f1data" / "McMedia"
+if _media_root.exists():
+    app.mount("/media", _StaticFiles(directory=str(_media_root)), name="media")
+
 # Mount OmniSuite routers
 app.include_router(omni_health_router)
 app.include_router(omni_analytics_router)

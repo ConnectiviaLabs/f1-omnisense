@@ -1,108 +1,16 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   AlertTriangle, CheckCircle2, XCircle, Activity,
-  Gauge, CircleDot, Shield, TrendingUp,
-  Cpu, Disc, ShieldAlert, Eye, FileText, Bell,
-  Plus, X, Car, Save, Upload, Box, Loader2, Sparkles,
+  CircleDot, Shield, TrendingUp, Cpu,
+  Plus, X, Car, Save, Upload, Box, Loader2, Sparkles, Gauge,
 } from 'lucide-react';
 import * as model3dApi from '../api/model3d';
 import type { Job } from '../api/model3d';
-
-// ─── Types (aligned with anomaly_scores.json) ──────────────────────
-type HealthLevel = 'nominal' | 'warning' | 'critical';
-
-interface SystemHealth {
-  name: string;
-  icon: React.ElementType;
-  health: number;
-  level: HealthLevel;
-  details: string;
-  voteCount: number;
-  totalModels: number;
-  metrics: { label: string; value: string }[];
-  maintenanceAction?: string;
-  severityProbabilities?: Record<string, number>;
-}
-
-interface RaceHealth {
-  race: string;
-  systems: Record<string, {
-    health: number;
-    level: string;
-    vote_severity: string;
-    score_mean: number;
-    voting_score: number;
-    vote_count: number;
-    total_models: number;
-    top_model: string;
-    features: Record<string, number>;
-    classifier_severity?: string;
-    classifier_confidence?: number;
-    severity_probabilities?: Record<string, number>;
-    maintenance_action?: string;
-  }>;
-}
-
-interface VehicleData {
-  driver: string;
-  number: number;
-  code: string;
-  overallHealth: number;
-  level: HealthLevel;
-  lastRace: string;
-  systems: SystemHealth[];
-  races: RaceHealth[];
-}
-
-// ─── Map anomaly levels to UI levels ────────────────────────────────
-const SYSTEM_ICONS: Record<string, React.ElementType> = {
-  'Speed': Gauge,
-  'Lap Pace': Activity,
-  'Tyre Management': Disc,
-};
-
-function mapLevel(anomalyLevel: string): HealthLevel {
-  switch (anomalyLevel) {
-    case 'critical':
-    case 'high':
-      return 'critical';
-    case 'medium':
-      return 'warning';
-    default:
-      return 'nominal';
-  }
-}
-
-function buildSystemHealth(
-  sysName: string,
-  data: RaceHealth['systems'][string],
-): SystemHealth {
-  const level = data.classifier_severity ? mapLevel(data.classifier_severity) : mapLevel(data.level);
-  const featureEntries = Object.entries(data.features);
-  const details = featureEntries.map(([k, v]) => `${k}: ${v}`).join(', ') || `Score: ${data.score_mean.toFixed(3)}`;
-
-  return {
-    name: sysName,
-    icon: SYSTEM_ICONS[sysName] ?? Cpu,
-    health: data.health,
-    level,
-    details,
-    voteCount: data.vote_count,
-    totalModels: data.total_models,
-    metrics: featureEntries.map(([k, v]) => ({ label: k, value: String(v) })),
-    maintenanceAction: data.maintenance_action,
-    severityProbabilities: data.severity_probabilities,
-  };
-}
-
-// ─── Maintenance action display helpers ──────────────────────────────
-const MAINTENANCE_LABELS: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  alert_and_remediate: { label: 'Immediate Action', icon: ShieldAlert, color: '#ef4444' },
-  alert:              { label: 'Schedule Review',   icon: Bell,        color: '#FF8000' },
-  log_and_monitor:    { label: 'Monitor',           icon: Eye,         color: '#eab308' },
-  log:                { label: 'Logged',            icon: FileText,    color: '#6b7280' },
-  none:               { label: 'No Action',         icon: CheckCircle2, color: '#22c55e' },
-};
+import {
+  type HealthLevel, type VehicleData,
+  mapLevel, levelColor, levelBg,
+  MAINTENANCE_LABELS, SEVERITY_COLORS, parseAnomalyDrivers,
+} from './anomalyHelpers';
 
 function MaintenanceBadge({ action }: { action?: string }) {
   const info = MAINTENANCE_LABELS[action ?? 'none'] ?? MAINTENANCE_LABELS.none;
@@ -119,9 +27,6 @@ function MaintenanceBadge({ action }: { action?: string }) {
 function SeverityBar({ probabilities }: { probabilities?: Record<string, number> }) {
   if (!probabilities) return null;
   const order = ['normal', 'low', 'medium', 'high', 'critical'] as const;
-  const colors: Record<string, string> = {
-    normal: '#22c55e', low: '#6b7280', medium: '#eab308', high: '#FF8000', critical: '#ef4444',
-  };
   const total = Object.values(probabilities).reduce((a, b) => a + b, 0);
   if (total < 0.01) return null;
   return (
@@ -129,17 +34,11 @@ function SeverityBar({ probabilities }: { probabilities?: Record<string, number>
       {order.map(sev => {
         const pct = (probabilities[sev] ?? 0) * 100;
         if (pct < 1) return null;
-        return <div key={sev} style={{ width: `${pct}%`, background: colors[sev] }} />;
+        return <div key={sev} style={{ width: `${pct}%`, background: SEVERITY_COLORS[sev] }} />;
       })}
     </div>
   );
 }
-
-const levelColor = (l: HealthLevel) =>
-  l === 'nominal' ? '#22c55e' : l === 'warning' ? '#FF8000' : '#ef4444';
-
-const levelBg = (l: HealthLevel) =>
-  l === 'nominal' ? 'rgba(34,197,94,0.08)' : l === 'warning' ? 'rgba(255,128,0,0.12)' : 'rgba(239,68,68,0.08)';
 
 
 // 3D car models — served from public/models/ via symlinks
@@ -292,27 +191,7 @@ export function FleetOverview() {
       try {
         const res = await fetch('/api/pipeline/anomaly');
         const data = await res.json();
-        const mapped: VehicleData[] = (data.drivers ?? []).map((d: any) => {
-          const latestRace: RaceHealth | undefined = d.races?.[d.races.length - 1];
-          const systems: SystemHealth[] = latestRace
-            ? Object.entries(latestRace.systems).map(([name, sysData]) =>
-                buildSystemHealth(name, sysData as RaceHealth['systems'][string])
-              )
-            : [];
-
-          return {
-            driver: d.driver,
-            number: d.number,
-            code: d.code,
-            overallHealth: d.overall_health,
-            level: mapLevel(d.overall_level),
-            lastRace: d.last_race,
-            systems,
-            races: d.races ?? [],
-          };
-        });
-
-        setVehicles(mapped);
+        setVehicles(parseAnomalyDrivers(data));
       } catch (err) {
         console.error('Fleet anomaly data load error:', err);
       } finally {

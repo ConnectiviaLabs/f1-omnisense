@@ -26,7 +26,8 @@
     { "source": "/api/updater/:path(.*)", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/api/updater/:path" },
     { "source": "/api/fleet-vehicles", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/api/fleet-vehicles" },
     { "source": "/api/constructor_profiles/:path(.*)", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/api/local/constructor_profiles/:path" },
-    { "source": "/api/constructor_profiles", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/api/local/constructor_profiles" }
+    { "source": "/api/constructor_profiles", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/api/local/constructor_profiles" },
+    { "source": "/media/:path(.*)", "destination": "https://u466anvcyk654s-8100.proxy.runpod.net/media/:path" }
   ],
   "headers": [
     {

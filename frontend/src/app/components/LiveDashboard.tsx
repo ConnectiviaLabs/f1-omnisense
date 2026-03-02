@@ -15,6 +15,13 @@ import { ScrollArea } from './ui/scroll-area';
 import { TrackMapGL } from './TrackMapGL';
 import { LiveAnalyticsSidebar } from './LiveAnalyticsSidebar';
 import { getCircuitByShortName } from '../data/circuits';
+import { HealthGauge } from './HealthGauge';
+import { StatusBadge } from './StatusBadge';
+import {
+  type VehicleData,
+  levelColor, levelBg, MAINTENANCE_LABELS, SEVERITY_COLORS,
+  parseAnomalyDrivers,
+} from './anomalyHelpers';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
@@ -78,6 +85,8 @@ export function LiveDashboard() {
   const [replaySpeed, setReplaySpeed] = useState(5);
   const [playing, setPlaying] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [selectedDriverNum, setSelectedDriverNum] = useState<number | null>(null);
+  const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
   const lastFrameRef = useRef(0);
   const scrubRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -121,6 +130,14 @@ export function LiveDashboard() {
     setPlaying(false);
   }, [sessionKey]);
 
+  // --- Anomaly data (one-time fetch) ---
+  useEffect(() => {
+    fetch('/api/pipeline/anomaly')
+      .then(r => r.json())
+      .then(data => setAnomalyVehicles(parseAnomalyDrivers(data)))
+      .catch(() => {});
+  }, []);
+
   // --- Data Fetching ---
   const { data: drivers } = usePolling({
     fetcher: () => sessionKey ? openf1.getDrivers(sessionKey) : Promise.resolve([]),
@@ -154,6 +171,14 @@ export function LiveDashboard() {
     fetcher: () => sessionKey ? openf1.getIntervals(sessionKey) : Promise.resolve([]),
     interval: 60000, enabled: !!sessionKey,
   });
+
+  // Auto-select first McLaren driver when drivers load
+  useEffect(() => {
+    if (drivers && drivers.length > 0 && selectedDriverNum === null) {
+      const mclaren = drivers.find(d => d.team_name?.toLowerCase().includes('mclaren'));
+      setSelectedDriverNum(mclaren?.driver_number ?? drivers[0].driver_number);
+    }
+  }, [drivers, selectedDriverNum]);
 
   // --- Replay Animation ---
   useEffect(() => {
@@ -597,6 +622,25 @@ export function LiveDashboard() {
     }
   }, [replayActive]);
 
+  // --- Selected driver anomaly data ---
+  const selectedDriver = useMemo(() => drivers?.find(d => d.driver_number === selectedDriverNum) ?? null, [drivers, selectedDriverNum]);
+  const selectedVehicle = useMemo(() => {
+    if (!selectedDriver || anomalyVehicles.length === 0) return null;
+    return anomalyVehicles.find(v => v.code === selectedDriver.name_acronym) ?? null;
+  }, [selectedDriver, anomalyVehicles]);
+
+  // Race-by-race trend for the selected driver's systems
+  const healthTrendData = useMemo(() => {
+    if (!selectedVehicle) return [];
+    return selectedVehicle.races.map(r => {
+      const row: Record<string, any> = { race: r.race };
+      for (const [sysName, sys] of Object.entries(r.systems)) {
+        row[sysName] = sys.health;
+      }
+      return row;
+    });
+  }, [selectedVehicle]);
+
   if (sessionsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -655,6 +699,20 @@ export function LiveDashboard() {
                 </option>
               ))}
             </select>
+            {drivers && drivers.length > 0 && (
+              <select
+                value={selectedDriverNum ?? ''}
+                onChange={(e) => setSelectedDriverNum(Number(e.target.value))}
+                aria-label="Select driver"
+                className="appearance-none bg-[#222838] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none cursor-pointer"
+              >
+                {drivers.map(d => (
+                  <option key={d.driver_number} value={d.driver_number}>
+                    {d.name_acronym} — {d.full_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
         {latestWeather && (
@@ -936,6 +994,152 @@ export function LiveDashboard() {
           color="text-purple-400"
         />
       </div>
+
+      {/* ── DRIVER HEALTH ── */}
+      {selectedVehicle && (
+        <>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
+            <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">DRIVER HEALTH — {selectedDriver?.name_acronym}</span>
+            <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4">
+            {/* Overall Health + KPIs */}
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="col-span-3 bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4 flex flex-col items-center justify-center gap-3"
+            >
+              <HealthGauge value={selectedVehicle.overallHealth} size={100} label="Overall" />
+              <StatusBadge status={selectedVehicle.level} />
+              <div className="w-full space-y-2 mt-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">DNF Risk</span>
+                  <span className="font-mono" style={{ color: selectedVehicle.overallHealth >= 80 ? '#22c55e' : selectedVehicle.overallHealth >= 60 ? '#FF8000' : '#ef4444' }}>
+                    {Math.max(0, 100 - selectedVehicle.overallHealth).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">Systems</span>
+                  <span className="font-mono text-foreground">{selectedVehicle.systems.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">Last Race</span>
+                  <span className="font-mono text-foreground text-[10px]">{selectedVehicle.lastRace}</span>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* System Health Cards */}
+            <div className="col-span-9 grid grid-cols-3 gap-3">
+              {selectedVehicle.systems.map((sys) => {
+                const Icon = sys.icon;
+                const maint = sys.maintenanceAction ? MAINTENANCE_LABELS[sys.maintenanceAction] ?? MAINTENANCE_LABELS.none : null;
+                return (
+                  <motion.div
+                    key={sys.name}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: levelBg(sys.level) }}>
+                        <Icon className="w-4 h-4" style={{ color: levelColor(sys.level) }} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[11px] text-muted-foreground">{sys.name}</div>
+                        <div className="text-sm font-mono" style={{ color: levelColor(sys.level) }}>{sys.health.toFixed(0)}%</div>
+                      </div>
+                      <StatusBadge status={sys.level} size="sm" />
+                    </div>
+
+                    {/* Health bar */}
+                    <div className="w-full h-1.5 bg-[#222838] rounded-full overflow-hidden mb-3">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }}
+                      />
+                    </div>
+
+                    {/* Severity probability bars */}
+                    {sys.severityProbabilities && (
+                      <div className="space-y-1 mb-3">
+                        <div className="text-[9px] text-muted-foreground tracking-wider">SEVERITY DISTRIBUTION</div>
+                        <div className="flex h-2 rounded-full overflow-hidden">
+                          {Object.entries(sys.severityProbabilities)
+                            .sort(([,a], [,b]) => b - a)
+                            .map(([level, prob]) => (
+                              <div
+                                key={level}
+                                style={{ width: `${prob * 100}%`, backgroundColor: SEVERITY_COLORS[level] ?? '#6b7280' }}
+                                title={`${level}: ${(prob * 100).toFixed(0)}%`}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Model consensus */}
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-2">
+                      <span>Models: {sys.voteCount}/{sys.totalModels}</span>
+                    </div>
+
+                    {/* Maintenance badge */}
+                    {maint && (
+                      <div className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md" style={{ backgroundColor: maint.color + '15', color: maint.color }}>
+                        <maint.icon className="w-3 h-3" />
+                        <span>{maint.label}</span>
+                      </div>
+                    )}
+
+                    {/* Top SHAP features */}
+                    {sys.metrics.length > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        <div className="text-[9px] text-muted-foreground tracking-wider">TOP FEATURES</div>
+                        {sys.metrics.slice(0, 3).map(m => (
+                          <div key={m.label} className="flex items-center justify-between text-[10px]">
+                            <span className="text-muted-foreground truncate mr-2">{m.label}</span>
+                            <span className="font-mono text-foreground">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Race-by-Race Health Trend */}
+          {healthTrendData.length > 1 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+            >
+              <h3 className="text-sm text-foreground tracking-widest mb-3 font-medium">HEALTH TREND</h3>
+              <div className="h-[160px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={healthTrendData}>
+                    <XAxis dataKey="race" tick={{ fontSize: 9, fill: '#666' }} interval="preserveStartEnd" />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#666' }} width={30} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area type="monotone" dataKey="Speed" stroke="#FF8000" fill="#FF8000" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                    <Area type="monotone" dataKey="Lap Pace" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                    <Area type="monotone" dataKey="Tyre Management" stroke="#22c55e" fill="#22c55e" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex items-center gap-4 mt-2 justify-center">
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#FF8000]" /> Speed</div>
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#00d4ff]" /> Lap Pace</div>
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#22c55e]" /> Tyre Management</div>
+              </div>
+            </motion.div>
+          )}
+        </>
+      )}
 
       {/* Row 1: Positions + Lap Times */}
       <div className="grid grid-cols-12 gap-4">
