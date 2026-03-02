@@ -18,9 +18,6 @@ _client: MongoClient | None = None
 def get_db() -> Database:
     global _client
     if _client is None:
-        uri = os.environ.get(
-            "MONGODB_URI",
-            "mongodb+srv://connectivia_db_user:Vq7agrxoA5vRxzmO@omni.qwxleog.mongodb.net/",
-        )
+        uri = os.environ["MONGODB_URI"]
         _client = MongoClient(uri)
     return _client[DB_NAME]

@@ -4,7 +4,6 @@ import {
   Brain,
   BookOpen,
   Activity,
-  Settings,
   Radio,
   Video,
   MessageCircle,
@@ -21,18 +20,38 @@ interface SidebarProps {
   onViewChange: (view: ViewType) => void;
 }
 
-const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
-  { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
-  { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
-  { id: 'driver-intel', label: 'Driver Intel', icon: Users },
-  { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
-  { id: 'car', label: 'Car Telemetry', icon: Car },
-  { id: 'driver', label: 'Driver Bio', icon: User },
-  { id: 'media', label: 'Media Intel', icon: Video },
-  { id: 'ai-insights', label: 'Knowledge Base', icon: Brain },
-  { id: 'regulations', label: 'Regulations', icon: BookOpen },
-  { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
-  { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
+type NavItem = { id: ViewType; label: string; icon: React.ElementType };
+
+const navGroups: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'DRIVER & CAR',
+    items: [
+      { id: 'driver-intel', label: 'Driver Intel', icon: Users },
+    ],
+  },
+  {
+    label: 'FIELD & TEAM',
+    items: [
+      { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
+      { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
+      { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
+      { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
+    ],
+  },
+  {
+    label: 'KNOWLEDGE',
+    items: [
+      { id: 'ai-insights', label: 'Knowledge Base', icon: Brain },
+      { id: 'regulations', label: 'Regulations', icon: BookOpen },
+      { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
+    ],
+  },
+  {
+    label: 'MEDIA',
+    items: [
+      { id: 'media', label: 'Media Intel', icon: Video },
+    ],
+  },
 ];
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
@@ -64,48 +83,28 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-2 space-y-0.5">
-        {navItems.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => onViewChange(id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all border-l-[1.5px] ${
-              activeView === id
-                ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
-            }`}
-          >
-            <Icon className="w-4 h-4 shrink-0" />
-            <span className="tracking-wide">{label}</span>
-          </button>
+      <nav className="flex-1 p-2 overflow-y-auto">
+        {navGroups.map(({ label: groupLabel, items }) => (
+          <div key={groupLabel} className="mb-1">
+            <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">{groupLabel}</div>
+            {items.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => onViewChange(id)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
+                  activeView === id
+                    ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                    : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="tracking-wide">{label}</span>
+              </button>
+            ))}
+          </div>
         ))}
       </nav>
 
-      {/* System Status */}
-      <div className="p-4 border-t border-[rgba(255,128,0,0.12)]">
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-[#222838] hover:text-foreground transition-all">
-          <Settings className="w-4 h-4" />
-          <span className="tracking-wide">Settings</span>
-        </button>
-        <div className="mt-3 px-3 space-y-1.5">
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-muted-foreground">OpenF1</span>
-            <span className="text-green-400">Connected</span>
-          </div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-muted-foreground">Jolpica</span>
-            <span className="text-green-400">Connected</span>
-          </div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-muted-foreground">Pipeline</span>
-            <span className="text-green-400">Ready</span>
-          </div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-muted-foreground">Local Data</span>
-            <span className="text-green-400">Loaded</span>
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

@@ -36,7 +36,7 @@ class OpponentProfiler:
     """Read-only query interface over the 4 opponent collections."""
 
     def __init__(self, db: Database | None = None):
-        self.db = db or get_db()
+        self.db = db if db is not None else get_db()
 
     # ── Single-driver queries ──────────────────────────────────────────
 

@@ -30,6 +30,12 @@ def _get_profiler() -> OpponentProfiler:
     return _profiler
 
 
+def init_profiler_with_db(db) -> None:
+    """Inject a shared MongoDB database to avoid a second MongoClient."""
+    global _profiler
+    _profiler = OpponentProfiler(db=db)
+
+
 # ── Router ─────────────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/api/opponents", tags=["Opponent Profiles"])

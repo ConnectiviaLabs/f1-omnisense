@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ from pipeline.omni_data_router import router as omni_data_router
 from pipeline.omni_bedding_router import router as omni_bedding_router
 from pipeline.omni_vis_router import router as omni_vis_router
 from pipeline.omni_dapt_router import router as omni_dapt_router
-from pipeline.opponents.server import router as opponents_router
+from pipeline.opponents.server import router as opponents_router, init_profiler_with_db
 from pipeline.updater.server import router as updater_router
 
 # ── Config ───────────────────────────────────────────────────────────────
@@ -505,6 +505,8 @@ def get_data_db():
     if _data_db is None:
         _data_client = _MongoClient(os.getenv("MONGODB_URI", ""))
         _data_db = _data_client[os.getenv("MONGODB_DB", "marip_f1")]
+        # Share this connection with the opponents profiler
+        init_profiler_with_db(_data_db)
     return _data_db
 
 @app.get("/api/local/jolpica/race_results")
@@ -721,7 +723,12 @@ async def circuit_intel_circuits(circuit: str | None = None):
     filt: dict = {}
     if circuit:
         filt["circuit_slug"] = circuit
-    return list(db["circuit_intelligence"].find(filt, {"_id": 0}))
+    # Exclude heavy coordinate arrays when listing all circuits
+    proj: dict = {"_id": 0}
+    if not circuit:
+        proj["coordinates"] = 0
+        proj["bbox"] = 0
+    return list(db["circuit_intelligence"].find(filt, proj))
 
 @app.get("/api/local/circuit_intel/pit_loss")
 async def circuit_intel_pit_loss(circuit: str | None = None):
@@ -979,250 +986,112 @@ _GP_TO_COUNTRY: dict[str, str] = {
     "Brazilian Grand Prix": "Brazil",
 }
 
+def _openf1_filter(request) -> dict:
+    """Build a MongoDB filter from query params (session_key, year, driver_number, etc.)."""
+    filt = {}
+    for key in ("session_key", "meeting_key", "driver_number", "year",
+                "lap_number", "stint_number", "position"):
+        val = request.query_params.get(key)
+        if val is not None:
+            try:
+                filt[key] = int(val)
+            except ValueError:
+                filt[key] = val
+    for key in ("session_type", "session_name", "compound", "category",
+                "flag", "country_name", "circuit_short_name"):
+        val = request.query_params.get(key)
+        if val is not None:
+            filt[key] = val
+    return filt
+
+
 @app.get("/api/local/openf1/sessions")
-async def openf1_sessions():
-    """Generate OpenF1-format sessions from telemetry data."""
+async def openf1_sessions(request: Request):
+    """Sessions from MongoDB openf1_sessions collection."""
     db = get_data_db()
-    sources = db["telemetry_lap_summary"].distinct("_source_file")
-    sessions = []
-    session_key = 9000
-    race_idx = 0
-    prev_year = None
-    for src in sorted(sources):
-        parts = src.replace(".csv", "").split("_")
-        if len(parts) < 3:
-            continue
-        year = parts[0]
-        if year != prev_year:
-            race_idx = 0
-            prev_year = year
-        race_name = " ".join(parts[1:]).replace(" Race", "")
-        circuit_short = _GP_TO_CIRCUIT.get(race_name, race_name.split()[0])
-        country = _GP_TO_COUNTRY.get(race_name, circuit_short)
-        month = 3 + race_idx
-        if month > 12:
-            month = 12
-        sessions.append({
-            "session_key": session_key,
-            "session_name": "Race",
-            "session_type": "Race",
-            "date_start": f"{year}-{month:02d}-15T14:00:00",
-            "date_end": f"{year}-{month:02d}-15T16:00:00",
-            "year": int(year),
-            "circuit_key": session_key,
-            "circuit_short_name": circuit_short,
-            "country_name": country,
-            "country_key": session_key,
-            "location": circuit_short,
-            "meeting_key": session_key,
-            "meeting_name": f"{year} {race_name}",
-            "_source_file": src,
-        })
-        session_key += 1
-        race_idx += 1
-    return sessions
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_sessions"].find(filt, {"_id": 0, "_ingested_at": 0})
+                .sort("date_start", -1).limit(500))
+    return docs
+
 
 @app.get("/api/local/openf1/drivers")
-async def openf1_drivers():
-    """Generate OpenF1-format driver data for all sessions."""
-    _, yr_to_key = _build_session_map()
-    drivers = []
-    for sk in yr_to_key.values():
-        for code, meta in _DRIVER_META.items():
-            drivers.append({
-                "session_key": sk, "meeting_key": sk,
-                "driver_number": meta["number"],
-                "broadcast_name": meta["broadcast_name"],
-                "full_name": meta["full_name"],
-                "name_acronym": code,
-                "team_name": meta["team_name"],
-                "team_colour": meta["team_colour"],
-                "first_name": meta["first_name"],
-                "last_name": meta["last_name"],
-                "country_code": meta["country_code"],
-                "headshot_url": meta["headshot_url"],
-            })
-    return drivers
+async def openf1_drivers(request: Request):
+    """Drivers from MongoDB openf1_drivers collection."""
+    db = get_data_db()
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_drivers"].find(filt, {"_id": 0, "ingested_at": 0}))
+    return docs
+
 
 @app.get("/api/local/openf1/laps")
-async def openf1_laps():
-    """Generate OpenF1-format lap data from pre-aggregated telemetry_lap_summary."""
+async def openf1_laps(request: Request):
+    """Laps from MongoDB openf1_laps collection."""
     db = get_data_db()
-    _, yr_to_key = _build_session_map()
-    results = list(db["telemetry_lap_summary"].find(
-        {}, {"_id": 0, "Driver": 1, "Year": 1, "Race": 1, "LapNumber": 1,
-             "LapTime": 1, "LapTime_s": 1, "top_speed": 1, "Date": 1}
-    ).sort([("Year", 1), ("Race", 1), ("LapNumber", 1)]))
-    laps = []
-    for r in results:
-        driver = r.get("Driver", "")
-        year = str(r.get("Year", ""))
-        race = r.get("Race", "")
-        lap_num = r.get("LapNumber")
-        if lap_num is None:
-            continue
-        sk = _resolve_sk(yr_to_key, year, race)
-        lap_duration = r.get("LapTime_s")
-        laps.append({
-            "session_key": sk, "meeting_key": sk,
-            "driver_number": _DRIVER_NUMBERS.get(driver, 0),
-            "lap_number": int(lap_num),
-            "lap_duration": lap_duration,
-            "duration_sector_1": None, "duration_sector_2": None, "duration_sector_3": None,
-            "is_pit_out_lap": False,
-            "date_start": str(r.get("Date", "")),
-            "st_speed": float(r.get("top_speed", 0)) if r.get("top_speed") else None,
-        })
-    return laps
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_laps"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("lap_number", 1).limit(5000))
+    return docs
+
 
 @app.get("/api/local/openf1/position")
-async def openf1_positions():
-    """Generate OpenF1-format position data from telemetry_lap_summary."""
+async def openf1_positions(request: Request):
+    """Positions from MongoDB openf1_position collection."""
     db = get_data_db()
-    _, yr_to_key = _build_session_map()
-    results = list(db["telemetry_lap_summary"].find(
-        {}, {"_id": 0, "Driver": 1, "Year": 1, "Race": 1, "LapNumber": 1, "Date": 1}
-    ).sort([("Year", 1), ("Race", 1), ("LapNumber", 1)]))
-    from collections import defaultdict
-    lap_groups = defaultdict(list)
-    for r in results:
-        year = str(r.get("Year", ""))
-        race = r.get("Race", "")
-        key = f'{year}_{race}_{r.get("LapNumber", 0)}'
-        lap_groups[key].append({
-            "driver": r.get("Driver", ""),
-            "date": r.get("Date", ""),
-            "year": year,
-            "race": race,
-        })
-    positions = []
-    for key, drivers_in_lap in lap_groups.items():
-        for pos_idx, d in enumerate(drivers_in_lap):
-            sk = _resolve_sk(yr_to_key, d["year"], d["race"])
-            positions.append({
-                "session_key": sk, "meeting_key": sk,
-                "driver_number": _DRIVER_NUMBERS.get(d["driver"], 0),
-                "date": str(d["date"]),
-                "position": pos_idx + 1,
-            })
-    return positions
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_position"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("date", -1).limit(5000))
+    return docs
+
 
 @app.get("/api/local/openf1/weather")
-async def openf1_weather():
-    """Return weather data for all sessions."""
-    _, yr_to_key = _build_session_map()
-    weather = []
-    for yr_race, sk in yr_to_key.items():
-        year = yr_race.split("|")[0]
-        weather.append({
-            "session_key": sk, "meeting_key": sk,
-            "date": f"{year}-06-01T14:00:00", "air_temperature": 25.0,
-            "track_temperature": 40.0, "humidity": 55, "pressure": 1013.0,
-            "rainfall": False, "wind_direction": 180, "wind_speed": 3.5,
-        })
-    return weather
+async def openf1_weather(request: Request):
+    """Weather from MongoDB openf1_weather collection."""
+    db = get_data_db()
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_weather"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("date", -1).limit(500))
+    return docs
+
 
 @app.get("/api/local/openf1/intervals")
-async def openf1_intervals():
-    return []
+async def openf1_intervals(request: Request):
+    """Intervals from MongoDB openf1_intervals collection."""
+    db = get_data_db()
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_intervals"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("date", -1).limit(5000))
+    return docs
+
 
 @app.get("/api/local/openf1/pit")
-async def openf1_pit():
-    """Generate pit stop data from telemetry_lap_summary stint boundaries."""
+async def openf1_pit(request: Request):
+    """Pit stops from MongoDB openf1_pit collection."""
     db = get_data_db()
-    _, yr_to_key = _build_session_map()
-    pipeline_agg = [
-        {"$match": {"Compound": {"$ne": None}}},
-        {"$group": {
-            "_id": {"Driver": "$Driver", "Year": "$Year", "Race": "$Race", "Compound": "$Compound"},
-            "min_lap": {"$min": "$LapNumber"},
-        }},
-        {"$sort": {"_id.Race": 1, "_id.Driver": 1, "min_lap": 1}},
-    ]
-    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg))
-    from collections import defaultdict
-    driver_race_stints = defaultdict(list)
-    for r in results:
-        ident = r["_id"]
-        key = f'{ident["Year"]}_{ident["Driver"]}_{ident["Race"]}'
-        driver_race_stints[key].append({
-            "driver": ident["Driver"],
-            "year": ident.get("Year", ""),
-            "race": ident["Race"],
-            "min_lap": r.get("min_lap", 0) or 0,
-        })
-    pits = []
-    for key, stints in driver_race_stints.items():
-        stints.sort(key=lambda s: s["min_lap"])
-        for i in range(1, len(stints)):
-            driver = stints[i]["driver"]
-            year = stints[i]["year"]
-            race = stints[i]["race"]
-            sk = _resolve_sk(yr_to_key, year, race)
-            pits.append({
-                "session_key": sk, "meeting_key": sk,
-                "driver_number": _DRIVER_NUMBERS.get(driver, 0),
-                "date": "", "lap_number": int(stints[i]["min_lap"]),
-                "pit_duration": 23.5,
-            })
-    return pits
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_pit"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("lap_number", 1).limit(2000))
+    return docs
+
 
 @app.get("/api/local/openf1/stints")
-async def openf1_stints():
-    """Generate stint data from telemetry_lap_summary."""
+async def openf1_stints(request: Request):
+    """Stints from MongoDB openf1_stints collection."""
     db = get_data_db()
-    _, yr_to_key = _build_session_map()
-    pipeline_agg = [
-        {"$match": {"Compound": {"$ne": None}}},
-        {"$group": {
-            "_id": {"Driver": "$Driver", "Year": "$Year", "Race": "$Race", "Compound": "$Compound"},
-            "start_lap": {"$min": "$LapNumber"},
-            "end_lap": {"$max": "$LapNumber"},
-            "tyre_life": {"$min": "$TyreLife"},
-        }},
-        {"$sort": {"_id.Year": 1, "_id.Race": 1, "_id.Driver": 1, "start_lap": 1}},
-    ]
-    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg, allowDiskUse=True))
-    stints = []
-    from collections import defaultdict
-    stint_counter = defaultdict(int)
-    for r in results:
-        ident = r["_id"]
-        driver = ident.get("Driver", "")
-        year = ident.get("Year", "")
-        race = ident.get("Race", "")
-        key = f"{year}_{driver}_{race}"
-        stint_counter[key] += 1
-        sk = _resolve_sk(yr_to_key, year, race)
-        stints.append({
-            "session_key": sk, "meeting_key": sk,
-            "driver_number": _DRIVER_NUMBERS.get(driver, 0),
-            "stint_number": stint_counter[key],
-            "lap_start": int(r.get("start_lap", 0)) if r.get("start_lap") else 0,
-            "lap_end": int(r.get("end_lap", 0)) if r.get("end_lap") else 0,
-            "compound": ident.get("Compound", "UNKNOWN"),
-            "tyre_age_at_start": int(r.get("tyre_life", 0)) if r.get("tyre_life") else 0,
-        })
-    return stints
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_stints"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort([("driver_number", 1), ("stint_number", 1)]).limit(2000))
+    return docs
+
 
 @app.get("/api/local/openf1/race_control")
-async def openf1_race_control():
-    """Return race control events for all sessions."""
-    _, yr_to_key = _build_session_map()
-    events = []
-    for yr_race, sk in yr_to_key.items():
-        year = yr_race.split("|")[0]
-        events.append({
-            "date": f"{year}-06-01T14:00:00", "session_key": sk, "meeting_key": sk,
-            "driver_number": None, "lap_number": 1, "category": "Flag",
-            "flag": "GREEN", "scope": "Track", "message": "GREEN LIGHT - PIT EXIT OPEN",
-        })
-    return events
-
-@app.get("/api/local/openf1/{collection}")
-async def openf1_other(collection: str):
-    """Catch-all for other OpenF1 collections."""
-    return []
+async def openf1_race_control(request: Request):
+    """Race control from MongoDB openf1_race_control collection."""
+    db = get_data_db()
+    filt = _openf1_filter(request)
+    docs = list(db["openf1_race_control"].find(filt, {"_id": 0, "ingested_at": 0})
+                .sort("date", 1).limit(2000))
+    return docs
 
 def _aggregate_telemetry_summary(docs: list[dict]) -> list[dict]:
     """Aggregate raw telemetry docs into CarSummary format grouped by race."""
