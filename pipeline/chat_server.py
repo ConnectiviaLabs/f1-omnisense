@@ -339,7 +339,7 @@ def visual_search(q: str, k: int = 8):
     return {"query": q, "results": results}
 
 
-@app.get("/visual-tags")
+@app.get("/api/visual-tags")
 def visual_tags():
     """Return all images with their auto-tags for gallery filtering."""
     index = get_clip_index()

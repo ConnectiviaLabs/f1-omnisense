@@ -61,8 +61,8 @@ export function MediaIntelligence() {
 
   useEffect(() => {
     Promise.allSettled([
-      pipeline.gdino().then(d => setGdinoData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d)),
-      pipeline.fused().then(d => setFusedData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d)),
+      pipeline.gdino().then(d => setGdinoData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : null)),
+      pipeline.fused().then(d => setFusedData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : null)),
       pipeline.videomae().then(d => {
         if (d?.results) {
           const mapped: Record<string, VideoModelResult> = {};
@@ -154,13 +154,10 @@ export function MediaIntelligence() {
     );
   }
 
-  const totalDetections = gdinoData
-    ? Object.values(gdinoData).flat().reduce((s, f) => s + f.detections.length, 0)
-    : 0;
-  const totalFramesAnalyzed = gdinoData ? Object.values(gdinoData).flat().length : 0;
-  const categories = gdinoData
-    ? [...new Set(Object.values(gdinoData).flat().flatMap(f => f.detections.map(d => d.category)))]
-    : [];
+  const allFrames = gdinoData ? Object.values(gdinoData).flat().filter(Boolean) : [];
+  const totalDetections = allFrames.reduce((s, f) => s + (f.detections?.length ?? 0), 0);
+  const totalFramesAnalyzed = allFrames.length;
+  const categories = [...new Set(allFrames.flatMap(f => (f.detections ?? []).map(d => d.category)))];
 
   const pipelineStats = [
     { label: 'Videos Processed', value: gdinoData ? String(Object.keys(gdinoData).length) : '—' },
