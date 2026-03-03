@@ -320,9 +320,10 @@ export function MediaIntelligence() {
                 <Scan className="w-3 h-3" />
                 DETECTION GALLERY — {totalDetections} objects across {totalFramesAnalyzed} frames
               </h3>
-              <div className="text-[12px] text-muted-foreground mb-3">
-                Categories: {categories.map(c => (
-                  <span key={c} className="inline-block px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000] mr-1 mb-1">{c}</span>
+              <div className="text-[12px] text-muted-foreground mb-3 flex items-center flex-wrap gap-1">
+                <span>Categories:</span>
+                {categories.map(c => (
+                  <span key={c} className="inline-block px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{c}</span>
                 ))}
               </div>
               <div className="grid grid-cols-4 gap-2">
@@ -338,10 +339,10 @@ export function MediaIntelligence() {
                       }`}
                     >
                       <img
-                        src={`/media/fused_results/${frame.output_image}`}
+                        src={`/media/gdino_results/${frame.output_image}`}
                         alt={frame.output_image}
                         className="w-full h-20 object-cover"
-                        onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/gdino_results/${frame.output_image}`; } }}
+                        onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/fused_results/${frame.output_image}`; } }}
                       />
                       <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1.5 py-0.5 flex items-center justify-between">
                         <span className="text-[10px] text-foreground font-mono">{frame.detections?.length ?? 0} det</span>
@@ -354,10 +355,10 @@ export function MediaIntelligence() {
                 <div className="mt-4 space-y-2">
                   <div className="rounded-lg overflow-hidden border border-[#FF8000]/20">
                     <img
-                      src={`/media/fused_results/${selectedImage}`}
+                      src={`/media/gdino_results/${selectedImage}`}
                       alt="Detection detail"
                       className="w-full"
-                      onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/gdino_results/${selectedImage}`; } }}
+                      onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/fused_results/${selectedImage}`; } }}
                     />
                   </div>
                   {(() => {
