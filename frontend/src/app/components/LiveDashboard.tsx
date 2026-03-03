@@ -693,6 +693,7 @@ export function LiveDashboard() {
                 ?.filter(s => new Date(s.date_start).getTime() < Date.now())
                 .slice(-30)
                 .reverse()
+                .filter((s, i, arr) => arr.findIndex(x => x.session_key === s.session_key) === i)
                 .map(s => (
                 <option key={s.session_key} value={s.session_key}>
                   {s.circuit_short_name} — {s.session_name} ({s.date_start?.slice(0, 10)})
@@ -1191,7 +1192,7 @@ export function LiveDashboard() {
             </AnimatePresence>
             {(!activePositions || activePositions.length === 0) && (
               <div className="text-center text-muted-foreground text-sm py-4">
-                {replayActive && replayTime === 0 ? 'Press play to start replay' : 'No position data — try a 2023–2025 Race session'}
+                {replayActive && replayTime === 0 ? 'Press play to start replay' : 'No position data — try selecting a Race session'}
               </div>
             )}
           </div>

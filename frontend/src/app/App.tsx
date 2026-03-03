@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { LiveDashboard } from './components/LiveDashboard';
 import { McLarenAnalytics } from './components/McLarenAnalytics';
@@ -11,26 +11,98 @@ import { Chatbot } from './components/Chatbot';
 import { FleetOverview } from './components/FleetOverview';
 import { DriverIntel } from './components/DriverIntel';
 import { CircuitIntel } from './components/CircuitIntel';
+import { RaceStrategy } from './components/RaceStrategy';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
+import { parseAnomalyDrivers } from './components/anomalyHelpers';
+import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
 
 const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   dashboard: { title: 'Live Race Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
   'mclaren-analytics': { title: 'McLaren Analytics', subtitle: 'Season standings, race strategy, tire stints & pit stops' },
   'driver-intel': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
   'circuit-intel': { title: 'Circuit Intelligence', subtitle: 'Track layouts, pit loss times, air density & environmental conditions' },
-  car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data from McLaren MCL60/MCL38' },
+  car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data across all drivers' },
   driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
   chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
   'fleet-overview': { title: 'Fleet Overview', subtitle: 'McLaren predictive maintenance & vehicle health monitoring' },
+  'race-strategy': { title: 'Race Strategy', subtitle: 'Tyre degradation, pit windows, optimal strategies & SC probability' },
 };
 
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // ── Pre-fetch fleet anomaly + forecasts on app startup ──────────
+  const [fleetVehicles, setFleetVehicles] = useState<VehicleData[]>([]);
+  const [fleetForecasts, setFleetForecasts] = useState<Record<string, FeatureForecast[]>>({});
+  const [fleetLoading, setFleetLoading] = useState(true);
+  const forecastsFetched = useRef(false);
+
+  // 1. Fetch anomaly data immediately
+  useEffect(() => {
+    fetch('/api/pipeline/anomaly')
+      .then(r => r.json())
+      .then(data => setFleetVehicles(parseAnomalyDrivers(data)))
+      .catch(err => console.error('Fleet prefetch error:', err))
+      .finally(() => setFleetLoading(false));
+  }, []);
+
+  // 2. Once vehicles are loaded, pre-fetch forecasts for McLaren drivers
+  const MCLAREN_CODES = new Set(['NOR', 'PIA']);
+  useEffect(() => {
+    if (fleetVehicles.length === 0 || forecastsFetched.current) return;
+    forecastsFetched.current = true;
+
+    const mclarenVehicles = fleetVehicles.filter(v => MCLAREN_CODES.has(v.code));
+    const fetchDriverForecasts = async (v: VehicleData) => {
+      const critSystems = v.systems.filter(s => s.level === 'critical' || s.level === 'warning');
+      const rawFeatures = [...new Set(critSystems.flatMap(s => s.metrics.slice(0, 2).map(m => m.label)))];
+      if (rawFeatures.length === 0) return { code: v.code, forecasts: [] as FeatureForecast[] };
+      // SHAP labels are base names (e.g. SpeedI1); MongoDB columns use _mean suffix
+      const features = rawFeatures.map(f => f.includes('_') ? f : `${f}_mean`);
+
+      const results = await Promise.all(
+        features.map(col =>
+          fetch(`/api/omni/analytics/forecast/${v.code}?column=${encodeURIComponent(col)}&horizon=5&method=ets`, { method: 'POST' })
+            .then(r => r.ok ? r.json() : null)
+            .catch(() => null)
+        )
+      );
+      const fcs: FeatureForecast[] = [];
+      for (const r of results) {
+        if (!r?.values) continue;
+        fcs.push({
+          column: r.column,
+          method: r.method,
+          mae: r.mae,
+          rmse: r.rmse,
+          trend_direction: r.trend_direction,
+          trend_pct: r.trend_pct,
+          volatility: r.volatility,
+          risk_flag: r.risk_flag,
+          history: r.history,
+          history_timestamps: r.history_timestamps,
+          data: r.values.map((val: number, i: number) => ({
+            step: r.timestamps?.[i] ?? `+${i + 1}`,
+            value: val,
+            lower: r.lower_bound?.[i] ?? val,
+            upper: r.upper_bound?.[i] ?? val,
+          })),
+        });
+      }
+      return { code: v.code, forecasts: fcs };
+    };
+
+    Promise.all(mclarenVehicles.map(fetchDriverForecasts)).then(all => {
+      const map: Record<string, FeatureForecast[]> = {};
+      for (const { code, forecasts } of all) map[code] = forecasts;
+      setFleetForecasts(map);
+    });
+  }, [fleetVehicles]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -49,7 +121,8 @@ export default function App() {
       case 'regulations': return <Regulations />;
       case 'media': return <MediaIntelligence />;
       case 'chat': return <Chatbot />;
-      case 'fleet-overview': return <FleetOverview />;
+      case 'fleet-overview': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
+      case 'race-strategy': return <RaceStrategy />;
       default: return <LiveDashboard />;
     }
   };

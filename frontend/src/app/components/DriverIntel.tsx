@@ -134,7 +134,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {filtered.map((d: any) => {
-          const team = d.team || d.constructor || '';
+          const team = d.team || '';
           const color = teamColors[team] || '#666';
           const dCode = d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase();
           const vehicle = anomalyVehicles.find(v => v.code === dCode);
@@ -318,7 +318,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
         >
           {drivers.map((d: any) => (
             <option key={d.driver_id} value={d.driver_id}>
-              {d.driver_id?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} — {d.team || d.constructor || ''}
+              {d.driver_id?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} — {d.team || (typeof d.constructor === 'string' ? d.constructor : '')}
             </option>
           ))}
         </select>

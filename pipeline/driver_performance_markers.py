@@ -17,6 +17,7 @@ import pandas as pd
 from pymongo import UpdateOne
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'omnisuitef1'))
 from updater._db import get_db
 from data_quality_fixes import load_telemetry_from_mongo
 
@@ -89,32 +90,7 @@ def avg_throttle_pct(throttle: pd.Series) -> float:
     return round(float(throttle.mean()), 2) if len(throttle) > 0 else np.nan
 
 
-def heat_lap_delta(race_laps: pd.DataFrame, weather_df: pd.DataFrame) -> float:
-    if weather_df is None or weather_df.empty:
-        return np.nan
-    hot = weather_df[weather_df["TrackTemp"] > 45]
-    if hot.empty:
-        return np.nan
-    hot_races = hot["Race"].unique()
-    hot_laps = race_laps[race_laps["Race"].isin(hot_races)]["LapTime"]
-    all_laps = race_laps["LapTime"]
-    if hot_laps.dropna().empty or all_laps.dropna().empty:
-        return np.nan
-    return round(float(hot_laps.median() - all_laps.median()), 4)
-
-
-def humidity_lap_delta(race_laps: pd.DataFrame, weather_df: pd.DataFrame) -> float:
-    if weather_df is None or weather_df.empty:
-        return np.nan
-    humid = weather_df[weather_df["Humidity"] > 70]
-    if humid.empty:
-        return np.nan
-    humid_races = humid["Race"].unique()
-    humid_laps = race_laps[race_laps["Race"].isin(humid_races)]["LapTime"]
-    all_laps = race_laps["LapTime"]
-    if humid_laps.dropna().empty or all_laps.dropna().empty:
-        return np.nan
-    return round(float(humid_laps.median() - all_laps.median()), 4)
+from omnifeatures.weather import heat_lap_delta, humidity_lap_delta
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

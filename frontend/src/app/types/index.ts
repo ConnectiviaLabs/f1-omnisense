@@ -405,4 +405,4 @@ export interface JolpicaSprintResult {
 }
 
 // View types
-export type ViewType = 'dashboard' | 'mclaren-analytics' | 'car' | 'driver' | 'ai-insights' | 'regulations' | 'media' | 'chat' | 'fleet-overview' | 'driver-intel' | 'circuit-intel';
+export type ViewType = 'dashboard' | 'mclaren-analytics' | 'car' | 'driver' | 'ai-insights' | 'regulations' | 'media' | 'chat' | 'fleet-overview' | 'driver-intel' | 'circuit-intel' | 'race-strategy';

@@ -1,4 +1,4 @@
-"""Time series forecasting: ARIMA + linear + LightGBM."""
+"""Time series forecasting: ETS + ARIMA + linear + LightGBM."""
 
 from __future__ import annotations
 
@@ -13,6 +13,50 @@ from omnianalytics._types import ForecastResult
 
 logger = logging.getLogger(__name__)
 
+HISTORY_TAIL = 5  # number of recent actual values to include for context
+
+
+# ── Heuristics ────────────────────────────────────────────────────────────
+
+def _enrich_heuristics(result: ForecastResult, raw_series: np.ndarray) -> ForecastResult:
+    """Compute trend_direction, trend_pct, volatility, risk_flag and attach history."""
+    vals = result.values
+    if len(vals) >= 2:
+        first, last = vals[0], vals[-1]
+        pct = ((last - first) / abs(first) * 100) if first != 0 else 0.0
+        result.trend_pct = round(pct, 2)
+        if pct > 2:
+            result.trend_direction = "rising"
+        elif pct < -2:
+            result.trend_direction = "falling"
+        else:
+            result.trend_direction = "stable"
+    else:
+        result.trend_direction = "stable"
+        result.trend_pct = 0.0
+
+    # Volatility: normalised average confidence band width
+    if result.lower_bound and result.upper_bound and len(vals) > 0:
+        widths = [u - l for u, l in zip(result.upper_bound, result.lower_bound)]
+        mean_val = np.mean(np.abs(vals)) or 1.0
+        result.volatility = round(np.mean(widths) / mean_val, 4)
+    else:
+        result.volatility = 0.0
+
+    # Risk flag: forecast declining AND lower bound diverging
+    if result.trend_direction == "falling" and result.volatility and result.volatility > 0.15:
+        result.risk_flag = True
+
+    # Historical tail
+    tail = raw_series[-HISTORY_TAIL:] if len(raw_series) >= HISTORY_TAIL else raw_series
+    result.history = [round(float(v), 4) for v in tail]
+    n = len(raw_series)
+    result.history_timestamps = [str(n - len(tail) + i) for i in range(len(tail))]
+
+    return result
+
+
+# ── Forecasting methods ──────────────────────────────────────────────────
 
 def forecast_linear(
     series: pd.Series,
@@ -24,11 +68,12 @@ def forecast_linear(
     values = series.dropna().values.astype(float)
     n = len(values)
     if n < 2:
-        return ForecastResult(
+        r = ForecastResult(
             column=series.name or "", method="linear", horizon=horizon,
             timestamps=timestamps or [str(i) for i in range(n, n + horizon)],
             values=[float(values[-1]) if n > 0 else 0.0] * horizon,
         )
+        return _enrich_heuristics(r, values)
 
     x = np.arange(n)
     coeffs = np.polyfit(x, values, 1)
@@ -49,7 +94,7 @@ def forecast_linear(
 
     ts = timestamps or [str(i) for i in range(n, n + horizon)]
 
-    return ForecastResult(
+    r = ForecastResult(
         column=series.name or "",
         method="linear",
         horizon=horizon,
@@ -60,6 +105,65 @@ def forecast_linear(
         mae=round(mae, 4),
         rmse=round(rmse, 4),
     )
+    return _enrich_heuristics(r, values)
+
+
+def forecast_ets(
+    series: pd.Series,
+    *,
+    horizon: int = 10,
+    timestamps: Optional[List[str]] = None,
+) -> ForecastResult:
+    """Holt-Winters Exponential Smoothing — fast (~50ms) with trend + seasonality."""
+    try:
+        from statsmodels.tsa.holtwinters import ExponentialSmoothing
+    except ImportError:
+        logger.info("statsmodels not installed, falling back to linear")
+        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+
+    values = series.dropna().values.astype(float)
+    if len(values) < 5:
+        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+
+    try:
+        # Try additive trend; skip seasonal if too few points
+        model = ExponentialSmoothing(
+            values,
+            trend="add",
+            seasonal=None,  # no seasonal — race-by-race data isn't periodic
+            initialization_method="estimated",
+        )
+        fitted = model.fit(optimized=True)
+
+        predictions = fitted.forecast(horizon)
+
+        # Confidence bands from in-sample residuals
+        in_sample = fitted.fittedvalues
+        residuals = values[:len(in_sample)] - in_sample
+        residual_std = np.std(residuals)
+        steps = np.arange(1, horizon + 1)
+        margin = 1.96 * residual_std * np.sqrt(steps)
+
+        mae = float(np.mean(np.abs(residuals)))
+        rmse = float(np.sqrt(np.mean(residuals ** 2)))
+
+        ts = timestamps or [str(i) for i in range(len(values), len(values) + horizon)]
+
+        r = ForecastResult(
+            column=series.name or "",
+            method="ets",
+            horizon=horizon,
+            timestamps=ts,
+            values=[round(float(v), 4) for v in predictions],
+            lower_bound=[round(float(v - m), 4) for v, m in zip(predictions, margin)],
+            upper_bound=[round(float(v + m), 4) for v, m in zip(predictions, margin)],
+            mae=round(mae, 4),
+            rmse=round(rmse, 4),
+        )
+        return _enrich_heuristics(r, values)
+    except Exception as e:
+        logger.warning("ETS failed (%s), falling back to linear", e)
+        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
 
 
 def forecast_arima(
@@ -70,7 +174,7 @@ def forecast_arima(
     seasonal_order: Optional[tuple] = None,
     timestamps: Optional[List[str]] = None,
 ) -> ForecastResult:
-    """ARIMA/SARIMA forecast. Falls back to linear if statsmodels unavailable."""
+    """ARIMA/SARIMA forecast. Falls back to ETS if slow, linear if unavailable."""
     try:
         from statsmodels.tsa.statespace.sarimax import SARIMAX
     except ImportError:
@@ -101,7 +205,7 @@ def forecast_arima(
 
         ts = timestamps or [str(i) for i in range(len(values), len(values) + horizon)]
 
-        return ForecastResult(
+        r = ForecastResult(
             column=series.name or "",
             method="arima",
             horizon=horizon,
@@ -112,6 +216,7 @@ def forecast_arima(
             mae=round(mae, 4),
             rmse=round(rmse, 4),
         )
+        return _enrich_heuristics(r, values)
     except Exception as e:
         logger.warning("ARIMA failed (%s), falling back to linear", e)
         return forecast_linear(series, horizon=horizon, timestamps=timestamps)
@@ -165,7 +270,7 @@ def forecast_lightgbm(
 
     ts = timestamps or [str(i) for i in range(len(y), len(y) + horizon)]
 
-    return ForecastResult(
+    r = ForecastResult(
         column=target_col,
         method="lightgbm",
         horizon=horizon,
@@ -176,7 +281,10 @@ def forecast_lightgbm(
         mae=round(mae, 4),
         rmse=round(rmse, 4),
     )
+    return _enrich_heuristics(r, y)
 
+
+# ── Main dispatch ─────────────────────────────────────────────────────────
 
 def forecast(
     dataset: TabularDataset,
@@ -187,7 +295,9 @@ def forecast(
 ) -> ForecastResult:
     """Forecast a single metric column.
 
-    method="auto": tries ARIMA, falls back to linear.
+    method="auto": tries ETS (fast), falls back to linear.
+    method="arima": slower but more accurate for long series.
+    method="ets": Holt-Winters exponential smoothing (~50ms).
     """
     if column not in dataset.df.columns:
         raise ValueError(f"Column '{column}' not in dataset")
@@ -210,6 +320,8 @@ def forecast(
         return forecast_arima(series, horizon=horizon, timestamps=timestamps)
     elif method == "linear":
         return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+    elif method == "ets":
+        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
     elif method == "lightgbm":
         feature_cols = [c for c in dataset.profile.metric_cols if c != column]
         if feature_cols:
@@ -218,8 +330,8 @@ def forecast(
             )
         return forecast_linear(series, horizon=horizon, timestamps=timestamps)
     else:
-        # auto: ARIMA first, falls back internally
-        return forecast_arima(series, horizon=horizon, timestamps=timestamps)
+        # auto: ETS first (fast), falls back to linear internally
+        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
 
 
 def forecast_anomaly_features(

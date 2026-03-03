@@ -43,6 +43,7 @@ export interface VehicleData {
   driver: string;
   number: number;
   code: string;
+  team: string;
   overallHealth: number;
   level: HealthLevel;
   lastRace: string;
@@ -110,6 +111,24 @@ export const levelColor = (l: HealthLevel) =>
 export const levelBg = (l: HealthLevel) =>
   l === 'nominal' ? 'rgba(34,197,94,0.08)' : l === 'warning' ? 'rgba(255,128,0,0.12)' : 'rgba(239,68,68,0.08)';
 
+// ─── Forecast types ───────────────────────────────────────────────
+export interface ForecastPoint { step: string; value: number; lower: number; upper: number }
+export interface FeatureForecast {
+  column: string;
+  method: string;
+  data: ForecastPoint[];
+  mae?: number;
+  rmse?: number;
+  // Heuristics
+  trend_direction?: 'rising' | 'falling' | 'stable';
+  trend_pct?: number;
+  volatility?: number;
+  risk_flag?: boolean;
+  // Historical context
+  history?: number[];
+  history_timestamps?: string[];
+}
+
 export function parseAnomalyDrivers(data: any): VehicleData[] {
   return (data.drivers ?? []).map((d: any) => {
     const latestRace: RaceHealth | undefined = d.races?.[d.races.length - 1];
@@ -122,6 +141,7 @@ export function parseAnomalyDrivers(data: any): VehicleData[] {
       driver: d.driver,
       number: d.number,
       code: d.code,
+      team: d.team ?? '',
       overallHealth: d.overall_health,
       level: mapLevel(d.overall_level),
       lastRace: d.last_race,

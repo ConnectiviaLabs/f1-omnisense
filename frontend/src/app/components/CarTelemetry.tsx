@@ -8,27 +8,18 @@ import {
   Gauge, Zap, Timer, Loader2, AlertCircle, Wind, GitCompareArrows, Disc,
   ArrowUp, ArrowDown,
 } from 'lucide-react';
-import { fetchCSV, parseCSV } from '../api/local';
+// All data fetched from MongoDB via JSON API endpoints
 
 const compoundColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
 };
 
-const NOR_COLOR = '#FF8000';
-const PIA_COLOR = '#22d3ee';
-
-const RACES_2023 = [
-  'Bahrain', 'Saudi Arabian', 'Australian', 'Miami', 'Monaco', 'Spanish',
-  'Canadian', 'British', 'Hungarian', 'Dutch', 'Italian', 'Singapore',
-  'Japanese', 'Mexico City', 'Las Vegas', 'Abu Dhabi',
-];
-
-const RACES_2024 = [
-  'Bahrain', 'Saudi Arabian', 'Australian', 'Japanese', 'Monaco', 'Canadian',
-  'Spanish', 'British', 'Hungarian', 'Belgian', 'Dutch', 'Italian',
-  'Azerbaijan', 'Singapore', 'Mexico City', 'Las Vegas', 'Abu Dhabi',
-  'Emilia Romagna',
-];
+interface TelemetryMeta {
+  years: number[];
+  drivers: string[];
+  races_by_year: Record<string, string[]>;
+  drivers_by_year?: Record<string, string[]>;
+}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
@@ -61,7 +52,7 @@ function KPI({ icon, label, value, detail, color = 'text-foreground' }: { icon: 
   );
 }
 
-function DeltaKPI({ label, val1, val2, label1, label2, unit, icon, color1 = NOR_COLOR, color2 = PIA_COLOR }: {
+function DeltaKPI({ label, val1, val2, label1, label2, unit, icon, color1 = '#FF8000', color2 = '#22d3ee' }: {
   label: string; val1: string; val2: string; label1: string; label2: string;
   unit: string; icon: React.ReactNode; color1?: string; color2?: string;
 }) {
@@ -117,12 +108,12 @@ interface CarSummary {
 type Tab = 'detail' | 'season' | 'h2h' | 'racecompare';
 
 /* ── helpers ── */
-function computeCarKpis(data: Record<string, string>[]) {
+function computeCarKpis(data: Record<string, any>[]) {
   if (!data.length) return null;
   const speeds = data.map(r => Number(r.Speed) || 0);
   const rpms = data.map(r => Number(r.RPM) || 0);
   const drsCount = data.filter(r => Number(r.DRS) >= 10).length;
-  const compounds = [...new Set(data.map(r => r.Compound).filter(Boolean))];
+  const compounds = [...new Set(data.map(r => r.Compound).filter(Boolean))] as string[];
   return {
     topSpeed: Math.max(...speeds).toFixed(0),
     avgSpeed: (speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1),
@@ -130,12 +121,12 @@ function computeCarKpis(data: Record<string, string>[]) {
     drsActivations: drsCount,
     drsPct: ((drsCount / data.length) * 100).toFixed(1),
     avgThrottle: (data.map(r => Number(r.Throttle) || 0).reduce((a, b) => a + b, 0) / data.length).toFixed(1),
-    brakePct: ((data.filter(r => r.Brake === 'True' || r.Brake === '1').length / data.length) * 100).toFixed(1),
+    brakePct: ((data.filter(r => r.Brake === true || r.Brake === 'True' || r.Brake === '1' || r.Brake === 1).length / data.length) * 100).toFixed(1),
     compounds,
   };
 }
 
-function buildLapTimes(data: Record<string, string>[]) {
+function buildLapTimes(data: Record<string, any>[]) {
   const lapMap = new Map<number, { times: number[]; compound: string }>();
   for (const r of data) {
     const lap = Number(r.LapNumber);
@@ -154,50 +145,84 @@ function buildLapTimes(data: Record<string, string>[]) {
     .sort((a, b) => a.lap - b.lap);
 }
 
-function downsample(data: Record<string, string>[], maxPoints = 500) {
+function downsample(data: Record<string, any>[], maxPoints = 500) {
   const step = Math.max(1, Math.floor(data.length / maxPoints));
   return data.filter((_, i) => i % step === 0);
 }
 
 export function CarTelemetry() {
+  const [meta, setMeta] = useState<TelemetryMeta | null>(null);
   const [tab, setTab] = useState<Tab>('detail');
-  const [year, setYear] = useState(2024);
-  const [race, setRace] = useState('Bahrain');
-  const [driver, setDriver] = useState('NOR');
+  const [year, setYear] = useState<number>(0);
+  const [race, setRace] = useState('');
+  const [driver, setDriver] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rawData, setRawData] = useState<Record<string, string>[]>([]);
-  const [stintsData, setStintsData] = useState<Record<string, string>[]>([]);
+  const [rawData, setRawData] = useState<Record<string, any>[]>([]);
+  const [stintsData, setStintsData] = useState<Record<string, any>[]>([]);
   const [seasonSummary, setSeasonSummary] = useState<CarSummary[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   // H2H state
   const [h2hMode, setH2hMode] = useState<'race' | 'season'>('race');
+  const [h2hDriver2, setH2hDriver2] = useState('');
   const [h2hLoading, setH2hLoading] = useState(false);
-  const [h2hRaceData, setH2hRaceData] = useState<Record<string, string>[]>([]);
-  const [h2hSeasonNor, setH2hSeasonNor] = useState<CarSummary[]>([]);
-  const [h2hSeasonPia, setH2hSeasonPia] = useState<CarSummary[]>([]);
+  const [h2hRaceData, setH2hRaceData] = useState<Record<string, any>[]>([]);
+  const [h2hSeason1, setH2hSeason1] = useState<CarSummary[]>([]);
+  const [h2hSeason2, setH2hSeason2] = useState<CarSummary[]>([]);
 
   // Compare state
   const [compareMode, setCompareMode] = useState<'race' | 'year'>('race');
-  const [race2, setRace2] = useState('Saudi Arabian');
+  const [race2, setRace2] = useState('');
+  const [year2, setYear2] = useState<number>(0);
   const [compareLoading, setCompareLoading] = useState(false);
-  const [compareData1, setCompareData1] = useState<Record<string, string>[]>([]);
-  const [compareData2, setCompareData2] = useState<Record<string, string>[]>([]);
-  const [compareSeason23, setCompareSeason23] = useState<CarSummary[]>([]);
-  const [compareSeason24, setCompareSeason24] = useState<CarSummary[]>([]);
+  const [compareData1, setCompareData1] = useState<Record<string, any>[]>([]);
+  const [compareData2, setCompareData2] = useState<Record<string, any>[]>([]);
+  const [compareSeason1, setCompareSeason1] = useState<CarSummary[]>([]);
+  const [compareSeason2, setCompareSeason2] = useState<CarSummary[]>([]);
 
-  const races = year === 2024 ? RACES_2024 : RACES_2023;
-
-  // Load per-race telemetry (detail tab)
+  // Load metadata on mount
   useEffect(() => {
-    if (tab !== 'detail') return;
+    fetch('/api/mccar-summary/meta')
+      .then(r => r.json())
+      .then((m: TelemetryMeta) => {
+        setMeta(m);
+        if (m.years.length) {
+          const latestYear = m.years[m.years.length - 1];
+          setYear(latestYear);
+          const prevYear = m.years.length > 1 ? m.years[m.years.length - 2] : latestYear;
+          setYear2(prevYear);
+          const yearRaces = m.races_by_year[String(latestYear)] || [];
+          if (yearRaces.length) setRace(yearRaces[0]);
+          if (yearRaces.length > 1) setRace2(yearRaces[1]);
+        }
+        if (m.drivers.length) {
+          setDriver(m.drivers[0]);
+          setH2hDriver2(m.drivers.length > 1 ? m.drivers[1] : m.drivers[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const years = meta?.years || [];
+  const drivers = meta?.drivers_by_year?.[String(year)] || meta?.drivers || [];
+  const races = meta?.races_by_year[String(year)] || [];
+
+  // Reset driver selection when year changes (selected driver may not exist in new year)
+  useEffect(() => {
+    if (drivers.length && !drivers.includes(driver)) {
+      setDriver(drivers[0]);
+    }
+  }, [year, drivers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load per-race telemetry from MongoDB (detail tab)
+  useEffect(() => {
+    if (tab !== 'detail' || !year || !race) return;
     setLoading(true);
     setError(null);
-    const raceName = `${year}_${race.replace(/ /g, '_')}_Grand_Prix_Race`;
     Promise.allSettled([
-      fetchCSV(`mccar/${year}/${raceName}.csv`).then(csv => setRawData(parseCSV(csv))),
-      fetchCSV(`mcracecontext/${year}/tire_stints.csv`).then(csv => setStintsData(parseCSV(csv))),
+      fetch(`/api/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).then(d => setRawData(d)),
+      fetch(`/api/mccar-race-stints/${year}/${race}`).then(r => r.json()).then(d => setStintsData(d)),
     ]).then(results => {
       if (results[0].status === 'rejected') { setError('Race data not available'); setRawData([]); }
     }).finally(() => setLoading(false));
@@ -205,7 +230,7 @@ export function CarTelemetry() {
 
   // Load season summary (season tab)
   useEffect(() => {
-    if (tab !== 'season') return;
+    if (tab !== 'season' || !year || !driver) return;
     setSummaryLoading(true);
     fetch(`/api/mccar-summary/${year}/${driver}`)
       .then(res => res.json())
@@ -214,51 +239,49 @@ export function CarTelemetry() {
       .finally(() => setSummaryLoading(false));
   }, [year, driver, tab]);
 
-  // H2H race — load CSV (contains both drivers)
+  // H2H race — load from MongoDB (contains both drivers)
   useEffect(() => {
-    if (tab !== 'h2h' || h2hMode !== 'race') return;
+    if (tab !== 'h2h' || h2hMode !== 'race' || !year || !race) return;
     setH2hLoading(true);
-    const raceName = `${year}_${race.replace(/ /g, '_')}_Grand_Prix_Race`;
-    fetchCSV(`mccar/${year}/${raceName}.csv`)
-      .then(csv => setH2hRaceData(parseCSV(csv)))
+    fetch(`/api/mccar-race-telemetry/${year}/${race}`)
+      .then(r => r.json())
+      .then(d => setH2hRaceData(d))
       .catch(() => setH2hRaceData([]))
       .finally(() => setH2hLoading(false));
   }, [year, race, tab, h2hMode]);
 
   // H2H season — both drivers
   useEffect(() => {
-    if (tab !== 'h2h' || h2hMode !== 'season') return;
+    if (tab !== 'h2h' || h2hMode !== 'season' || !driver || !h2hDriver2 || !year) return;
     setH2hLoading(true);
     Promise.all([
-      fetch(`/api/mccar-summary/${year}/NOR`).then(r => r.json()).catch(() => []),
-      fetch(`/api/mccar-summary/${year}/PIA`).then(r => r.json()).catch(() => []),
-    ]).then(([nor, pia]) => { setH2hSeasonNor(nor); setH2hSeasonPia(pia); })
+      fetch(`/api/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/mccar-summary/${year}/${h2hDriver2}`).then(r => r.json()).catch(() => []),
+    ]).then(([d1, d2]) => { setH2hSeason1(d1); setH2hSeason2(d2); })
       .finally(() => setH2hLoading(false));
-  }, [year, tab, h2hMode]);
+  }, [year, driver, h2hDriver2, tab, h2hMode]);
 
-  // Compare: race vs race
+  // Compare: race vs race (from MongoDB)
   useEffect(() => {
-    if (tab !== 'racecompare' || compareMode !== 'race') return;
+    if (tab !== 'racecompare' || compareMode !== 'race' || !year || !race || !race2) return;
     setCompareLoading(true);
-    const name1 = `${year}_${race.replace(/ /g, '_')}_Grand_Prix_Race`;
-    const name2 = `${year}_${race2.replace(/ /g, '_')}_Grand_Prix_Race`;
     Promise.all([
-      fetchCSV(`mccar/${year}/${name1}.csv`).then(csv => parseCSV(csv)).catch(() => []),
-      fetchCSV(`mccar/${year}/${name2}.csv`).then(csv => parseCSV(csv)).catch(() => []),
+      fetch(`/api/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/mccar-race-telemetry/${year}/${race2}`).then(r => r.json()).catch(() => []),
     ]).then(([d1, d2]) => { setCompareData1(d1); setCompareData2(d2); })
       .finally(() => setCompareLoading(false));
   }, [year, race, race2, driver, tab, compareMode]);
 
   // Compare: year vs year
   useEffect(() => {
-    if (tab !== 'racecompare' || compareMode !== 'year') return;
+    if (tab !== 'racecompare' || compareMode !== 'year' || !driver || !year || !year2) return;
     setCompareLoading(true);
     Promise.all([
-      fetch(`/api/mccar-summary/2023/${driver}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/mccar-summary/2024/${driver}`).then(r => r.json()).catch(() => []),
-    ]).then(([s23, s24]) => { setCompareSeason23(s23); setCompareSeason24(s24); })
+      fetch(`/api/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/mccar-summary/${year2}/${driver}`).then(r => r.json()).catch(() => []),
+    ]).then(([s1, s2]) => { setCompareSeason1(s1); setCompareSeason2(s2); })
       .finally(() => setCompareLoading(false));
-  }, [driver, tab, compareMode]);
+  }, [driver, year, year2, tab, compareMode]);
 
   const driverData = useMemo(() => rawData.filter(r => r.Driver === driver), [rawData, driver]);
 
@@ -284,7 +307,7 @@ export function CarTelemetry() {
       rpm: Number(r.RPM) || 0,
       gear: Number(r.nGear) || 0,
       throttle: Number(r.Throttle) || 0,
-      brake: r.Brake === 'True' || r.Brake === '1' ? 100 : 0,
+      brake: r.Brake === true || r.Brake === 'True' || r.Brake === '1' || r.Brake === 1 ? 100 : 0,
     }));
   }, [driverData]);
 
@@ -342,15 +365,13 @@ export function CarTelemetry() {
             >{t.label}</button>
           ))}
         </div>
-        {/* Year (hidden in year-vs-year compare) */}
+        {/* Year */}
         {tab !== 'racecompare' || compareMode !== 'year' ? (
-          <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
-            {[2023, 2024].map(y => (
-              <button type="button" key={y} onClick={() => { setYear(y); setRace(y === 2024 ? RACES_2024[0] : RACES_2023[0]); setRace2(y === 2024 ? RACES_2024[1] : RACES_2023[1]); }}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
-              >{y}</button>
-            ))}
-          </div>
+          <select value={year} onChange={e => { const y = Number(e.target.value); setYear(y); const yr = meta?.races_by_year[String(y)] || []; if (yr.length) { setRace(yr[0]); if (yr.length > 1) setRace2(yr[1]); } }} aria-label="Select year"
+            className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
+          >
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
         ) : null}
         {/* Race A */}
         {(tab === 'detail' || (tab === 'h2h' && h2hMode === 'race') || (tab === 'racecompare' && compareMode === 'race')) && (
@@ -371,30 +392,41 @@ export function CarTelemetry() {
             </select>
           </>
         )}
-        {/* Driver (not in h2h) */}
+        {/* Driver */}
         {tab !== 'h2h' && (
-          <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
-            {['NOR', 'PIA'].map(d => (
-              <button type="button" key={d} onClick={() => setDriver(d)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${driver === d ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
-              >{d}</button>
-            ))}
-          </div>
+          <select value={driver} onChange={e => setDriver(e.target.value)} aria-label="Select driver"
+            className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
+          >
+            {drivers.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
         )}
-        {/* H2H sub-mode */}
+        {/* H2H driver pickers + sub-mode */}
         {tab === 'h2h' && (
-          <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
-            {([{ id: 'race' as const, label: 'Single Race' }, { id: 'season' as const, label: 'Full Season' }]).map(m => (
-              <button type="button" key={m.id} onClick={() => setH2hMode(m.id)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
-              >{m.label}</button>
-            ))}
-          </div>
+          <>
+            <select value={driver} onChange={e => setDriver(e.target.value)} aria-label="Driver 1"
+              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
+            >
+              {drivers.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <span className="text-[12px] text-muted-foreground">vs</span>
+            <select value={h2hDriver2} onChange={e => setH2hDriver2(e.target.value)} aria-label="Driver 2"
+              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
+            >
+              {drivers.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
+              {([{ id: 'race' as const, label: 'Single Race' }, { id: 'season' as const, label: 'Full Season' }]).map(m => (
+                <button type="button" key={m.id} onClick={() => setH2hMode(m.id)}
+                  className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                >{m.label}</button>
+              ))}
+            </div>
+          </>
         )}
         {/* Compare sub-mode */}
         {tab === 'racecompare' && (
           <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
-            {([{ id: 'race' as const, label: 'Race vs Race' }, { id: 'year' as const, label: '2023 vs 2024' }]).map(m => (
+            {([{ id: 'race' as const, label: 'Race vs Race' }, { id: 'year' as const, label: 'Year vs Year' }]).map(m => (
               <button type="button" key={m.id} onClick={() => setCompareMode(m.id)}
                 className={`text-sm px-3 py-1.5 rounded-md transition-all ${compareMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
               >{m.label}</button>
@@ -421,12 +453,13 @@ export function CarTelemetry() {
       )}
       {tab === 'h2h' && (
         <H2HView mode={h2hMode} loading={h2hLoading} year={year} race={race}
-          raceData={h2hRaceData} seasonNor={h2hSeasonNor} seasonPia={h2hSeasonPia} />
+          driver1={driver} driver2={h2hDriver2}
+          raceData={h2hRaceData} season1={h2hSeason1} season2={h2hSeason2} />
       )}
       {tab === 'racecompare' && (
-        <CompareView mode={compareMode} loading={compareLoading} year={year} driver={driver}
+        <CompareView mode={compareMode} loading={compareLoading} year={year} year2={year2} driver={driver}
           race1={race} race2={race2} data1={compareData1} data2={compareData2}
-          season23={compareSeason23} season24={compareSeason24} />
+          season1={compareSeason1} season2={compareSeason2} years={years} onYear2Change={setYear2} />
       )}
     </div>
   );
@@ -738,72 +771,72 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
 
 /* ─── Head-to-Head View ─── */
 
-function H2HView({ mode, loading, year, race, raceData, seasonNor, seasonPia }: {
+function H2HView({ mode, loading, year, race, driver1, driver2, raceData, season1, season2 }: {
   mode: 'race' | 'season'; loading: boolean; year: number; race: string;
-  raceData: Record<string, string>[]; seasonNor: CarSummary[]; seasonPia: CarSummary[];
+  driver1: string; driver2: string;
+  raceData: Record<string, any>[]; season1: CarSummary[]; season2: CarSummary[];
 }) {
   if (loading) {
     return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading head-to-head data...</span></div>;
   }
-  if (mode === 'race') return <H2HRaceView raceData={raceData} race={race} year={year} />;
-  return <H2HSeasonView seasonNor={seasonNor} seasonPia={seasonPia} year={year} />;
+  if (mode === 'race') return <H2HRaceView raceData={raceData} race={race} year={year} driver1={driver1} driver2={driver2} />;
+  return <H2HSeasonView season1={season1} season2={season2} year={year} driver1={driver1} driver2={driver2} />;
 }
 
-function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string>[]; race: string; year: number }) {
-  const norData = useMemo(() => raceData.filter(r => r.Driver === 'NOR'), [raceData]);
-  const piaData = useMemo(() => raceData.filter(r => r.Driver === 'PIA'), [raceData]);
-  const norKpis = useMemo(() => computeCarKpis(norData), [norData]);
-  const piaKpis = useMemo(() => computeCarKpis(piaData), [piaData]);
+function H2HRaceView({ raceData, race, year, driver1, driver2 }: { raceData: Record<string, any>[]; race: string; year: number; driver1: string; driver2: string }) {
+  const D1_COLOR = '#FF8000';
+  const D2_COLOR = '#22d3ee';
+  const d1Data = useMemo(() => raceData.filter(r => r.Driver === driver1), [raceData, driver1]);
+  const d2Data = useMemo(() => raceData.filter(r => r.Driver === driver2), [raceData, driver2]);
+  const d1Kpis = useMemo(() => computeCarKpis(d1Data), [d1Data]);
+  const d2Kpis = useMemo(() => computeCarKpis(d2Data), [d2Data]);
 
-  // Speed trace overlay
   const mergedSpeed = useMemo(() => {
-    const norSampled = downsample(norData);
-    const piaSampled = downsample(piaData);
-    const map = new Map<string, { dist: string; norSpeed?: number; piaSpeed?: number }>();
-    for (const r of norSampled) {
+    const d1Sampled = downsample(d1Data);
+    const d2Sampled = downsample(d2Data);
+    const map = new Map<string, { dist: string; d1Speed?: number; d2Speed?: number }>();
+    for (const r of d1Sampled) {
       const dist = (Number(r.Distance) / 1000).toFixed(1);
-      map.set(dist, { ...map.get(dist), dist, norSpeed: Number(r.Speed) || 0 });
+      map.set(dist, { ...map.get(dist), dist, d1Speed: Number(r.Speed) || 0 });
     }
-    for (const r of piaSampled) {
+    for (const r of d2Sampled) {
       const dist = (Number(r.Distance) / 1000).toFixed(1);
-      map.set(dist, { ...map.get(dist), dist, piaSpeed: Number(r.Speed) || 0 });
+      map.set(dist, { ...map.get(dist), dist, d2Speed: Number(r.Speed) || 0 });
     }
     return Array.from(map.values()).sort((a, b) => parseFloat(a.dist) - parseFloat(b.dist));
-  }, [norData, piaData]);
+  }, [d1Data, d2Data]);
 
-  // Lap times overlay
-  const norLaps = useMemo(() => buildLapTimes(norData), [norData]);
-  const piaLaps = useMemo(() => buildLapTimes(piaData), [piaData]);
+  const d1Laps = useMemo(() => buildLapTimes(d1Data), [d1Data]);
+  const d2Laps = useMemo(() => buildLapTimes(d2Data), [d2Data]);
   const mergedLapTimes = useMemo(() => {
-    const map = new Map<number, { lap: number; norTime?: number; piaTime?: number }>();
-    for (const d of norLaps) map.set(d.lap, { ...map.get(d.lap), lap: d.lap, norTime: d.time });
-    for (const d of piaLaps) map.set(d.lap, { ...map.get(d.lap), lap: d.lap, piaTime: d.time });
+    const map = new Map<number, { lap: number; d1Time?: number; d2Time?: number }>();
+    for (const d of d1Laps) map.set(d.lap, { ...map.get(d.lap), lap: d.lap, d1Time: d.time });
+    for (const d of d2Laps) map.set(d.lap, { ...map.get(d.lap), lap: d.lap, d2Time: d.time });
     return Array.from(map.values()).sort((a, b) => a.lap - b.lap);
-  }, [norLaps, piaLaps]);
+  }, [d1Laps, d2Laps]);
 
-  if (!norData.length && !piaData.length) {
+  if (!d1Data.length && !d2Data.length) {
     return <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">No data available for {race} GP {year}</div>;
   }
 
   return (
     <>
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={norKpis?.topSpeed || '—'} val2={piaKpis?.topSpeed || '—'} label1="NOR" label2="PIA" unit=" km/h"
-          icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} />
-        <DeltaKPI label="AVG RPM" val1={norKpis?.avgRPM || '—'} val2={piaKpis?.avgRPM || '—'} label1="NOR" label2="PIA" unit=""
-          icon={<Zap className="w-4 h-4 text-cyan-400" />} />
-        <DeltaKPI label="AVG THROTTLE" val1={norKpis?.avgThrottle || '—'} val2={piaKpis?.avgThrottle || '—'} label1="NOR" label2="PIA" unit="%"
-          icon={<Wind className="w-4 h-4 text-green-400" />} />
-        <DeltaKPI label="DRS USAGE" val1={norKpis?.drsPct || '—'} val2={piaKpis?.drsPct || '—'} label1="NOR" label2="PIA" unit="%"
-          icon={<Wind className="w-4 h-4 text-green-400" />} />
+        <DeltaKPI label="TOP SPEED" val1={d1Kpis?.topSpeed || '—'} val2={d2Kpis?.topSpeed || '—'} label1={driver1} label2={driver2} unit=" km/h"
+          icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="AVG RPM" val1={d1Kpis?.avgRPM || '—'} val2={d2Kpis?.avgRPM || '—'} label1={driver1} label2={driver2} unit=""
+          icon={<Zap className="w-4 h-4 text-cyan-400" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="AVG THROTTLE" val1={d1Kpis?.avgThrottle || '—'} val2={d2Kpis?.avgThrottle || '—'} label1={driver1} label2={driver2} unit="%"
+          icon={<Wind className="w-4 h-4 text-green-400" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="DRS USAGE" val1={d1Kpis?.drsPct || '—'} val2={d2Kpis?.drsPct || '—'} label1={driver1} label2={driver2} unit="%"
+          icon={<Wind className="w-4 h-4 text-green-400" />} color1={D1_COLOR} color2={D2_COLOR} />
       </div>
 
-      {/* Speed Trace Overlay */}
       {mergedSpeed.length > 0 && (
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Speed Trace Overlay — {race} GP {year}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">
-            <span style={{ color: NOR_COLOR }}>■</span> NOR vs <span style={{ color: PIA_COLOR }}>■</span> PIA — km/h over distance
+            <span style={{ color: D1_COLOR }}>■</span> {driver1} vs <span style={{ color: D2_COLOR }}>■</span> {driver2} — km/h over distance
           </p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -812,18 +845,17 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
                 <XAxis dataKey="dist" tick={{ fill: '#8888a0', fontSize: 9 }} tickCount={10} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={[0, 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Line type="monotone" dataKey="norSpeed" stroke={NOR_COLOR} strokeWidth={1.5} dot={false} name="NOR Speed" />
-                <Line type="monotone" dataKey="piaSpeed" stroke={PIA_COLOR} strokeWidth={1.5} dot={false} name="PIA Speed" />
+                <Line type="monotone" dataKey="d1Speed" stroke={D1_COLOR} strokeWidth={1.5} dot={false} name={`${driver1} Speed`} />
+                <Line type="monotone" dataKey="d2Speed" stroke={D2_COLOR} strokeWidth={1.5} dot={false} name={`${driver2} Speed`} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       )}
 
-      {/* Lap Times Overlay */}
       {mergedLapTimes.length > 0 && (
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Lap Times — NOR vs PIA</h3>
+          <h3 className="text-sm text-foreground mb-1">Lap Times — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Lap time (seconds) per lap</p>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -832,8 +864,8 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
                 <XAxis dataKey="lap" tick={{ fill: '#8888a0', fontSize: 9 }} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['auto', 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="norTime" name="NOR (s)" fill={NOR_COLOR} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="piaTime" name="PIA (s)" fill={PIA_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d1Time" name={`${driver1} (s)`} fill={D1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d2Time" name={`${driver2} (s)`} fill={D2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -843,21 +875,23 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
   );
 }
 
-function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]; seasonPia: CarSummary[]; year: number }) {
+function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: CarSummary[]; season2: CarSummary[]; year: number; driver1: string; driver2: string }) {
+  const D1_COLOR = '#FF8000';
+  const D2_COLOR = '#22d3ee';
   const merged = useMemo(() => {
-    const allRaces = [...new Set([...seasonNor.map(r => r.race), ...seasonPia.map(r => r.race)])];
+    const allRaces = [...new Set([...season1.map(r => r.race), ...season2.map(r => r.race)])];
     return allRaces.map(race => {
-      const nor = seasonNor.find(r => r.race === race);
-      const pia = seasonPia.find(r => r.race === race);
+      const s1 = season1.find(r => r.race === race);
+      const s2 = season2.find(r => r.race === race);
       return {
         race,
-        norTop: nor?.topSpeed ?? 0, piaTop: pia?.topSpeed ?? 0,
-        norAvg: nor?.avgSpeed ?? 0, piaAvg: pia?.avgSpeed ?? 0,
-        norThrottle: nor?.avgThrottle ?? 0, piaThrottle: pia?.avgThrottle ?? 0,
-        norBrake: nor?.brakePct ?? 0, piaBrake: pia?.brakePct ?? 0,
+        d1Top: s1?.topSpeed ?? 0, d2Top: s2?.topSpeed ?? 0,
+        d1Avg: s1?.avgSpeed ?? 0, d2Avg: s2?.avgSpeed ?? 0,
+        d1Throttle: s1?.avgThrottle ?? 0, d2Throttle: s2?.avgThrottle ?? 0,
+        d1Brake: s1?.brakePct ?? 0, d2Brake: s2?.brakePct ?? 0,
       };
     });
-  }, [seasonNor, seasonPia]);
+  }, [season1, season2]);
 
   const avg = (arr: CarSummary[], key: keyof CarSummary) => arr.length ? (arr.reduce((s, r) => s + (r[key] as number), 0) / arr.length).toFixed(1) : '—';
   const topOf = (arr: CarSummary[]) => arr.length ? Math.max(...arr.map(r => r.topSpeed)).toFixed(0) : '—';
@@ -867,15 +901,15 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
   return (
     <>
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={topOf(seasonNor)} val2={topOf(seasonPia)} label1="NOR" label2="PIA" unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} />
-        <DeltaKPI label="AVG SPEED" val1={avg(seasonNor, 'avgSpeed')} val2={avg(seasonPia, 'avgSpeed')} label1="NOR" label2="PIA" unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} />
-        <DeltaKPI label="AVG THROTTLE" val1={avg(seasonNor, 'avgThrottle')} val2={avg(seasonPia, 'avgThrottle')} label1="NOR" label2="PIA" unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} />
-        <DeltaKPI label="AVG BRAKE" val1={avg(seasonNor, 'brakePct')} val2={avg(seasonPia, 'brakePct')} label1="NOR" label2="PIA" unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} />
+        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={driver1} label2={driver2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="AVG SPEED" val1={avg(season1, 'avgSpeed')} val2={avg(season2, 'avgSpeed')} label1={driver1} label2={driver2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="AVG THROTTLE" val1={avg(season1, 'avgThrottle')} val2={avg(season2, 'avgThrottle')} label1={driver1} label2={driver2} unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="AVG BRAKE" val1={avg(season1, 'brakePct')} val2={avg(season2, 'brakePct')} label1={driver1} label2={driver2} unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={D1_COLOR} color2={D2_COLOR} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Top Speed by Race — NOR vs PIA</h3>
+          <h3 className="text-sm text-foreground mb-1">Top Speed by Race — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -884,14 +918,14 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['auto', 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="norTop" name="NOR" fill={NOR_COLOR} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="piaTop" name="PIA" fill={PIA_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d1Top" name={driver1} fill={D1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d2Top" name={driver2} fill={D2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Avg Speed by Race — NOR vs PIA</h3>
+          <h3 className="text-sm text-foreground mb-1">Avg Speed by Race — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -900,8 +934,8 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['auto', 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="norAvg" name="NOR" fill={NOR_COLOR} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="piaAvg" name="PIA" fill={PIA_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d1Avg" name={driver1} fill={D1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d2Avg" name={driver2} fill={D2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -910,7 +944,7 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Throttle % — NOR vs PIA</h3>
+          <h3 className="text-sm text-foreground mb-1">Throttle % — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -919,14 +953,14 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="norThrottle" name="NOR" fill={NOR_COLOR} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="piaThrottle" name="PIA" fill={PIA_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d1Throttle" name={driver1} fill={D1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d2Throttle" name={driver2} fill={D2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Braking % — NOR vs PIA</h3>
+          <h3 className="text-sm text-foreground mb-1">Braking % — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -935,8 +969,8 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="norBrake" name="NOR" fill={NOR_COLOR} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="piaBrake" name="PIA" fill={PIA_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d1Brake" name={driver1} fill={D1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="d2Brake" name={driver2} fill={D2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -948,21 +982,21 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: CarSummary[]
 
 /* ─── Compare View ─── */
 
-function CompareView({ mode, loading, year, driver, race1, race2, data1, data2, season23, season24 }: {
-  mode: 'race' | 'year'; loading: boolean; year: number; driver: string;
-  race1: string; race2: string; data1: Record<string, string>[]; data2: Record<string, string>[];
-  season23: CarSummary[]; season24: CarSummary[];
+function CompareView({ mode, loading, year, year2, driver, race1, race2, data1, data2, season1, season2, years, onYear2Change }: {
+  mode: 'race' | 'year'; loading: boolean; year: number; year2: number; driver: string;
+  race1: string; race2: string; data1: Record<string, any>[]; data2: Record<string, any>[];
+  season1: CarSummary[]; season2: CarSummary[]; years: number[]; onYear2Change: (y: number) => void;
 }) {
   if (loading) {
     return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading comparison...</span></div>;
   }
   if (mode === 'race') return <RaceVsRaceView driver={driver} year={year} race1={race1} race2={race2} data1={data1} data2={data2} />;
-  return <YearVsYearView driver={driver} season23={season23} season24={season24} />;
+  return <YearVsYearView driver={driver} year1={year} year2={year2} season1={season1} season2={season2} years={years} onYear2Change={onYear2Change} />;
 }
 
 function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
   driver: string; year: number; race1: string; race2: string;
-  data1: Record<string, string>[]; data2: Record<string, string>[];
+  data1: Record<string, any>[]; data2: Record<string, any>[];
 }) {
   const d1 = useMemo(() => data1.filter(r => r.Driver === driver), [data1, driver]);
   const d2 = useMemo(() => data2.filter(r => r.Driver === driver), [data2, driver]);
@@ -1019,44 +1053,60 @@ function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
   );
 }
 
-function YearVsYearView({ driver, season23, season24 }: { driver: string; season23: CarSummary[]; season24: CarSummary[] }) {
+function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2Change }: {
+  driver: string; year1: number; year2: number; season1: CarSummary[]; season2: CarSummary[];
+  years: number[]; onYear2Change: (y: number) => void;
+}) {
   const avg = (arr: CarSummary[], key: keyof CarSummary) => arr.length ? (arr.reduce((s, r) => s + (r[key] as number), 0) / arr.length).toFixed(1) : '—';
   const topOf = (arr: CarSummary[]) => arr.length ? Math.max(...arr.map(r => r.topSpeed)).toFixed(0) : '—';
 
   const commonRaces = useMemo(() => {
-    const r24 = new Set(season24.map(r => r.race));
-    return season23.filter(r => r24.has(r.race)).map(r => r.race);
-  }, [season23, season24]);
+    const r2 = new Set(season2.map(r => r.race));
+    return season1.filter(r => r2.has(r.race)).map(r => r.race);
+  }, [season1, season2]);
 
   const merged = useMemo(() => commonRaces.map(race => {
-    const r23 = season23.find(r => r.race === race)!;
-    const r24 = season24.find(r => r.race === race)!;
-    return { race, top23: r23.topSpeed, top24: r24.topSpeed, avg23: r23.avgSpeed, avg24: r24.avgSpeed, throttle23: r23.avgThrottle, throttle24: r24.avgThrottle, brake23: r23.brakePct, brake24: r24.brakePct };
-  }), [commonRaces, season23, season24]);
+    const s1 = season1.find(r => r.race === race)!;
+    const s2 = season2.find(r => r.race === race)!;
+    return { race, topY1: s1.topSpeed, topY2: s2.topSpeed, avgY1: s1.avgSpeed, avgY2: s2.avgSpeed, throttleY1: s1.avgThrottle, throttleY2: s2.avgThrottle, brakeY1: s1.brakePct, brakeY2: s2.brakePct };
+  }), [commonRaces, season1, season2]);
 
-  const Y23 = '#a78bfa';
-  const Y24 = '#FF8000';
+  const Y1_COLOR = '#a78bfa';
+  const Y2_COLOR = '#FF8000';
 
-  if (!season23.length && !season24.length) return <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">No season data for {driver}</div>;
+  if (!season1.length && !season2.length) return <div className="flex items-center justify-center h-[300px] text-muted-foreground text-sm">No season data for {driver}</div>;
 
   return (
     <>
+      {/* Year selectors */}
+      <div className="flex items-center gap-2">
+        <select value={year1} disabled aria-label="Year 1" className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none opacity-60">
+          <option value={year1}>{year1}</option>
+        </select>
+        <span className="text-[12px] text-muted-foreground">vs</span>
+        <select value={year2} onChange={e => onYear2Change(Number(e.target.value))} aria-label="Year 2"
+          className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
+        >
+          {years.filter(y => y !== year1).map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={topOf(season23)} val2={topOf(season24)} label1="2023" label2="2024" unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={Y23} color2={Y24} />
-        <DeltaKPI label="AVG SPEED" val1={avg(season23, 'avgSpeed')} val2={avg(season24, 'avgSpeed')} label1="2023" label2="2024" unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={Y23} color2={Y24} />
-        <DeltaKPI label="AVG THROTTLE" val1={avg(season23, 'avgThrottle')} val2={avg(season24, 'avgThrottle')} label1="2023" label2="2024" unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={Y23} color2={Y24} />
-        <DeltaKPI label="AVG BRAKE" val1={avg(season23, 'brakePct')} val2={avg(season24, 'brakePct')} label1="2023" label2="2024" unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={Y23} color2={Y24} />
+        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={String(year1)} label2={String(year2)} unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={Y1_COLOR} color2={Y2_COLOR} />
+        <DeltaKPI label="AVG SPEED" val1={avg(season1, 'avgSpeed')} val2={avg(season2, 'avgSpeed')} label1={String(year1)} label2={String(year2)} unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />
+        <DeltaKPI label="AVG THROTTLE" val1={avg(season1, 'avgThrottle')} val2={avg(season2, 'avgThrottle')} label1={String(year1)} label2={String(year2)} unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />
+        <DeltaKPI label="AVG BRAKE" val1={avg(season1, 'brakePct')} val2={avg(season2, 'brakePct')} label1={String(year1)} label2={String(year2)} unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />
       </div>
 
       <div className="flex items-center gap-4 text-[12px] text-muted-foreground px-1">
-        <span><span style={{ color: Y23 }}>■</span> 2023</span>
-        <span><span style={{ color: Y24 }}>■</span> 2024</span>
+        <span><span style={{ color: Y1_COLOR }}>■</span> {year1}</span>
+        <span><span style={{ color: Y2_COLOR }}>■</span> {year2}</span>
         <span className="ml-auto">{commonRaces.length} common races</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Top Speed — 2023 vs 2024</h3>
+          <h3 className="text-sm text-foreground mb-1">Top Speed — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -1065,14 +1115,14 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['auto', 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="top23" name="2023" fill={Y23} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="top24" name="2024" fill={Y24} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="topY1" name={String(year1)} fill={Y1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="topY2" name={String(year2)} fill={Y2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Avg Speed — 2023 vs 2024</h3>
+          <h3 className="text-sm text-foreground mb-1">Avg Speed — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -1081,8 +1131,8 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['auto', 'auto']} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="avg23" name="2023" fill={Y23} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="avg24" name="2024" fill={Y24} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="avgY1" name={String(year1)} fill={Y1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="avgY2" name={String(year2)} fill={Y2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1091,7 +1141,7 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Throttle % — 2023 vs 2024</h3>
+          <h3 className="text-sm text-foreground mb-1">Throttle % — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -1100,14 +1150,14 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="throttle23" name="2023" fill={Y23} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="throttle24" name="2024" fill={Y24} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="throttleY1" name={String(year1)} fill={Y1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="throttleY2" name={String(year2)} fill={Y2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-          <h3 className="text-sm text-foreground mb-1">Braking % — 2023 vs 2024</h3>
+          <h3 className="text-sm text-foreground mb-1">Braking % — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -1116,8 +1166,8 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
                 <XAxis dataKey="race" tick={{ fill: '#8888a0', fontSize: 8 }} angle={-45} textAnchor="end" height={60} interval={0} />
                 <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="brake23" name="2023" fill={Y23} radius={[2, 2, 0, 0]} />
-                <Bar dataKey="brake24" name="2024" fill={Y24} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="brakeY1" name={String(year1)} fill={Y1_COLOR} radius={[2, 2, 0, 0]} />
+                <Bar dataKey="brakeY2" name={String(year2)} fill={Y2_COLOR} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
