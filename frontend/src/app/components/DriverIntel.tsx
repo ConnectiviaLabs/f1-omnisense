@@ -136,7 +136,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
         {filtered.map((d: any) => {
           const team = d.team || d.constructor || '';
           const color = teamColors[team] || '#666';
-          const dCode = d.code || d.driver_id?.slice(0, 3).toUpperCase();
+          const dCode = d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase();
           const vehicle = anomalyVehicles.find(v => v.code === dCode);
           return (
             <button
@@ -228,7 +228,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
     if (!driverCode) return;
     // Find the driver code (3-letter) from driver_id
     const driver = drivers.find((d: any) => d.driver_id === driverCode);
-    const code = driver?.code || driverCode.slice(0, 3).toUpperCase();
+    const code = driver?.driver_code || driver?.code || driverCode.slice(0, 3).toUpperCase();
 
     setMarkers(allMarkers.filter(m => m.Driver === code));
     setOvertakes(allOvertakes.filter(o => o.driver_code === code));
@@ -237,7 +237,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
   const driverTelemetry = useMemo(() => {
     if (!driverCode || !drivers.length) return null;
     const driver = drivers.find((d: any) => d.driver_id === driverCode);
-    const code = driver?.code || driverCode.slice(0, 3).toUpperCase();
+    const code = driver?.driver_code || driver?.code || driverCode.slice(0, 3).toUpperCase();
     return telemetry.find(t => t.driver_code === code) || null;
   }, [driverCode, drivers, telemetry]);
 
@@ -274,7 +274,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
   const selectedVehicle = useMemo(() => {
     if (!driverCode || anomalyVehicles.length === 0) return null;
     const driver = drivers.find((d: any) => d.driver_id === driverCode);
-    const code = driver?.code || driverCode.slice(0, 3).toUpperCase();
+    const code = driver?.driver_code || driver?.code || driverCode.slice(0, 3).toUpperCase();
     return anomalyVehicles.find(v => v.code === code) ?? null;
   }, [driverCode, drivers, anomalyVehicles]);
 
@@ -566,7 +566,7 @@ function CompareDrivers() {
       const row: any = { metric };
       selected.forEach(driverId => {
         const driver = drivers.find((d: any) => d.driver_id === driverId);
-        const code = driver?.code || driverId.slice(0, 3).toUpperCase();
+        const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
         const m = allMarkers.find(x => x.Driver === code);
         const o = allOvertakes.find(x => x.driver_code === code);
         const t = allTelemetry.find(x => x.driver_code === code);
@@ -611,7 +611,7 @@ function CompareDrivers() {
               disabled={!isSelected && selected.length >= 4}
             >
               {isSelected && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: COMPARE_COLORS[idx] }} />}
-              {d.code || d.driver_id?.slice(0, 3).toUpperCase()}
+              {d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase()}
             </button>
           );
         })}
@@ -628,7 +628,7 @@ function CompareDrivers() {
               <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
               {selected.map((driverId, i) => {
                 const driver = drivers.find((d: any) => d.driver_id === driverId);
-                const code = driver?.code || driverId.slice(0, 3).toUpperCase();
+                const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
                 return (
                   <Radar
                     key={driverId}
@@ -647,7 +647,7 @@ function CompareDrivers() {
           <div className="flex items-center justify-center gap-6 mt-2">
             {selected.map((driverId, i) => {
               const driver = drivers.find((d: any) => d.driver_id === driverId);
-              const code = driver?.code || driverId.slice(0, 3).toUpperCase();
+              const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
               const name = driverId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
               return (
                 <div key={driverId} className="flex items-center gap-2 text-xs">
