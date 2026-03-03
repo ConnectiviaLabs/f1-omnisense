@@ -328,7 +328,7 @@ export function MediaIntelligence() {
               </div>
               <div className="grid grid-cols-4 gap-2">
                 {Object.entries(fusedData ?? gdinoData!).flatMap(([video, frames]) =>
-                  (frames ?? []).map((frame) => ({ video, frame }))
+                  (frames ?? []).filter(f => f.output_image).map((frame) => ({ video, frame }))
                 ).slice(0, 4).map(({ video, frame }) => (
                     <button
                       key={`${video}-${frame.frame_index}`}
