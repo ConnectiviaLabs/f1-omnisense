@@ -1792,10 +1792,26 @@ def omni_health_check():
 
 # ── Run ──────────────────────────────────────────────────────────────────
 
+# ── Serve frontend SPA (must be last mount) ─────────────────────────────
+_frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if _frontend_dist.exists():
+    from starlette.responses import FileResponse as _FileResponse
+
+    @app.get("/{full_path:path}")
+    async def _serve_spa(full_path: str):
+        file = _frontend_dist / full_path
+        if file.is_file():
+            return _FileResponse(str(file))
+        return _FileResponse(str(_frontend_dist / "index.html"))
+
+    logger.info("Frontend SPA mounted from %s", _frontend_dist)
+
+
 if __name__ == "__main__":
     import uvicorn
     print(f"Starting F1 OmniSense API on port {PORT}")
     print(f"  Knowledge Agent: {GROQ_MODEL}")
     print(f"  3D Model Gen:   enabled")
     print(f"  Vector store:   MongoDB Atlas")
+    print(f"  Frontend:       {'enabled' if _frontend_dist.exists() else 'not found'}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
