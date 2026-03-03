@@ -17,9 +17,9 @@ COPY pipeline/ /app/pipeline/
 # Copy omnisuite packages
 COPY omnisuitef1/ /app/omnisuitef1/
 
-EXPOSE 8100
+EXPOSE 8300
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8300/health')" || exit 1
 
 CMD ["python", "/app/pipeline/chat_server.py"]
