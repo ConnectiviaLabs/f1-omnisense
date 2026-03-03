@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { usePolling } from '../hooks/usePolling';
 import * as jolpica from '../api/jolpica';
-import { fetchCSV, parseCSV } from '../api/local';
 import { HealthGauge } from './HealthGauge';
 import {
   type VehicleData, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
@@ -78,28 +77,12 @@ const SYSTEM_ICONS: Record<string, React.ElementType> = { 'Speed': Gauge, 'Lap P
 export function McLarenAnalytics() {
   const [year, setYear] = useState<'2024' | '2023'>('2024');
 
-  // Jolpica
-  const { data: constructorStandings } = usePolling({ fetcher: () => jolpica.getConstructorStandings(), interval: 120000 });
-  const { data: raceResults } = usePolling({ fetcher: () => jolpica.getRaceResults(), interval: 120000 });
+  // ── MongoDB data via Jolpica JSON endpoints ───────────────────────
+  const { data: driverStandings } = usePolling({ fetcher: () => jolpica.getDriverStandings(year), interval: 120000 });
+  const { data: constructorStandings } = usePolling({ fetcher: () => jolpica.getConstructorStandings(year), interval: 120000 });
+  const { data: raceResults } = usePolling({ fetcher: () => jolpica.getRaceResults(year), interval: 120000 });
 
-  // CSV data
-  const [champDrivers, setChampDrivers] = useState<Record<string, string>[]>([]);
-  const [champTeams, setChampTeams] = useState<Record<string, string>[]>([]);
-  const [pitStops, setPitStops] = useState<Record<string, string>[]>([]);
-  const [tireStints, setTireStints] = useState<Record<string, string>[]>([]);
-  const [csvLoading, setCsvLoading] = useState(true);
-
-  useEffect(() => {
-    setCsvLoading(true);
-    Promise.allSettled([
-      fetchCSV(`f1data/McResults/${year}/championship_drivers.csv`).then(c => setChampDrivers(parseCSV(c))),
-      fetchCSV(`f1data/McResults/${year}/championship_teams.csv`).then(c => setChampTeams(parseCSV(c))),
-      fetchCSV(`f1data/McStrategy/${year}/pit_stops.csv`).then(c => setPitStops(parseCSV(c))),
-      fetchCSV(`f1data/McRaceContext/${year}/tire_stints.csv`).then(c => setTireStints(parseCSV(c))),
-    ]).finally(() => setCsvLoading(false));
-  }, [year]);
-
-  // Telemetry summary
+  // ── MongoDB: Telemetry race summaries ─────────────────────────────
   const [norSummary, setNorSummary] = useState<CarSummary[]>([]);
   const [piaSummary, setPiaSummary] = useState<CarSummary[]>([]);
   const [telLoading, setTelLoading] = useState(true);
@@ -107,14 +90,34 @@ export function McLarenAnalytics() {
   useEffect(() => {
     setTelLoading(true);
     Promise.all([
-      fetch(`/api/mccar-summary/${year}/NOR`).then(r => r.ok ? r.json() : []),
-      fetch(`/api/mccar-summary/${year}/PIA`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/local/mccar-summary/${year}/NOR`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/local/mccar-summary/${year}/PIA`).then(r => r.ok ? r.json() : []),
     ]).then(([n, p]) => { setNorSummary(n); setPiaSummary(p); })
       .catch(() => {})
       .finally(() => setTelLoading(false));
   }, [year]);
 
-  // Anomaly
+  // ── MongoDB: Pit stops from jolpica_pit_stops collection ──────────
+  const [pitStopsRaw, setPitStopsRaw] = useState<any[]>([]);
+  useEffect(() => {
+    fetch(`/api/jolpica/pit_stops?season=${year}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setPitStopsRaw(d))
+      .catch(() => {});
+  }, [year]);
+
+  // ── MongoDB: Stints + sessions from openf1 collections ───────────
+  const [stintsRaw, setStintsRaw] = useState<any[]>([]);
+  const [sessionsRaw, setSessionsRaw] = useState<any[]>([]);
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/openf1/stints').then(r => r.ok ? r.json() : []),
+      fetch('/api/openf1/sessions').then(r => r.ok ? r.json() : []),
+    ]).then(([st, sess]) => { setStintsRaw(st); setSessionsRaw(sess); })
+      .catch(() => {});
+  }, []);
+
+  // ── MongoDB: Anomaly scores ───────────────────────────────────────
   const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
   useEffect(() => {
     fetch('/api/pipeline/anomaly').then(r => r.json())
@@ -122,10 +125,10 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
-  // Rivals
+  // ── MongoDB: Rivals via omni analytics ────────────────────────────
   const [rivalsData, setRivalsData] = useState<any>(null);
   useEffect(() => {
-    fetch('/api/omni/analytics/rivals/NOR', { method: 'GET' })
+    fetch('/api/omni/analytics/rivals/NOR')
       .then(r => r.ok ? r.json() : null)
       .then(d => setRivalsData(d))
       .catch(() => {});
@@ -136,40 +139,50 @@ export function McLarenAnalytics() {
   const norVehicle = anomalyVehicles.find(v => v.code === 'NOR');
   const piaVehicle = anomalyVehicles.find(v => v.code === 'PIA');
 
+  // KPIs from MongoDB driver/constructor standings
   const kpiStats = useMemo(() => {
-    const latestNOR = champDrivers.filter(r => r.driver_acronym === 'NOR').pop();
-    const latestPIA = champDrivers.filter(r => r.driver_acronym === 'PIA').pop();
-    const latestTeam = champTeams[champTeams.length - 1];
+    const norS = (driverStandings ?? []).find(s => s.Driver?.code === 'NOR');
+    const piaS = (driverStandings ?? []).find(s => s.Driver?.code === 'PIA');
+    const mcS = (constructorStandings ?? []).find(s =>
+      s.Constructor?.name?.toLowerCase().includes('mclaren'));
+
+    // Last race points gained for McLaren
+    const lastRace = (raceResults ?? []).slice(-1)[0];
+    const lastGained = lastRace
+      ? lastRace.Results
+          .filter(r => r.Constructor?.name?.toLowerCase().includes('mclaren'))
+          .reduce((sum, r) => sum + Number(r.points || 0), 0)
+      : 0;
+
     return {
-      norPts: latestNOR?.points_current ?? '—', norPos: latestNOR?.position_current ?? '—',
-      piaPts: latestPIA?.points_current ?? '—', piaPos: latestPIA?.position_current ?? '—',
-      teamPts: latestTeam?.points_current ?? '—', teamPos: latestTeam?.position_current ?? '—',
-      lastGained: latestTeam?.points_gained ?? '0',
+      norPts: norS?.points ?? '—', norPos: norS?.position ?? '—',
+      piaPts: piaS?.points ?? '—', piaPos: piaS?.position ?? '—',
+      teamPts: mcS?.points ?? '—', teamPos: mcS?.position ?? '—',
+      lastGained: String(lastGained),
     };
-  }, [champDrivers, champTeams]);
+  }, [driverStandings, constructorStandings, raceResults]);
 
-  // Points progression (NOR + PIA + Constructors)
+  // Points progression from MongoDB race_results
   const pointsProgression = useMemo(() => {
-    if (!champDrivers.length) return [];
-    const byRace = new Map<string, any>();
-    champDrivers.forEach(row => {
-      const race = row.meeting_name?.replace(' Grand Prix', '') ?? '';
-      if (!race || race.includes('Testing')) return;
-      const existing = byRace.get(race) ?? { race };
-      if (row.driver_acronym === 'NOR') existing.NOR = Number(row.points_current || 0);
-      if (row.driver_acronym === 'PIA') existing.PIA = Number(row.points_current || 0);
-      byRace.set(race, existing);
+    if (!raceResults?.length) return [];
+    let norCum = 0, piaCum = 0, teamCum = 0;
+    return raceResults.map(race => {
+      const gpName = race.raceName.replace(' Grand Prix', '');
+      let raceTeamPts = 0;
+      for (const result of race.Results) {
+        const code = result.Driver?.code;
+        const pts = Number(result.points || 0);
+        const isMcLaren = result.Constructor?.name?.toLowerCase().includes('mclaren');
+        if (code === 'NOR') norCum += pts;
+        if (code === 'PIA') piaCum += pts;
+        if (isMcLaren) raceTeamPts += pts;
+      }
+      teamCum += raceTeamPts;
+      return { race: gpName, NOR: norCum, PIA: piaCum, Team: teamCum };
     });
-    champTeams.forEach(row => {
-      const race = row.meeting_name?.replace(' Grand Prix', '') ?? '';
-      if (!race || race.includes('Testing')) return;
-      const existing = byRace.get(race);
-      if (existing) existing.Team = Number(row.points_current || 0);
-    });
-    return Array.from(byRace.values());
-  }, [champDrivers, champTeams]);
+  }, [raceResults]);
 
-  // Telemetry merged
+  // Telemetry merged from MongoDB telemetry_race_summary
   const telemetryData = useMemo(() => {
     const raceMap = new Map<string, any>();
     norSummary.forEach(r => {
@@ -183,52 +196,62 @@ export function McLarenAnalytics() {
     return Array.from(raceMap.values());
   }, [norSummary, piaSummary]);
 
-  // Pit stop data
+  // Pit stop data from MongoDB jolpica_pit_stops
   const pitStopData = useMemo(() => {
-    if (!pitStops.length) return [];
+    if (!pitStopsRaw.length) return [];
     const raceStops = new Map<string, { race: string; NOR: number[]; PIA: number[] }>();
-    pitStops.forEach(row => {
-      if (!row.meeting_name || row.meeting_name.includes('Testing')) return;
-      const race = row.meeting_name.replace(' Grand Prix', '').slice(0, 12);
-      const dur = Number(row.pit_duration || 0);
-      if (dur <= 0 || dur > 60) return;
+    pitStopsRaw.forEach(stop => {
+      const race = (stop.raceName || '').replace(' Grand Prix', '').slice(0, 12);
+      const driver = stop.driverId || '';
+      const dur = parseFloat(stop.duration || '0');
+      if (dur <= 0 || dur > 60 || !race) return;
       if (!raceStops.has(race)) raceStops.set(race, { race, NOR: [], PIA: [] });
       const entry = raceStops.get(race)!;
-      if (row.driver_acronym === 'NOR') entry.NOR.push(dur);
-      else if (row.driver_acronym === 'PIA') entry.PIA.push(dur);
+      if (driver.includes('norris')) entry.NOR.push(dur);
+      else if (driver.includes('piastri')) entry.PIA.push(dur);
     });
     return Array.from(raceStops.values()).map(r => ({
       race: r.race,
       NOR: r.NOR.length ? +(r.NOR.reduce((a, b) => a + b, 0) / r.NOR.length).toFixed(1) : null,
       PIA: r.PIA.length ? +(r.PIA.reduce((a, b) => a + b, 0) / r.PIA.length).toFixed(1) : null,
     }));
-  }, [pitStops]);
+  }, [pitStopsRaw]);
 
   const avgPitDuration = useMemo(() => {
     const all = pitStopData.flatMap(r => [r.NOR, r.PIA].filter(Boolean) as number[]);
     return all.length ? +(all.reduce((a, b) => a + b, 0) / all.length).toFixed(1) : 0;
   }, [pitStopData]);
 
-  // Tire compound grid
+  // Tire compound grid from MongoDB openf1_stints + openf1_sessions
   const tireGrid = useMemo(() => {
-    if (!tireStints.length) return { races: [] as string[], NOR: {} as Record<string, string[]>, PIA: {} as Record<string, string[]> };
+    if (!stintsRaw.length || !sessionsRaw.length) return { races: [] as string[], NOR: {} as Record<string, string[]>, PIA: {} as Record<string, string[]> };
+    // Map session_key → race name (Race sessions only)
+    const sessionMap = new Map<number, string>();
+    sessionsRaw.forEach(s => {
+      if (s.session_type === 'Race') {
+        sessionMap.set(s.session_key, (s.circuit_short_name || s.meeting_name || '').slice(0, 10));
+      }
+    });
+    // Driver numbers: NOR=4, PIA=81
+    const driverMap: Record<number, 'NOR' | 'PIA'> = { 4: 'NOR', 81: 'PIA' };
     const races = new Set<string>();
     const nor: Record<string, string[]> = {};
     const pia: Record<string, string[]> = {};
-    tireStints.forEach(row => {
-      if (row.session_type !== 'Race') return;
-      const race = (row.meeting_name ?? '').replace(' Grand Prix', '').slice(0, 10);
+    stintsRaw.forEach(stint => {
+      const race = sessionMap.get(stint.session_key);
       if (!race) return;
+      const code = driverMap[stint.driver_number];
+      if (!code) return;
       races.add(race);
-      const target = row.driver_acronym === 'NOR' ? nor : row.driver_acronym === 'PIA' ? pia : null;
-      if (!target) return;
+      const target = code === 'NOR' ? nor : pia;
       if (!target[race]) target[race] = [];
-      if (!target[race].includes(row.compound)) target[race].push(row.compound);
+      const compound = (stint.compound || '').toUpperCase();
+      if (compound && !target[race].includes(compound)) target[race].push(compound);
     });
     return { races: Array.from(races), NOR: nor, PIA: pia };
-  }, [tireStints]);
+  }, [stintsRaw, sessionsRaw]);
 
-  // NOR health trend
+  // NOR health trend from anomaly data
   const norHealthTrend = useMemo(() => {
     if (!norVehicle?.races?.length) return [];
     return norVehicle.races.slice(-8).map(r => ({
@@ -248,27 +271,28 @@ export function McLarenAnalytics() {
     }));
   }, [rivalsData]);
 
-  // Race results with McLaren context
+  // Race results table from MongoDB race_results
   const raceResultsTable = useMemo(() => {
-    if (!raceResults) return [];
-    const teamGained = new Map<string, string>();
-    champTeams.forEach(r => {
-      const race = (r.meeting_name ?? '').replace(' Grand Prix', '');
-      teamGained.set(race, r.points_gained || '0');
-    });
+    if (!raceResults?.length) return [];
     return raceResults.slice(-8).reverse().map(race => {
-      const norResult = race.Results.find(r => r.Constructor.name.toLowerCase().includes('mclaren') && r.Driver.code === 'NOR');
-      const piaResult = race.Results.find(r => r.Constructor.name.toLowerCase().includes('mclaren') && r.Driver.code === 'PIA');
+      const norResult = race.Results.find(r => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'NOR');
+      const piaResult = race.Results.find(r => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'PIA');
       const winner = race.Results[0];
       const gpName = race.raceName.replace(' Grand Prix', '');
+      // McLaren points gained in this race
+      const gained = race.Results
+        .filter(r => r.Constructor?.name?.toLowerCase().includes('mclaren'))
+        .reduce((sum, r) => sum + Number(r.points || 0), 0);
       return {
         round: race.round, gp: gpName,
         norPos: norResult?.position ?? '—', piaPos: piaResult?.position ?? '—',
-        winner: winner?.Driver.code ?? '—', winnerTeam: winner?.Constructor.name ?? '',
-        gained: teamGained.get(gpName) || '—',
+        winner: winner?.Driver?.code ?? '—', winnerTeam: winner?.Constructor?.name ?? '',
+        gained: String(gained),
       };
     });
-  }, [raceResults, champTeams]);
+  }, [raceResults]);
+
+  const dataLoading = !driverStandings && !constructorStandings && !raceResults;
 
   // ─── Render ───────────────────────────────────────────────────────
   return (
@@ -290,7 +314,7 @@ export function McLarenAnalytics() {
       </div>
 
       {/* Section 1: KPI Strip */}
-      {csvLoading ? (
+      {dataLoading ? (
         <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-4 gap-3">
