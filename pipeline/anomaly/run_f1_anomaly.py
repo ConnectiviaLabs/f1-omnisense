@@ -263,17 +263,16 @@ def _push_to_mongo(output_data: dict):
 
 
 def main():
-    """Run anomaly pipeline for all drivers (or filtered by team/driver)."""
+    """Run anomaly pipeline for all active drivers (or filtered by team/driver)."""
     parser = argparse.ArgumentParser(description="F1 Anomaly Scoring Pipeline")
     parser.add_argument("--driver", help="Single driver code (e.g. VER)")
     parser.add_argument("--team", help="Filter by team (e.g. McLaren)")
-    parser.add_argument("--year", type=int, default=2024, help="Grid year (default 2024)")
     args = parser.parse_args()
 
-    logger.info("F1 Anomaly Scoring Pipeline — All Drivers")
+    logger.info("F1 Anomaly Scoring Pipeline — Active Grid")
 
-    grid = get_grid_drivers(args.year)
-    logger.info(f"Grid: {len(grid)} drivers for {args.year}")
+    grid = get_grid_drivers()
+    logger.info(f"Grid: {len(grid)} qualified drivers")
 
     if args.driver:
         grid = [d for d in grid if d["code"] == args.driver.upper()]
@@ -290,7 +289,6 @@ def main():
         "systems": list(SYSTEM_FEATURES.keys()),
         "models": ["IsolationForest", "OneClassSVM", "KNN", "PCA_Reconstruction"],
         "model_weights": {"IsolationForest": 1.0, "OneClassSVM": 0.6, "KNN": 0.8, "PCA_Reconstruction": 0.9},
-        "year": args.year,
     }}
 
     for driver_info in grid:
