@@ -130,15 +130,64 @@ def load_driver_lap_data(
     return df
 
 
-def get_grid_drivers(year: int = 2024) -> list[dict]:
-    """Get all drivers from the most recent season in openf1_drivers.
+MIN_RACES_THRESHOLD = 24
+
+
+def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
+    """Get active drivers with sufficient historical data.
+
+    Default (year=None): pulls the 2025 active grid from
+    jolpica_driver_standings, then filters to drivers with at least
+    MIN_RACES_THRESHOLD races in fastf1_laps.
+
+    If year is set, returns that season's roster from openf1_drivers
+    (legacy behaviour).
 
     Returns list of {code, name, team, number} dicts.
     """
     db = get_db()
 
+    # ── Active grid from jolpica standings (default) ──────────────
+    if year is None:
+        results = list(db["jolpica_driver_standings"].find(
+            {"season": 2025},
+            {"driver_code": 1, "driver_name": 1, "constructor_name": 1, "_id": 0},
+        ).sort("points", -1))
+
+        if not results:
+            logger.warning("No 2025 standings found, falling back to openf1_drivers 2024")
+            return get_grid_drivers(year=2024)
+
+        drivers = [
+            {
+                "code": r["driver_code"],
+                "name": r.get("driver_name", r["driver_code"]),
+                "team": r.get("constructor_name", "Unknown"),
+                "number": 0,
+            }
+            for r in results if r.get("driver_code")
+        ]
+
+        # Filter by minimum race count in fastf1_laps
+        qualified = []
+        for d in drivers:
+            race_count = len(db["fastf1_laps"].distinct(
+                "Race",
+                {"Driver": d["code"], "IsAccurate": True, "SessionType": "R"},
+            ))
+            if race_count >= MIN_RACES_THRESHOLD:
+                qualified.append(d)
+            else:
+                logger.info(
+                    "Skipping %s (%d races < %d minimum)",
+                    d["code"], race_count, MIN_RACES_THRESHOLD,
+                )
+
+        return qualified
+
+    # ── Legacy: single-season roster from openf1_drivers ──────────
     pipeline = [
-        {"$match": {"Year": year} if year else {}},
+        {"$match": {"Year": year}},
         {"$sort": {"session_key": -1}},
         {"$group": {
             "_id": "$name_acronym",
@@ -149,7 +198,6 @@ def get_grid_drivers(year: int = 2024) -> list[dict]:
         {"$sort": {"_id": 1}},
     ]
 
-    # Try openf1_drivers first
     results = list(db["openf1_drivers"].aggregate(pipeline))
     if results:
         return [

@@ -209,7 +209,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
         const drv = drivers.find((d: any) => d.code === driverCode);
         if (!drv?.races?.length) return;
         const mapped = drv.races.map((r: any) => {
-          const t = r.systems?.Thermal ?? {};
+          const t = r.systems?.['Tyre Management'] ?? r.systems?.['Lap Pace'] ?? {};
           return {
             race: r.race,
             health: t.health ?? 100,
