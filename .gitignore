@@ -14,7 +14,19 @@ frontend/.vercel/
 f1data/
 /data/
 /output/
-omnisuitef1/Data/
+omnisuitef1/
+*.zip
+
+# ─── Build output ────────────────────────────────────
+frontend/dist/
+
+# ─── Pipeline output ─────────────────────────────────
+pipeline/output/
+
+# ─── Misc dumps ──────────────────────────────────────
+envfileclone.txt
+data_quality_report.py
+mongodb_data_check.py
 
 # ─── ML models & caches ──────────────────────────────
 *.pt
