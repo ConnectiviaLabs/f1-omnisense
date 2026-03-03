@@ -63,6 +63,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rewrite /api/X → /api/local/X (frontend expects short paths, backend uses /api/local/)
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as _Request
+
+class _RewriteMiddleware(BaseHTTPMiddleware):
+    _PREFIXES = (
+        "/api/openf1/", "/api/jolpica/", "/api/driver_intel/",
+        "/api/circuit_intel/", "/api/pipeline/", "/api/constructor_profiles",
+    )
+    async def dispatch(self, request: _Request, call_next):
+        path = request.scope["path"]
+        for prefix in self._PREFIXES:
+            if path.startswith(prefix):
+                request.scope["path"] = path.replace("/api/", "/api/local/", 1)
+                break
+        return await call_next(request)
+
+app.add_middleware(_RewriteMiddleware)
+
 # Mount 3D model generation routes
 app.include_router(model_3d_router)
 mount_3d_static(app)
