@@ -14,6 +14,8 @@
     { "source": "/api/mcdriver/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mcdriver/:path" },
     { "source": "/api/mcracecontext/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mcracecontext/:path" },
     { "source": "/api/mccar-summary/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mccar-summary/:path" },
+    { "source": "/api/mccar-race-telemetry/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mccar-race-telemetry/:path" },
+    { "source": "/api/mccar-race-stints/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mccar-race-stints/:path" },
     { "source": "/api/mcdriver-summary/:path(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/mcdriver-summary/:path" },
     { "source": "/models/:file(.*\\.glb)", "destination": "/api/models?file=:file" },
     { "source": "/api/openf1/:endpoint(.*)", "destination": "https://u466anvcyk654s-8300.proxy.runpod.net/api/local/openf1/:endpoint" },

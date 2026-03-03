@@ -11,7 +11,8 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+import time
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/omni/analytics", tags=["OmniAnalytics"])
 
+# ── Dataset cache (TTL 5 min) ────────────────────────────────────────────
+_DS_CACHE: Dict[str, Tuple[TabularDataset, float]] = {}
+_DS_CACHE_TTL = 300  # seconds
+
 
 def _sanitize(obj):
     """Replace NaN/Inf with None for JSON serialization."""
@@ -43,7 +48,16 @@ def _sanitize(obj):
 
 
 def _build_dataset(driver_code: str) -> TabularDataset:
-    """Load race telemetry from MongoDB and wrap in a TabularDataset."""
+    """Load race telemetry from MongoDB and wrap in a TabularDataset.
+
+    Results are cached for 5 minutes to avoid redundant MongoDB loads
+    when forecasting multiple columns for the same driver.
+    """
+    now = time.time()
+    cached = _DS_CACHE.get(driver_code)
+    if cached and (now - cached[1]) < _DS_CACHE_TTL:
+        return cached[0]
+
     df = load_driver_race_telemetry(driver_code)
     if df.empty:
         raise HTTPException(404, f"No telemetry data for driver {driver_code}")
@@ -66,7 +80,9 @@ def _build_dataset(driver_code: str) -> TabularDataset:
         metric_cols=numeric_cols,
         timestamp_col=None,
     )
-    return TabularDataset(df=df, profile=profile)
+    ds = TabularDataset(df=df, profile=profile)
+    _DS_CACHE[driver_code] = (ds, time.time())
+    return ds
 
 
 def _quick_anomaly_summary(driver_code: str) -> dict | None:

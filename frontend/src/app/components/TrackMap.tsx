@@ -38,6 +38,8 @@ interface Point { x: number; y: number; }
 
 const SECTOR_COLORS = ['#e74c3c', '#3498db', '#f1c40f'];
 const DRS_COLOR = '#00ff88';
+const KERB_RED = '#e74c3c';
+const KERB_WHITE = '#f0f0f0';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function projectCoordinates(
@@ -113,6 +115,48 @@ function curvatureToColor(curvature: number, maxCurv: number): string {
   const r = 255;
   const g = Math.round((1 - f) * 255);
   return `rgb(${r},${g},60)`;
+}
+
+/** Compute perpendicular kerb markers at turn positions */
+function computeKerbs(
+  points: Point[],
+  turnPositions: number[],    // normalised 0-1
+  kerbLength: number = 10,
+): { x1: number; y1: number; x2: number; y2: number; position: number }[] {
+  const n = points.length;
+  const kerbs: { x1: number; y1: number; x2: number; y2: number; position: number }[] = [];
+  for (const pos of turnPositions) {
+    const idx = Math.round(pos * (n - 1));
+    const pt = points[Math.min(idx, n - 1)];
+    const prev = points[Math.max(idx - 2, 0)];
+    const next = points[Math.min(idx + 2, n - 1)];
+    // Direction tangent
+    const dx = next.x - prev.x;
+    const dy = next.y - prev.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    // Perpendicular
+    const nx = -dy / len;
+    const ny = dx / len;
+    kerbs.push({
+      x1: pt.x + nx * kerbLength,
+      y1: pt.y + ny * kerbLength,
+      x2: pt.x - nx * kerbLength,
+      y2: pt.y - ny * kerbLength,
+      position: pos,
+    });
+  }
+  return kerbs;
+}
+
+/** Map speed (km/h) to color: slow = red, medium = amber, fast = green */
+function speedToColor(speedKph: number): string {
+  const t = Math.min(Math.max((speedKph - 50) / 270, 0), 1); // 50-320 range
+  if (t < 0.33) {
+    return '#ef4444'; // slow — red
+  } else if (t < 0.66) {
+    return '#f59e0b'; // medium — amber
+  }
+  return '#22c55e'; // fast — green
 }
 
 /** Extract a slice of points for a DRS zone (handles wrap-around) */
@@ -191,16 +235,20 @@ export function TrackMap({
     return splitSectors(projected).map(pts => pts[Math.floor(pts.length / 2)]);
   }, [projected]);
 
-  // Speed gradient segments
+  // Speed gradient segments (finer step for smoother rendering)
   const speedSegments = useMemo(() => {
     if (colorMode !== 'speed' || projected.length < 3) return [];
     const curvatures = computeCurvature(projected);
     const maxCurv = Math.max(...curvatures.filter(c => c > 0), 0.01);
     const segments: { d: string; color: string }[] = [];
-    const step = 4;
+    const step = 2; // finer steps for smoother gradient
     for (let i = 0; i < projected.length - step; i += step) {
       const slice = projected.slice(i, i + step + 1);
-      const avgCurv = curvatures.slice(i, i + step + 1).reduce((a, b) => a + b, 0) / (step + 1);
+      // Smooth curvature with wider window
+      const windowStart = Math.max(0, i - 2);
+      const windowEnd = Math.min(curvatures.length, i + step + 3);
+      const window = curvatures.slice(windowStart, windowEnd);
+      const avgCurv = window.reduce((a, b) => a + b, 0) / window.length;
       segments.push({
         d: buildPathD(slice, false),
         color: curvatureToColor(avgCurv, maxCurv),
@@ -227,6 +275,12 @@ export function TrackMap({
       const pt = projected[Math.min(idx, projected.length - 1)];
       return { ...t, px: pt.x, py: pt.y };
     });
+  }, [turns, projected]);
+
+  // Kerb markers at turn apexes
+  const kerbMarkers = useMemo(() => {
+    if (!turns || turns.length === 0 || projected.length === 0) return [];
+    return computeKerbs(projected, turns.map(t => t.position), 9);
   }, [turns, projected]);
 
   // Car position dots
@@ -474,6 +528,38 @@ export function TrackMap({
             strokeLinejoin="round"
           />
 
+          {/* Road edge lines (track boundary markers) */}
+          <path
+            d={fullPathD}
+            fill="none"
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth="16"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {/* Kerb markers at corners */}
+          {kerbMarkers.map((k, i) => (
+            <g key={`kerb-${i}`}>
+              {/* Alternating red/white stripes perpendicular to track */}
+              <line
+                x1={k.x1} y1={k.y1} x2={k.x2} y2={k.y2}
+                stroke={KERB_RED}
+                strokeWidth="3"
+                strokeOpacity="0.6"
+                strokeDasharray="3 2"
+              />
+              <line
+                x1={k.x1} y1={k.y1} x2={k.x2} y2={k.y2}
+                stroke={KERB_WHITE}
+                strokeWidth="1.5"
+                strokeOpacity="0.4"
+                strokeDasharray="2 3"
+                strokeDashoffset="3"
+              />
+            </g>
+          ))}
+
           {/* DRS Zones */}
           {drsPaths.map((drs, i) => (
             <g key={`drs-${i}`}>
@@ -554,38 +640,60 @@ export function TrackMap({
             );
           })()}
 
-          {/* Turn markers */}
-          {turnPositions.map(turn => (
-            <g
-              key={`turn-${turn.number}`}
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={(e) => {
-                setHoveredTurn(turn);
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (rect) {
-                  setTooltipPos({
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top - 60,
-                  });
-                }
-              }}
-              onMouseLeave={() => setHoveredTurn(null)}
-            >
-              <circle cx={turn.px} cy={turn.py} r="6" fill="#0D1117" fillOpacity="0.7" />
-              <circle cx={turn.px} cy={turn.py} r="5" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.8" />
-              <text
-                x={turn.px}
-                y={turn.py + 2.5}
-                fill="rgba(255,255,255,0.7)"
-                fontSize="5.5"
-                fontWeight="700"
-                fontFamily="monospace"
-                textAnchor="middle"
+          {/* Turn markers with speed badges */}
+          {turnPositions.map(turn => {
+            const color = turn.speedKph ? speedToColor(turn.speedKph) : 'rgba(255,255,255,0.5)';
+            return (
+              <g
+                key={`turn-${turn.number}`}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => {
+                  setHoveredTurn(turn);
+                  const rect = containerRef.current?.getBoundingClientRect();
+                  if (rect) {
+                    setTooltipPos({
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top - 60,
+                    });
+                  }
+                }}
+                onMouseLeave={() => setHoveredTurn(null)}
               >
-                {turn.number}
-              </text>
-            </g>
-          ))}
+                {/* Glow ring color-coded by speed */}
+                <circle cx={turn.px} cy={turn.py} r="8" fill={color} fillOpacity="0.1" />
+                {/* Background */}
+                <circle cx={turn.px} cy={turn.py} r="6" fill="#0D1117" fillOpacity="0.85" />
+                {/* Border ring */}
+                <circle cx={turn.px} cy={turn.py} r="5.5" fill="none" stroke={color} strokeWidth="0.8" strokeOpacity="0.6" />
+                {/* Turn number */}
+                <text
+                  x={turn.px}
+                  y={turn.py + 2.5}
+                  fill={color}
+                  fontSize="5.5"
+                  fontWeight="700"
+                  fontFamily="monospace"
+                  textAnchor="middle"
+                >
+                  {turn.number}
+                </text>
+                {/* Speed badge (small text below for named turns) */}
+                {turn.name && turn.name !== `Turn ${turn.number}` && (
+                  <text
+                    x={turn.px}
+                    y={turn.py + 13}
+                    fill="rgba(255,255,255,0.4)"
+                    fontSize="4"
+                    fontWeight="600"
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >
+                    {turn.name}
+                  </text>
+                )}
+              </g>
+            );
+          })}
 
           {/* Car position dots */}
           {carDots.map((car) => (

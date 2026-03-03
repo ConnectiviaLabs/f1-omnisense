@@ -15,6 +15,11 @@ function localDataPlugin() {
         const url = new URL(req.url, 'http://localhost');
         const filePath = url.pathname.replace(/^\//, '');
 
+        // These endpoints are served by the Python backend — let proxy handle them
+        if (filePath.startsWith('strategy/')) { next(); return; }
+        if (filePath.startsWith('mccar-summary/')) { next(); return; }
+        if (filePath.startsWith('mcdriver-summary/')) { next(); return; }
+
         // Map routes to files
         const routes: Record<string, string> = {
           'openf1/sessions': 'data/other/openf1/sessions.json',
@@ -554,6 +559,9 @@ export default defineConfig({
         target: 'http://127.0.0.1:8300',
         changeOrigin: true,
       },
+      '/api/local/mccar-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/mcdriver-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/strategy': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/jolpica': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/openf1': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/opponents': { target: 'http://127.0.0.1:8300', changeOrigin: true },

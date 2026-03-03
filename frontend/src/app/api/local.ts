@@ -47,6 +47,34 @@ export const pipeline = {
   videos: () => fetchLocal<any>('pipeline/videos'),
 };
 
+// Strategy & model data
+export const strategy = {
+  tracker: (sessionKey?: number, year?: number) => {
+    const p = sessionKey ? `?session_key=${sessionKey}` : year ? `?year=${year}` : '';
+    return fetchLocal<any>(`local/strategy/tracker${p}`);
+  },
+  simulations: (sessionKey?: number) => {
+    const p = sessionKey ? `?session_key=${sessionKey}` : '';
+    return fetchLocal<any>(`local/strategy/simulations${p}`);
+  },
+  degradation: (circuit?: string) => {
+    const p = circuit ? `?circuit=${encodeURIComponent(circuit)}` : '';
+    return fetchLocal<any>(`local/strategy/degradation${p}`);
+  },
+  elt: (year?: number, circuit?: string) => {
+    const params = new URLSearchParams();
+    if (year) params.set('year', String(year));
+    if (circuit) params.set('circuit', circuit);
+    const qs = params.toString();
+    return fetchLocal<any>(`local/strategy/elt${qs ? '?' + qs : ''}`);
+  },
+  scProbability: () => fetchLocal<any>('local/strategy/sc-probability'),
+  battleIntel: (sessionKey?: number) => {
+    const p = sessionKey ? `?session_key=${sessionKey}` : '';
+    return fetchLocal<any>(`local/strategy/battle-intel${p}`);
+  },
+};
+
 // CSV data fetch helper
 export async function fetchCSV(path: string): Promise<string> {
   const res = await fetch(`${LOCAL_BASE}/${path}`);

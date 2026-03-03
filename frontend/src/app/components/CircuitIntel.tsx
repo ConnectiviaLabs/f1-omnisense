@@ -1,11 +1,45 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Cell,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid,
 } from 'recharts';
 import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight } from 'lucide-react';
 import type { CircuitIntelligence, CircuitPitLoss, RaceAirDensity } from '../types';
 import * as api from '../api/circuitIntel';
+import { TrackMap } from './TrackMap';
+import { CIRCUITS } from '../data/circuits';
+
+// Map circuit_slug (e.g. "abu_dhabi") → CIRCUITS entry via geojsonPath
+const SLUG_TO_CIRCUIT = new Map(
+  CIRCUITS.map(c => {
+    const slug = c.geojsonPath.replace('/circuits/', '').replace('.geojson', '');
+    return [slug, c] as const;
+  })
+);
+// Map MongoDB circuit_slug → CIRCUITS geojson slug
+const NAME_ALIASES: Record<string, string> = {
+  'albert_park': 'australian',
+  'americas': 'usa',
+  'baku': 'azerbaijan',
+  'catalunya': 'spanish',
+  'hungaroring': 'hungarian',
+  'imola': 'emilia_romagna',
+  'interlagos': 'brazilian',
+  'jeddah': 'saudi_arabian',
+  'losail': 'qatar',
+  'marina_bay': 'singapore',
+  'monza': 'italian',
+  'red_bull_ring': 'austrian',
+  'rodriguez': 'mexico_city',
+  'shanghai': 'chinese',
+  'silverstone': 'british',
+  'spa': 'belgian',
+  'suzuka': 'japanese',
+  'vegas': 'las_vegas',
+  'villeneuve': 'canadian',
+  'yas_marina': 'abu_dhabi',
+  'zandvoort': 'dutch',
+};
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
@@ -68,15 +102,6 @@ export function CircuitIntel() {
     [pitLoss]
   );
 
-  // Color scale: green (low loss) → yellow → red (high loss)
-  const pitLossColor = (value: number) => {
-    const min = pitLossRanking.length ? pitLossRanking[pitLossRanking.length - 1].est_pit_lane_loss_s : 16;
-    const max = pitLossRanking.length ? pitLossRanking[0].est_pit_lane_loss_s : 30;
-    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
-    const r = Math.round(t < 0.5 ? t * 2 * 255 : 255);
-    const g = Math.round(t < 0.5 ? 255 : (1 - t) * 2 * 255);
-    return `rgb(${r},${g},60)`;
-  };
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
@@ -143,6 +168,28 @@ export function CircuitIntel() {
               </div>
             </div>
 
+            {/* Track Layout Map */}
+            {(() => {
+              const slug = selected!;
+              const ci = SLUG_TO_CIRCUIT.get(slug) ?? SLUG_TO_CIRCUIT.get(NAME_ALIASES[slug] ?? '');
+              if (!ci) return null;
+              return (
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl overflow-hidden">
+                  <TrackMap
+                    geojsonPath={ci.geojsonPath}
+                    circuitName={ci.circuitName}
+                    locality={ci.locality}
+                    country={ci.country}
+                    lengthKm={ci.lengthKm}
+                    turns={ci.turns}
+                    drsZones={ci.drsZones}
+                    colorMode="speed"
+                    height={400}
+                  />
+                </div>
+              );
+            })()}
+
             {/* Pit Loss */}
             {selectedPitLoss && (
               <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
@@ -187,28 +234,41 @@ export function CircuitIntel() {
               </div>
             )}
 
-            {/* Pit Loss Ranking (all circuits) */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-              <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Timer className="w-4 h-4" /> Pit Lane Loss Ranking (All Circuits)</h3>
-              <ResponsiveContainer width="100%" height={Math.max(300, pitLossRanking.length * 28)}>
-                <BarChart data={pitLossRanking} layout="vertical" margin={{ left: 10 }}>
-                  <XAxis type="number" tick={{ fill: '#888', fontSize: 11 }} unit="s" />
-                  <YAxis type="category" dataKey="circuit" tick={{ fill: '#888', fontSize: 10 }} width={120} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="est_pit_lane_loss_s" name="Pit Loss (s)" radius={[0, 4, 4, 0]}>
-                    {pitLossRanking.map((entry) => (
-                      <Cell
-                        key={entry.circuit}
-                        fill={entry.circuit === selected ? '#FF8000' : pitLossColor(entry.est_pit_lane_loss_s)}
-                        stroke={entry.circuit === selected ? '#FF8000' : 'none'}
-                        strokeWidth={entry.circuit === selected ? 2 : 0}
-                        opacity={entry.circuit === selected ? 1 : 0.75}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {/* Pit Loss Rank */}
+            {selectedPitLoss && pitLossRanking.length > 0 && (() => {
+              const rank = pitLossRanking.findIndex(p => p.circuit === selected) + 1;
+              const total = pitLossRanking.length;
+              const val = selectedPitLoss.est_pit_lane_loss_s;
+              const fastest = pitLossRanking[pitLossRanking.length - 1].est_pit_lane_loss_s;
+              const slowest = pitLossRanking[0].est_pit_lane_loss_s;
+              const pct = ((val - fastest) / (slowest - fastest)) * 100;
+              return (
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                  <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                    <Timer className="w-4 h-4" /> Pit Lane Loss Rank
+                  </h3>
+                  <div className="flex items-center gap-4 mb-3">
+                    <div className="text-center">
+                      <div className="text-2xl font-mono font-bold text-[#FF8000]">{rank}<span className="text-sm text-muted-foreground font-normal">/{total}</span></div>
+                      <div className="text-[10px] text-muted-foreground">Slowest pit lane</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                        <span>Fastest ({fastest.toFixed(1)}s)</span>
+                        <span>Slowest ({slowest.toFixed(1)}s)</span>
+                      </div>
+                      <div className="h-2.5 bg-[#0D1117] rounded-full overflow-hidden relative">
+                        <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #22c55e, #eab308, #ef4444)' , opacity: 0.3 }} />
+                        <div
+                          className="absolute top-0 w-3 h-2.5 bg-[#FF8000] rounded-full border-2 border-[#1A1F2E]"
+                          style={{ left: `calc(${pct}% - 6px)` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

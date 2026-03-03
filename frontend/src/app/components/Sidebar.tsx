@@ -9,6 +9,8 @@ import {
   Box,
   Users,
   MapPin,
+  Gauge,
+  Flag,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
@@ -24,6 +26,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     label: 'DRIVER & CAR',
     items: [
       { id: 'driver-intel', label: 'Driver Intel', icon: Users },
+      { id: 'car' as ViewType, label: 'Car Telemetry', icon: Gauge },
     ],
   },
   {
@@ -31,6 +34,7 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     items: [
       { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
       { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
+      { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
       { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
       { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
     ],

@@ -165,6 +165,15 @@ def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
                     "team": r.get("constructor_name", "Unknown"),
                 }
 
+        # Build driver number lookup from openf1_drivers
+        number_lookup: dict[str, int] = {}
+        for r in db["openf1_drivers"].aggregate([
+            {"$sort": {"session_key": -1}},
+            {"$group": {"_id": "$name_acronym", "num": {"$first": "$driver_number"}}},
+        ]):
+            if r["_id"] and r.get("num"):
+                number_lookup[r["_id"]] = r["num"]
+
         qualified = []
         for code in sorted(all_codes):
             if not code:
@@ -186,7 +195,7 @@ def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
                     "code": code,
                     "name": info.get("name", code),
                     "team": info.get("team", "Unknown"),
-                    "number": 0,
+                    "number": number_lookup.get(code, 0),
                 })
             else:
                 logger.info(
@@ -228,7 +237,16 @@ def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
         doc = db["fastf1_laps"].find_one({"Driver": d, "Year": year}, {"Team": 1})
         teams[d] = doc.get("Team", "Unknown") if doc else "Unknown"
 
+    # Lookup driver numbers from openf1_drivers
+    num_lookup: dict[str, int] = {}
+    for r in db["openf1_drivers"].aggregate([
+        {"$sort": {"session_key": -1}},
+        {"$group": {"_id": "$name_acronym", "num": {"$first": "$driver_number"}}},
+    ]):
+        if r["_id"] and r.get("num"):
+            num_lookup[r["_id"]] = r["num"]
+
     return [
-        {"code": d, "name": d, "team": teams.get(d, "Unknown"), "number": 0}
+        {"code": d, "name": d, "team": teams.get(d, "Unknown"), "number": num_lookup.get(d, 0)}
         for d in sorted(drivers)
     ]

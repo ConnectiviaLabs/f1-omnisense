@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Trophy, TrendingUp, Loader2, Flag, Users, Timer, Gauge, Activity, Disc, Shield,
-  Zap, AlertTriangle, ChevronUp, ChevronDown, Minus,
+  Zap, AlertTriangle, ChevronUp, ChevronDown, Minus, Brain, CheckCircle, XCircle,
 } from 'lucide-react';
 import { HealthGauge } from './HealthGauge';
 import {
@@ -390,6 +390,29 @@ export function McLarenAnalytics() {
   // Driver colors
   const driverColors = ['#FF8000', '#00d4ff', '#22c55e', '#f59e0b'];
 
+  // ─── KeX WISE Insights (LLM-generated) ─────────────────────────────
+  interface KexInsight {
+    pillar: string;
+    driver: string;
+    text: string;
+    grounding_score: number;
+    model_used: string;
+    sentiment?: { label: string; score: number };
+    entities?: { text: string; label: string }[];
+    topics?: string[];
+  }
+  const [kexInsights, setKexInsights] = useState<KexInsight[]>([]);
+  const [kexLoading, setKexLoading] = useState(false);
+  useEffect(() => {
+    setKexLoading(true);
+    setKexInsights([]);
+    fetch(`/api/omni/kex/mclaren-briefing/${year}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.insights) setKexInsights(d.insights); })
+      .catch(() => {})
+      .finally(() => setKexLoading(false));
+  }, [year]);
+
   // ─── Intelligence Briefing — auto-extracted insights ──────────────
   interface Insight {
     icon: React.ElementType;
@@ -586,6 +609,149 @@ export function McLarenAnalytics() {
               );
             })}
           </div>
+        </>
+      )}
+
+      {/* KeX WISE — LLM-generated insights */}
+      {(kexLoading || kexInsights.length > 0) && (
+        <>
+          <Divider label="WISE ANALYSIS" />
+          {kexLoading ? (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+              <span className="text-[11px] text-muted-foreground">Generating WISE insights…</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {kexInsights.map((ins, i) => {
+                const pillarColors: Record<string, string> = {
+                  realtime: '#3b82f6', anomaly: '#f59e0b', forecast: '#a855f7',
+                };
+                const pillarColor = pillarColors[ins.pillar] || '#FF8000';
+                const verified = ins.grounding_score >= 0.5;
+
+                // Build inline-annotated text fragments
+                const entityColors: Record<string, { bg: string; text: string }> = {
+                  GPE: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa' },
+                  LOC: { bg: 'rgba(59,130,246,0.15)', text: '#60a5fa' },
+                  ORG: { bg: 'rgba(168,85,247,0.15)', text: '#c084fc' },
+                  PERSON: { bg: 'rgba(34,197,94,0.15)', text: '#4ade80' },
+                  DATE: { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24' },
+                  TIME: { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24' },
+                  CARDINAL: { bg: 'rgba(236,72,153,0.12)', text: '#f472b6' },
+                  ORDINAL: { bg: 'rgba(236,72,153,0.12)', text: '#f472b6' },
+                  QUANTITY: { bg: 'rgba(236,72,153,0.12)', text: '#f472b6' },
+                  PERCENT: { bg: 'rgba(236,72,153,0.12)', text: '#f472b6' },
+                };
+                const defaultEntityStyle = { bg: 'rgba(148,163,184,0.12)', text: '#94a3b8' };
+
+                // Build annotation spans sorted longest-first for greedy matching
+                const annotations: { text: string; type: 'entity' | 'topic'; label: string; style: { bg: string; text: string } }[] = [];
+                for (const e of (ins.entities || [])) {
+                  if (e.text.length > 1) {
+                    annotations.push({
+                      text: e.text,
+                      type: 'entity',
+                      label: e.label,
+                      style: entityColors[e.label] || defaultEntityStyle,
+                    });
+                  }
+                }
+                for (const t of (ins.topics || [])) {
+                  if (!annotations.some(a => a.text.toLowerCase() === t.toLowerCase())) {
+                    annotations.push({
+                      text: t,
+                      type: 'topic',
+                      label: 'TOPIC',
+                      style: { bg: 'rgba(255,128,0,0.12)', text: '#FF8000' },
+                    });
+                  }
+                }
+                annotations.sort((a, b) => b.text.length - a.text.length);
+
+                // Annotate text: find and wrap matches
+                const annotateText = (raw: string) => {
+                  if (!annotations.length) return [<span key="raw">{raw}</span>];
+
+                  type Frag = { start: number; end: number; ann: typeof annotations[0] };
+                  const frags: Frag[] = [];
+                  const taken = new Uint8Array(raw.length);
+
+                  for (const ann of annotations) {
+                    const regex = new RegExp(ann.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                    let m: RegExpExecArray | null;
+                    while ((m = regex.exec(raw)) !== null) {
+                      const s = m.index, e = s + m[0].length;
+                      let overlap = false;
+                      for (let k = s; k < e; k++) { if (taken[k]) { overlap = true; break; } }
+                      if (!overlap) {
+                        frags.push({ start: s, end: e, ann });
+                        for (let k = s; k < e; k++) taken[k] = 1;
+                      }
+                    }
+                  }
+                  frags.sort((a, b) => a.start - b.start);
+
+                  const result: React.ReactNode[] = [];
+                  let cursor = 0;
+                  for (const f of frags) {
+                    if (f.start > cursor) result.push(<span key={`t${cursor}`}>{raw.slice(cursor, f.start)}</span>);
+                    result.push(
+                      <span
+                        key={`a${f.start}`}
+                        className="relative group/ann cursor-default rounded-[2px] px-[1px]"
+                        style={{ background: f.ann.style.bg, color: f.ann.style.text }}
+                        title={`${f.ann.label}`}
+                      >
+                        {raw.slice(f.start, f.end)}
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/ann:block
+                          text-[7px] font-mono px-1 py-0.5 rounded bg-[#0D1117] border border-[rgba(255,128,0,0.2)]
+                          text-muted-foreground whitespace-nowrap z-10 pointer-events-none">
+                          {f.ann.label}
+                        </span>
+                      </span>
+                    );
+                    cursor = f.end;
+                  }
+                  if (cursor < raw.length) result.push(<span key={`t${cursor}`}>{raw.slice(cursor)}</span>);
+                  return result;
+                };
+
+                return (
+                  <div key={i} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Brain className="w-3.5 h-3.5 shrink-0 text-[#FF8000]" />
+                      <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: `${pillarColor}20`, color: pillarColor }}>
+                        {ins.pillar.toUpperCase()}
+                      </span>
+                      <span className="text-[10px] font-mono text-[#FF8000]">{ins.driver}</span>
+                      {ins.sentiment && (
+                        <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
+                          ins.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
+                          ins.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
+                          'bg-zinc-500/15 text-zinc-400'
+                        }`}>
+                          {ins.sentiment.label === 'positive' ? '▲' : ins.sentiment.label === 'negative' ? '▼' : '●'} {ins.sentiment.score}
+                        </span>
+                      )}
+                      <div className="flex-1" />
+                      {verified
+                        ? <CheckCircle className="w-3 h-3 text-green-400" />
+                        : <XCircle className="w-3 h-3 text-red-400/50" />}
+                      <span className="text-[9px] text-muted-foreground font-mono">{ins.grounding_score.toFixed(2)}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-line">
+                      {annotateText(ins.text)}
+                    </p>
+                    {ins.model_used && (
+                      <p className="text-[9px] text-muted-foreground/50 mt-1.5 font-mono">via {ins.model_used}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

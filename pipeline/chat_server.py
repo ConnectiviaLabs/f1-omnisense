@@ -980,6 +980,110 @@ async def strategy_tracker(session_key: int = None, year: int = None):
     }
 
 
+@app.get("/api/local/strategy/battle-intel")
+async def strategy_battle_intel(session_key: int = None):
+    """Per-driver gap evolution insights: undercut threats, closing trends."""
+    db = get_data_db()
+
+    # Find session
+    if session_key:
+        sess = db["openf1_sessions"].find_one({"session_key": session_key, "session_type": "Race"}, {"_id": 0})
+    else:
+        sess = db["openf1_sessions"].find_one({"session_type": "Race"}, {"_id": 0}, sort=[("session_key", -1)])
+    if not sess:
+        return {"battles": [], "session_key": None}
+
+    sk = sess["session_key"]
+
+    # Driver name map
+    drivers_raw = list(db["openf1_drivers"].find(
+        {"session_key": sk},
+        {"_id": 0, "driver_number": 1, "name_acronym": 1, "team_name": 1}
+    ))
+    drv_map = {d["driver_number"]: {"name": d.get("name_acronym", ""), "team": d.get("team_name", "")} for d in drivers_raw}
+
+    # Get the last ~20 laps of interval data (most recent readings)
+    intervals = list(db["openf1_intervals"].find(
+        {"session_key": sk},
+        {"_id": 0, "driver_number": 1, "gap_to_leader": 1, "interval": 1, "date": 1}
+    ).sort("date", -1).limit(2000))
+
+    if not intervals:
+        return {"battles": [], "session_key": sk}
+
+    # Group by driver, take last 5 readings per driver
+    from collections import defaultdict
+    by_driver = defaultdict(list)
+    for iv in intervals:
+        dn = iv.get("driver_number")
+        if dn is not None:
+            by_driver[dn].append(iv)
+
+    battles = []
+    for dn, readings in by_driver.items():
+        readings = sorted(readings, key=lambda x: x.get("date", ""))
+        recent = readings[-5:]  # last 5 readings
+        info = drv_map.get(dn, {"name": str(dn), "team": "Unknown"})
+
+        # Latest gap
+        latest = recent[-1]
+        gap = latest.get("gap_to_leader")
+        interval_val = latest.get("interval")
+
+        # Parse numeric values
+        try:
+            gap_num = float(gap) if gap is not None else None
+        except (ValueError, TypeError):
+            gap_num = None
+        try:
+            interval_num = float(interval_val) if interval_val is not None else None
+        except (ValueError, TypeError):
+            interval_num = None
+
+        # Gap trend from last 5 readings
+        gap_values = []
+        for r in recent:
+            try:
+                g = float(r.get("gap_to_leader", 0))
+                gap_values.append(g)
+            except (ValueError, TypeError):
+                pass
+
+        trend = 0  # 0 = stable
+        if len(gap_values) >= 3:
+            delta = gap_values[-1] - gap_values[0]
+            if delta < -0.3:
+                trend = 1   # closing
+            elif delta > 0.3:
+                trend = -1  # falling back
+
+        # Undercut threat: within 1.5s of car ahead
+        undercut = False
+        if interval_num is not None and 0 < abs(interval_num) < 1.5:
+            undercut = True
+
+        battles.append({
+            "driver": info["name"],
+            "team": info["team"],
+            "driver_number": dn,
+            "gap_to_leader": round(gap_num, 2) if gap_num is not None else None,
+            "interval": round(interval_num, 2) if interval_num is not None else None,
+            "trend": trend,
+            "undercut_threat": undercut,
+        })
+
+    # Sort by gap to leader
+    battles.sort(key=lambda x: x["gap_to_leader"] if x["gap_to_leader"] is not None else 999)
+
+    return {
+        "session_key": sk,
+        "circuit": sess.get("circuit_short_name", ""),
+        "battles": battles,
+        "undercut_count": sum(1 for b in battles if b["undercut_threat"]),
+        "closing_count": sum(1 for b in battles if b["trend"] == 1),
+    }
+
+
 @app.get("/api/local/strategy/simulations")
 async def strategy_simulations(session_key: int = None):
     """Get pre-computed strategy simulation results from the strategy_simulator notebook."""
@@ -993,6 +1097,66 @@ async def strategy_simulations(session_key: int = None):
     ).sort("created_at", -1).limit(10))
 
     return {"simulations": docs, "count": len(docs)}
+
+
+@app.get("/api/local/strategy/degradation")
+async def strategy_degradation(circuit: str = None):
+    """Tyre degradation curves for a circuit from the tyre_degradation_model."""
+    db = get_data_db()
+    if not circuit:
+        sess = db["openf1_sessions"].find_one(
+            {"session_type": "Race"}, {"_id": 0, "circuit_short_name": 1},
+            sort=[("session_key", -1)]
+        )
+        circuit = sess["circuit_short_name"] if sess else "Sakhir"
+
+    curves = list(db["tyre_degradation_curves"].find(
+        {"circuit": {"$regex": circuit, "$options": "i"}},
+        {"_id": 0}
+    ))
+    if not curves:
+        curves = list(db["tyre_degradation_curves"].find(
+            {"circuit": "_global"}, {"_id": 0}
+        ))
+
+    return {"circuit": circuit, "curves": curves, "count": len(curves)}
+
+
+@app.get("/api/local/strategy/elt")
+async def strategy_elt(year: int = None, circuit: str = None):
+    """ELT parameters: circuit baselines and driver deltas."""
+    db = get_data_db()
+    baseline_q = {"type": "circuit_baseline"}
+    if year:
+        baseline_q["year"] = year
+    if circuit:
+        baseline_q["circuit"] = {"$regex": circuit, "$options": "i"}
+
+    baselines = list(db["elt_parameters"].find(baseline_q, {"_id": 0}).sort("baseline_lap_time", 1))
+
+    driver_q = {"type": "driver_delta"}
+    drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+
+    return {
+        "baselines": baselines,
+        "driver_deltas": drivers,
+        "baseline_count": len(baselines),
+        "driver_count": len(drivers),
+    }
+
+
+@app.get("/api/local/strategy/sc-probability")
+async def strategy_sc_probability():
+    """Safety Car probability model metadata and feature importances."""
+    db = get_data_db()
+    metadata = db["sc_probability_model"].find_one({"type": "model_metadata"}, {"_id": 0})
+    feat_imp = db["sc_probability_model"].find_one({"type": "feature_importance"}, {"_id": 0})
+
+    return {
+        "metadata": metadata,
+        "feature_importances": feat_imp.get("features", {}) if feat_imp else {},
+        "circuit_sc_rates": metadata.get("circuit_sc_rates", {}) if metadata else {},
+    }
 
 
 def _build_session_map():
@@ -1312,6 +1476,29 @@ def _aggregate_telemetry_summary(docs: list[dict]) -> list[dict]:
     summaries.sort(key=lambda x: x["race"])
     return summaries
 
+@app.get("/api/local/mccar-summary/meta")
+async def mccar_summary_meta():
+    """Return available years, drivers, and races from telemetry_race_summary."""
+    db = get_data_db()
+    coll = db["telemetry_race_summary"]
+    pipeline_years = [
+        {"$group": {"_id": "$Year"}},
+        {"$sort": {"_id": 1}},
+    ]
+    years = sorted(set(int(d["_id"]) for d in coll.aggregate(pipeline_years) if d["_id"]))
+    drivers = sorted(set(str(d) for d in coll.distinct("Driver") if d))
+    races_by_year: dict[str, list[str]] = {}
+    drivers_by_year: dict[str, list[str]] = {}
+    for y in years:
+        raw = coll.distinct("Race", {"Year": {"$in": [y, str(y)]}})
+        races_by_year[str(y)] = sorted(
+            set(r.replace(" Grand Prix", "") for r in raw if r)
+        )
+        raw_drivers = coll.distinct("Driver", {"Year": {"$in": [y, str(y)]}})
+        drivers_by_year[str(y)] = sorted(set(str(d) for d in raw_drivers if d))
+    return {"years": years, "drivers": drivers, "races_by_year": races_by_year, "drivers_by_year": drivers_by_year}
+
+
 @app.get("/api/local/mccar-summary/{year}/{driver}")
 async def mccar_summary(year: str, driver: str):
     """Aggregate telemetry into CarSummary[] format from telemetry_race_summary."""
@@ -1324,19 +1511,26 @@ async def mccar_summary(year: str, driver: str):
     ))
     summaries = []
     for d in docs:
+        samples = d.get("samples", 0)
+        avg_speed = d.get("avg_speed", 0)
+        # Skip races with too few samples or suspiciously low avg speed (bad telemetry)
+        if samples < 1000 or avg_speed < 30:
+            continue
         race = d.get("Race", "Unknown")
         short_name = race.replace(" Grand Prix", "")
+        # Filter out null/None/empty compounds
+        compounds = [c for c in d.get("compounds", []) if c and c != "None" and c != "UNKNOWN"]
         summaries.append({
             "race": short_name,
-            "avgSpeed": d.get("avg_speed", 0),
+            "avgSpeed": avg_speed,
             "topSpeed": d.get("top_speed", 0),
             "avgRPM": d.get("avg_rpm", 0),
             "maxRPM": d.get("max_rpm", 0),
             "avgThrottle": d.get("avg_throttle", 0),
             "brakePct": d.get("brake_pct", 0),
             "drsPct": d.get("drs_pct", 0),
-            "compounds": d.get("compounds", []),
-            "samples": d.get("samples", 0),
+            "compounds": compounds,
+            "samples": samples,
         })
     summaries.sort(key=lambda x: x["race"])
     return summaries
@@ -1399,34 +1593,39 @@ async def mclaren_tire_strategy(year: str):
     return result
 
 
-def _decompress_telemetry(db, source_file: str) -> list[dict]:
-    """Decompress telemetry from telemetry_compressed for a specific race.
+# ── Telemetry decompression cache ────────────────────────────────────
+# Keeps the last 3 decompressed year DataFrames in memory so switching
+# races within the same year is instant instead of re-decompressing.
+_telemetry_cache: dict[str, "pd.DataFrame"] = {}
+_TELEMETRY_CACHE_MAX = 3
+_driver_num_to_code: dict[str, str] = {}
 
-    source_file: e.g. "2024_Abu_Dhabi_Grand_Prix_Race.csv"
-    Returns list of dicts with telemetry fields.
-    """
+
+def _get_driver_num_to_code(db) -> dict[str, str]:
+    """Cached driver number → acronym mapping."""
+    global _driver_num_to_code
+    if not _driver_num_to_code:
+        for doc in db["openf1_drivers"].find({}, {"driver_number": 1, "name_acronym": 1, "_id": 0}):
+            _driver_num_to_code[str(doc["driver_number"])] = doc["name_acronym"]
+    return _driver_num_to_code
+
+
+def _get_year_telemetry(db, year: str) -> "pd.DataFrame":
+    """Load and cache a full year's decompressed telemetry DataFrame."""
     import gzip as _gzip
     import pickle as _pickle
+    import pandas as pd
 
-    # Parse year from source_file to find the right compressed chunk
-    parts = source_file.replace(".csv", "").split("_")
-    year = parts[0] if parts else ""
-    # The compressed filename is like "2024_R.parquet"
+    if year in _telemetry_cache:
+        return _telemetry_cache[year]
+
     compressed_name = f"{year}_R.parquet"
-
-    # Build driver number → code mapping
-    num_to_code = {}
-    for doc in db["openf1_drivers"].find({}, {"driver_number": 1, "name_acronym": 1, "_id": 0}):
-        num_to_code[str(doc["driver_number"])] = doc["name_acronym"]
-
-    # Find and decompress chunks for this year's race
     chunks = list(db["telemetry_compressed"].find(
         {"filename": compressed_name},
         {"data": 1, "chunk": 1, "_id": 0},
     ))
     chunks.sort(key=lambda d: d.get("chunk", 0))
 
-    import pandas as pd
     frames = []
     for doc in chunks:
         try:
@@ -1436,23 +1635,13 @@ def _decompress_telemetry(db, source_file: str) -> list[dict]:
             pass
 
     if not frames:
-        return []
+        _telemetry_cache[year] = pd.DataFrame()
+        return _telemetry_cache[year]
 
     tel = pd.concat(frames, ignore_index=True)
+    num_to_code = _get_driver_num_to_code(db)
     tel["Driver"] = tel["Driver"].astype(str).map(num_to_code)
     tel = tel.dropna(subset=["Driver"])
-
-    # Filter to specific race from source_file
-    # "2024_Abu_Dhabi_Grand_Prix_Race.csv" → "Abu Dhabi Grand Prix"
-    race_parts = parts[1:]  # remove year
-    if race_parts and race_parts[-1] == "Race":
-        race_parts = race_parts[:-1]
-    race_name = " ".join(race_parts)
-    if race_name:
-        tel = tel[tel["Race"] == race_name]
-
-    if tel.empty:
-        return []
 
     # Rename LapTime_s to LapTime string
     if "LapTime_s" in tel.columns:
@@ -1463,6 +1652,42 @@ def _decompress_telemetry(db, source_file: str) -> list[dict]:
             return f"0 days 00:{int(m):02d}:{sec:06.3f}"
         tel["LapTime"] = tel["LapTime_s"].apply(_fmt_lt)
         tel = tel.drop(columns=["LapTime_s"])
+
+    # Evict oldest if cache is full
+    if len(_telemetry_cache) >= _TELEMETRY_CACHE_MAX:
+        oldest = next(iter(_telemetry_cache))
+        del _telemetry_cache[oldest]
+
+    _telemetry_cache[year] = tel
+    return tel
+
+
+def _decompress_telemetry(db, source_file: str) -> list[dict]:
+    """Decompress telemetry from telemetry_compressed for a specific race.
+
+    source_file: e.g. "2024_Abu_Dhabi_Grand_Prix_Race.csv"
+    Returns list of dicts with telemetry fields.
+    """
+    import pandas as pd
+
+    parts = source_file.replace(".csv", "").split("_")
+    year = parts[0] if parts else ""
+
+    tel = _get_year_telemetry(db, year)
+    if tel.empty:
+        return []
+
+    # Filter to specific race
+    # "2024_Abu_Dhabi_Grand_Prix_Race.csv" → "Abu Dhabi Grand Prix"
+    race_parts = parts[1:]  # remove year
+    if race_parts and race_parts[-1] == "Race":
+        race_parts = race_parts[:-1]
+    race_name = " ".join(race_parts)
+    if race_name:
+        tel = tel[tel["Race"] == race_name]
+
+    if tel.empty:
+        return []
 
     return tel.to_dict("records")
 
@@ -1508,6 +1733,68 @@ def _biometrics_to_csv(docs: list[dict]) -> str:
             row.append(s)
         lines.append(",".join(row))
     return "\n".join(lines)
+
+
+@app.get("/api/local/mccar-race-telemetry/{year}/{race}")
+async def mccar_race_telemetry(year: str, race: str, max_per_driver: int = 600):
+    """Return race telemetry as JSON from MongoDB telemetry_compressed.
+
+    Server-side downsampling: returns at most `max_per_driver` rows per driver
+    (frontend already downsamples to 500, so shipping 100K+ rows is wasteful).
+    """
+    db = get_data_db()
+    race_name = f"{year}_{race.replace(' ', '_')}_Grand_Prix_Race.csv"
+    docs = _decompress_telemetry(db, race_name)
+
+    # Group by driver and downsample each
+    from collections import defaultdict
+    by_driver: dict[str, list] = defaultdict(list)
+    for d in docs:
+        by_driver[d.get("Driver", "")].append(d)
+
+    fields = ("Speed", "RPM", "nGear", "Throttle", "Brake", "DRS",
+              "Distance", "Driver", "LapNumber", "LapTime", "Compound")
+    out = []
+    for drv, rows in by_driver.items():
+        step = max(1, len(rows) // max_per_driver)
+        for i in range(0, len(rows), step):
+            d = rows[i]
+            out.append({f: d.get(f) for f in fields})
+    return out
+
+
+@app.get("/api/local/mccar-race-stints/{year}/{race}")
+async def mccar_race_stints(year: str, race: str):
+    """Return tire stints for a race as JSON from MongoDB telemetry_lap_summary."""
+    db = get_data_db()
+    year_int = int(year) if year.isdigit() else year
+    race_pattern = race.replace("_", " ")
+    pipeline_agg = [
+        {"$match": {"Year": {"$in": [year, year_int]}, "Compound": {"$ne": None}}},
+        {"$group": {
+            "_id": {"Driver": "$Driver", "Race": "$Race", "Compound": "$Compound"},
+            "start_lap": {"$min": "$LapNumber"},
+            "end_lap": {"$max": "$LapNumber"},
+            "tyre_life": {"$max": "$TyreLife"},
+        }},
+        {"$sort": {"_id.Race": 1, "_id.Driver": 1, "start_lap": 1}},
+    ]
+    results = list(db["telemetry_lap_summary"].aggregate(pipeline_agg))
+    return [
+        {
+            "driver_acronym": r["_id"].get("Driver", ""),
+            "meeting_name": r["_id"].get("Race", ""),
+            "compound": r["_id"].get("Compound", ""),
+            "year": year,
+            "session_name": "Race",
+            "stint_number": i + 1,
+            "lap_start": int(r.get("start_lap", 0)) if r.get("start_lap") else 0,
+            "lap_end": int(r.get("end_lap", 0)) if r.get("end_lap") else 0,
+            "stint_laps": (int(r.get("end_lap", 0)) - int(r.get("start_lap", 0))) if r.get("start_lap") and r.get("end_lap") else 0,
+            "tyre_age_at_start": 0,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 @app.get("/api/local/mccar/{year}/{filename}")

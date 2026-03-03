@@ -183,7 +183,6 @@ def main():
     print("\nFetching race-day air density data...")
 
     # Get unique (Year, Race) from fastf1_laps to find race dates
-    # Use fastf1_weather for actual race dates (has Time field)
     race_dates_pipeline = [
         {"$match": {"SessionType": "R"}},
         {"$group": {
@@ -192,7 +191,54 @@ def main():
         {"$sort": {"_id.Year": 1, "_id.Race": 1}},
     ]
     race_combos = list(db["fastf1_laps"].aggregate(race_dates_pipeline, allowDiskUse=True))
-    print(f"  Found {len(race_combos)} unique (Year, Race) combos")
+    print(f"  Found {len(race_combos)} unique (Year, Race) combos from fastf1_laps")
+
+    # Also pull from openf1_sessions for years not in fastf1 (e.g. 2025+)
+    # Use circuit_short_name to distinguish races in the same country (3 US races, 2 Italy races)
+    CIRCUIT_TO_GP = {
+        "Melbourne": "Australian Grand Prix",
+        "Spielberg": "Austrian Grand Prix",
+        "Baku": "Azerbaijan Grand Prix",
+        "Sakhir": "Bahrain Grand Prix",
+        "Spa-Francorchamps": "Belgian Grand Prix",
+        "Interlagos": "São Paulo Grand Prix",
+        "Montreal": "Canadian Grand Prix",
+        "Shanghai": "Chinese Grand Prix",
+        "Hungaroring": "Hungarian Grand Prix",
+        "Imola": "Emilia Romagna Grand Prix",
+        "Monza": "Italian Grand Prix",
+        "Suzuka": "Japanese Grand Prix",
+        "Mexico City": "Mexico City Grand Prix",
+        "Monte Carlo": "Monaco Grand Prix",
+        "Zandvoort": "Dutch Grand Prix",
+        "Lusail": "Qatar Grand Prix",
+        "Jeddah": "Saudi Arabian Grand Prix",
+        "Singapore": "Singapore Grand Prix",
+        "Catalunya": "Spanish Grand Prix",
+        "Yas Marina Circuit": "Abu Dhabi Grand Prix",
+        "Silverstone": "British Grand Prix",
+        "Austin": "United States Grand Prix",
+        "Miami": "Miami Grand Prix",
+        "Las Vegas": "Las Vegas Grand Prix",
+    }
+    fastf1_years = {c["_id"]["Year"] for c in race_combos}
+    of1_races = db["openf1_sessions"].find(
+        {"session_type": "Race", "year": {"$nin": list(fastf1_years)}},
+        {"year": 1, "circuit_short_name": 1, "_id": 0},
+    )
+    of1_added = set()
+    for s in of1_races:
+        circuit = s.get("circuit_short_name", "")
+        year = s.get("year")
+        race_name = CIRCUIT_TO_GP.get(circuit)
+        if not race_name:
+            continue
+        key = (year, race_name)
+        if key not in of1_added:
+            of1_added.add(key)
+            race_combos.append({"_id": {"Year": year, "Race": race_name}})
+    if of1_added:
+        print(f"  Added {len(of1_added)} races from openf1_sessions (years not in fastf1)")
 
     # For race dates, use openf1_sessions where available
     session_dates = {}
