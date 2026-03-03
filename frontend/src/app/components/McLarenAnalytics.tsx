@@ -6,8 +6,6 @@ import {
 import {
   Trophy, TrendingUp, Loader2, Flag, Users, Timer, Gauge, Activity, Disc, Shield,
 } from 'lucide-react';
-import { usePolling } from '../hooks/usePolling';
-import * as jolpica from '../api/jolpica';
 import { HealthGauge } from './HealthGauge';
 import {
   type VehicleData, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
@@ -31,6 +29,9 @@ const teamColors: Record<string, string> = {
 const compoundColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
 };
+
+// Helper: match season regardless of string/number type in MongoDB
+const matchSeason = (docSeason: any, year: string) => String(docSeason) === year;
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -75,12 +76,63 @@ const SYSTEM_ICONS: Record<string, React.ElementType> = { 'Speed': Gauge, 'Lap P
 
 // ─── Component ──────────────────────────────────────────────────────
 export function McLarenAnalytics() {
-  const [year, setYear] = useState<'2024' | '2023'>('2024');
+  const [year, setYear] = useState('2024');
+  const [availableYears, setAvailableYears] = useState<string[]>(['2024', '2023']);
 
-  // ── MongoDB data via Jolpica JSON endpoints ───────────────────────
-  const { data: driverStandings } = usePolling({ fetcher: () => jolpica.getDriverStandings(year), interval: 120000 });
-  const { data: constructorStandings } = usePolling({ fetcher: () => jolpica.getConstructorStandings(year), interval: 120000 });
-  const { data: raceResults } = usePolling({ fetcher: () => jolpica.getRaceResults(year), interval: 120000 });
+  // ── Fetch available seasons from MongoDB ──────────────────────────
+  useEffect(() => {
+    fetch('/api/jolpica/seasons')
+      .then(r => r.ok ? r.json() : [])
+      .then((seasons: any[]) => {
+        const years = seasons.map(s => String(s)).filter(s => /^\d{4}$/.test(s)).sort().reverse();
+        if (years.length > 0) setAvailableYears(years);
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── MongoDB: race_results (raw) — derive standings + results ──────
+  const [allRaceResults, setAllRaceResults] = useState<any[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  useEffect(() => {
+    setDataLoading(true);
+    fetch('/api/jolpica/race_results')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAllRaceResults(d))
+      .catch(() => {})
+      .finally(() => setDataLoading(false));
+  }, []);
+
+  // Filter race results for selected year (handle string/number season)
+  const raceResults = useMemo(() =>
+    allRaceResults.filter(r => matchSeason(r.season, year)).sort((a, b) => Number(a.round) - Number(b.round)),
+    [allRaceResults, year]);
+
+  // ── MongoDB: constructor_standings ─────────────────────────────────
+  const [allConstructorStandings, setAllConstructorStandings] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/jolpica/constructor_standings')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAllConstructorStandings(d))
+      .catch(() => {});
+  }, []);
+
+  const constructorStandings = useMemo(() =>
+    allConstructorStandings.filter(s => matchSeason(s.season, year)),
+    [allConstructorStandings, year]);
+
+  // ── MongoDB: driver_standings ──────────────────────────────────────
+  const [allDriverStandings, setAllDriverStandings] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/jolpica/driver_standings')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAllDriverStandings(d))
+      .catch(() => {});
+  }, []);
+
+  const driverStandings = useMemo(() =>
+    allDriverStandings.filter(s => matchSeason(s.season, year)),
+    [allDriverStandings, year]);
 
   // ── MongoDB: Telemetry race summaries ─────────────────────────────
   const [norSummary, setNorSummary] = useState<CarSummary[]>([]);
@@ -139,19 +191,19 @@ export function McLarenAnalytics() {
   const norVehicle = anomalyVehicles.find(v => v.code === 'NOR');
   const piaVehicle = anomalyVehicles.find(v => v.code === 'PIA');
 
-  // KPIs from MongoDB driver/constructor standings
+  // KPIs from MongoDB standings
   const kpiStats = useMemo(() => {
-    const norS = (driverStandings ?? []).find(s => s.Driver?.code === 'NOR');
-    const piaS = (driverStandings ?? []).find(s => s.Driver?.code === 'PIA');
-    const mcS = (constructorStandings ?? []).find(s =>
+    const norS = driverStandings.find(s => s.Driver?.code === 'NOR');
+    const piaS = driverStandings.find(s => s.Driver?.code === 'PIA');
+    const mcS = constructorStandings.find(s =>
       s.Constructor?.name?.toLowerCase().includes('mclaren'));
 
     // Last race points gained for McLaren
-    const lastRace = (raceResults ?? []).slice(-1)[0];
+    const lastRace = raceResults.slice(-1)[0];
     const lastGained = lastRace
-      ? lastRace.Results
-          .filter(r => r.Constructor?.name?.toLowerCase().includes('mclaren'))
-          .reduce((sum, r) => sum + Number(r.points || 0), 0)
+      ? (lastRace.Results || [])
+          .filter((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren'))
+          .reduce((sum: number, r: any) => sum + Number(r.points || 0), 0)
       : 0;
 
     return {
@@ -164,12 +216,12 @@ export function McLarenAnalytics() {
 
   // Points progression from MongoDB race_results
   const pointsProgression = useMemo(() => {
-    if (!raceResults?.length) return [];
+    if (!raceResults.length) return [];
     let norCum = 0, piaCum = 0, teamCum = 0;
     return raceResults.map(race => {
-      const gpName = race.raceName.replace(' Grand Prix', '');
+      const gpName = (race.raceName || '').replace(' Grand Prix', '');
       let raceTeamPts = 0;
-      for (const result of race.Results) {
+      for (const result of (race.Results || [])) {
         const code = result.Driver?.code;
         const pts = Number(result.points || 0);
         const isMcLaren = result.Constructor?.name?.toLowerCase().includes('mclaren');
@@ -182,7 +234,7 @@ export function McLarenAnalytics() {
     });
   }, [raceResults]);
 
-  // Telemetry merged from MongoDB telemetry_race_summary
+  // Telemetry merged
   const telemetryData = useMemo(() => {
     const raceMap = new Map<string, any>();
     norSummary.forEach(r => {
@@ -225,19 +277,20 @@ export function McLarenAnalytics() {
   // Tire compound grid from MongoDB openf1_stints + openf1_sessions
   const tireGrid = useMemo(() => {
     if (!stintsRaw.length || !sessionsRaw.length) return { races: [] as string[], NOR: {} as Record<string, string[]>, PIA: {} as Record<string, string[]> };
-    // Map session_key → race name (Race sessions only)
+    // Filter sessions for selected year
+    const yearSessions = sessionsRaw.filter(s => s.session_type === 'Race' && matchSeason(s.year, year));
     const sessionMap = new Map<number, string>();
-    sessionsRaw.forEach(s => {
-      if (s.session_type === 'Race') {
-        sessionMap.set(s.session_key, (s.circuit_short_name || s.meeting_name || '').slice(0, 10));
-      }
+    yearSessions.forEach(s => {
+      sessionMap.set(s.session_key, (s.circuit_short_name || s.meeting_name || '').slice(0, 10));
     });
+    const yearSessionKeys = new Set(yearSessions.map(s => s.session_key));
     // Driver numbers: NOR=4, PIA=81
     const driverMap: Record<number, 'NOR' | 'PIA'> = { 4: 'NOR', 81: 'PIA' };
     const races = new Set<string>();
     const nor: Record<string, string[]> = {};
     const pia: Record<string, string[]> = {};
     stintsRaw.forEach(stint => {
+      if (!yearSessionKeys.has(stint.session_key)) return;
       const race = sessionMap.get(stint.session_key);
       if (!race) return;
       const code = driverMap[stint.driver_number];
@@ -249,9 +302,9 @@ export function McLarenAnalytics() {
       if (compound && !target[race].includes(compound)) target[race].push(compound);
     });
     return { races: Array.from(races), NOR: nor, PIA: pia };
-  }, [stintsRaw, sessionsRaw]);
+  }, [stintsRaw, sessionsRaw, year]);
 
-  // NOR health trend from anomaly data
+  // NOR health trend
   const norHealthTrend = useMemo(() => {
     if (!norVehicle?.races?.length) return [];
     return norVehicle.races.slice(-8).map(r => ({
@@ -271,18 +324,18 @@ export function McLarenAnalytics() {
     }));
   }, [rivalsData]);
 
-  // Race results table from MongoDB race_results
+  // Race results table
   const raceResultsTable = useMemo(() => {
-    if (!raceResults?.length) return [];
+    if (!raceResults.length) return [];
     return raceResults.slice(-8).reverse().map(race => {
-      const norResult = race.Results.find(r => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'NOR');
-      const piaResult = race.Results.find(r => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'PIA');
-      const winner = race.Results[0];
-      const gpName = race.raceName.replace(' Grand Prix', '');
-      // McLaren points gained in this race
-      const gained = race.Results
-        .filter(r => r.Constructor?.name?.toLowerCase().includes('mclaren'))
-        .reduce((sum, r) => sum + Number(r.points || 0), 0);
+      const results = race.Results || [];
+      const norResult = results.find((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'NOR');
+      const piaResult = results.find((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'PIA');
+      const winner = results[0];
+      const gpName = (race.raceName || '').replace(' Grand Prix', '');
+      const gained = results
+        .filter((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren'))
+        .reduce((sum: number, r: any) => sum + Number(r.points || 0), 0);
       return {
         round: race.round, gp: gpName,
         norPos: norResult?.position ?? '—', piaPos: piaResult?.position ?? '—',
@@ -291,8 +344,6 @@ export function McLarenAnalytics() {
       };
     });
   }, [raceResults]);
-
-  const dataLoading = !driverStandings && !constructorStandings && !raceResults;
 
   // ─── Render ───────────────────────────────────────────────────────
   return (
@@ -304,7 +355,7 @@ export function McLarenAnalytics() {
           <h2 className="text-sm text-foreground">Competitive Intelligence</h2>
         </div>
         <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
-          {(['2024', '2023'] as const).map(y => (
+          {availableYears.map(y => (
             <button key={y} onClick={() => setYear(y)}
               className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}>
               {y}
@@ -319,7 +370,7 @@ export function McLarenAnalytics() {
       ) : (
         <div className="grid grid-cols-4 gap-3">
           <KPI icon={<Users className="w-4 h-4 text-[#FF8000]" />} label="NOR" value={`P${kpiStats.norPos}`} detail={`${kpiStats.norPts} pts`} />
-          <KPI icon={<Users className="w-4 h-4 text-cyan-400" />} label="PIA" value={`P${kpiStats.piaPos}`} detail={`${kpiStats.piaPts} pts`} />
+          <KPI icon={<Users className="w-4 h-4 text-cyan-400" />} label="PIA" value={`P${kpiStats.piaPts} pts`} detail={`P${kpiStats.piaPos}`} />
           <KPI icon={<Trophy className="w-4 h-4 text-green-400" />} label="Constructors" value={`P${kpiStats.teamPos}`} detail={`${kpiStats.teamPts} pts`} />
           <KPI icon={<Flag className="w-4 h-4 text-amber-400" />} label="Last Race" value={`+${kpiStats.lastGained}`} detail="pts gained" />
         </div>
@@ -414,16 +465,16 @@ export function McLarenAnalytics() {
           <h3 className="text-sm text-foreground mb-1">Constructors Gap</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Points to nearest rivals</p>
           <div className="space-y-2">
-            {(constructorStandings ?? []).slice(0, 5).map((team, i) => {
+            {constructorStandings.slice(0, 5).map((team, i) => {
               const pts = Number(team.points);
-              const leaderPts = Number(constructorStandings?.[0]?.points ?? 0);
-              const isMcLaren = team.Constructor.name.toLowerCase().includes('mclaren');
+              const leaderPts = Number(constructorStandings[0]?.points ?? 0);
+              const isMcLaren = team.Constructor?.name?.toLowerCase().includes('mclaren');
               return (
-                <div key={team.Constructor.name} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-[#FF8000]/10 border border-[#FF8000]/20' : ''}`}>
+                <div key={team.Constructor?.name || i} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-[#FF8000]/10 border border-[#FF8000]/20' : ''}`}>
                   <span className="text-[12px] text-muted-foreground w-5 font-mono">P{i + 1}</span>
-                  <div className="w-2 h-5 rounded-full" style={{ backgroundColor: teamColors[team.Constructor.name] ?? '#555' }} />
+                  <div className="w-2 h-5 rounded-full" style={{ backgroundColor: teamColors[team.Constructor?.name] ?? '#555' }} />
                   <span className={`text-sm flex-1 truncate ${isMcLaren ? 'text-[#FF8000] font-medium' : 'text-foreground'}`}>
-                    {team.Constructor.name}
+                    {team.Constructor?.name}
                   </span>
                   <span className="text-sm font-mono text-foreground">{pts}</span>
                   {i > 0 && (
