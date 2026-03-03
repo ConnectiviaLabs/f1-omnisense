@@ -87,12 +87,6 @@ app.add_middleware(_RewriteMiddleware)
 app.include_router(model_3d_router)
 mount_3d_static(app)
 
-# Local media fallback (if f1data/McMedia exists)
-from starlette.staticfiles import StaticFiles as _StaticFiles
-_media_root = Path(__file__).parent.parent / "f1data" / "McMedia"
-if _media_root.exists():
-    app.mount("/media_static", _StaticFiles(directory=str(_media_root)), name="media_static")
-
 # Mount OmniSuite routers
 app.include_router(omni_health_router)
 app.include_router(omni_analytics_router)
@@ -566,9 +560,6 @@ async def serve_media_frame(folder: str, filename: str):
     doc = db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1})
     if doc:
         return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
-    local = Path(__file__).parent.parent / "f1data" / "McMedia" / folder / filename
-    if local.exists():
-        return _Response(content=local.read_bytes(), media_type="image/jpeg")
     return _Response(status_code=404, content=b"Not found")
 
 @app.get("/api/local/jolpica/race_results")
