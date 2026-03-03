@@ -946,6 +946,132 @@ async def pipeline_videos():
     docs = list(db["media_videos"].find({}, {"_id": 0}).sort("added", -1))
     return {"videos": docs, "count": len(docs)}
 
+
+# ── Strategy Tracker ──
+
+@app.get("/api/local/strategy/tracker")
+async def strategy_tracker(session_key: int = None, year: int = None):
+    """
+    Competitor Strategy Tracker: shows each driver's stint timeline,
+    compound choices, and predicted next pit window based on tyre degradation curves.
+    """
+    db = get_data_db()
+
+    # Find session
+    if session_key:
+        sess = db["openf1_sessions"].find_one({"session_key": session_key, "session_type": "Race"}, {"_id": 0})
+    elif year:
+        sess = db["openf1_sessions"].find_one({"session_type": "Race", "year": year}, {"_id": 0}, sort=[("session_key", -1)])
+    else:
+        sess = db["openf1_sessions"].find_one({"session_type": "Race"}, {"_id": 0}, sort=[("session_key", -1)])
+
+    if not sess:
+        return {"error": "No race session found", "drivers": []}
+
+    sk = sess["session_key"]
+    circuit = sess.get("circuit_short_name", "")
+
+    # Get stints for this session
+    stints = list(db["openf1_stints"].find(
+        {"session_key": sk},
+        {"_id": 0}
+    ).sort([("driver_number", 1), ("stint_number", 1)]))
+
+    # Get driver names
+    drivers_raw = list(db["openf1_drivers"].find(
+        {"session_key": sk},
+        {"_id": 0, "driver_number": 1, "name_acronym": 1, "team_name": 1}
+    ))
+    drv_map = {}
+    for d in drivers_raw:
+        drv_map[d["driver_number"]] = {"name": d.get("name_acronym", ""), "team": d.get("team_name", "")}
+
+    # Load tyre degradation curves for this circuit
+    deg_curves = list(db["tyre_degradation_curves"].find(
+        {"circuit": {"$regex": circuit, "$options": "i"}},
+        {"_id": 0, "compound": 1, "cliff_lap": 1, "coefficients": 1, "intercept": 1}
+    ))
+    cliff_laps = {c["compound"]: c.get("cliff_lap") for c in deg_curves if c.get("cliff_lap")}
+
+    # Get total laps from actual data
+    max_lap_doc = db["openf1_laps"].find_one(
+        {"session_key": sk}, {"lap_number": 1}, sort=[("lap_number", -1)]
+    )
+    total_laps = max_lap_doc["lap_number"] if max_lap_doc else 57
+
+    # Build per-driver strategy timeline
+    driver_strategies = {}
+    for s in stints:
+        dn = s["driver_number"]
+        if dn not in driver_strategies:
+            info = drv_map.get(dn, {"name": str(dn), "team": "Unknown"})
+            driver_strategies[dn] = {
+                "driver_number": dn,
+                "driver": info["name"],
+                "team": info["team"],
+                "stints": [],
+                "total_stops": 0,
+            }
+
+        stint_laps = (s.get("lap_end", 0) or 0) - (s.get("lap_start", 0) or 0) + 1
+        compound = s.get("compound", "UNKNOWN")
+        cliff = cliff_laps.get(compound)
+
+        stint_info = {
+            "stint_number": s.get("stint_number", 0),
+            "compound": compound,
+            "lap_start": s.get("lap_start"),
+            "lap_end": s.get("lap_end"),
+            "stint_laps": stint_laps,
+            "tyre_age_at_start": s.get("tyre_age_at_start", 0),
+            "cliff_lap": cliff,
+        }
+
+        # Predict pit window: when tyre reaches cliff or degradation exceeds threshold
+        if cliff and s.get("lap_start"):
+            effective_life = stint_laps + (s.get("tyre_age_at_start", 0) or 0)
+            laps_until_cliff = max(0, cliff - effective_life)
+            stint_info["predicted_pit_window"] = (s.get("lap_end", 0) or 0) + laps_until_cliff
+        else:
+            stint_info["predicted_pit_window"] = None
+
+        driver_strategies[dn]["stints"].append(stint_info)
+
+    # Count pit stops (stints - 1)
+    for dn, ds in driver_strategies.items():
+        ds["total_stops"] = max(0, len(ds["stints"]) - 1)
+
+    drivers_list = sorted(driver_strategies.values(), key=lambda x: x["driver"])
+
+    return {
+        "session": {
+            "session_key": sk,
+            "circuit": circuit,
+            "year": sess.get("year"),
+            "meeting": f'{sess.get("country_name", "")} GP',
+            "total_laps": total_laps,
+        },
+        "cliff_laps": cliff_laps,
+        "drivers": drivers_list,
+        "count": len(drivers_list),
+    }
+
+
+@app.get("/api/local/strategy/simulations")
+async def strategy_simulations(session_key: int = None):
+    """Get pre-computed strategy simulation results from the strategy_simulator notebook."""
+    db = get_data_db()
+    query = {"type": "race_simulation"}
+    if session_key:
+        query["session_key"] = session_key
+
+    docs = list(db["race_strategy_simulations"].find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).limit(10))
+
+    return {"simulations": docs, "count": len(docs)}
+
+
 def _build_session_map():
     """Build mapping from _source_file → session_key and (year, race) → session_key.
 
