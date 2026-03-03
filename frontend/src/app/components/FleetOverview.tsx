@@ -4,6 +4,9 @@ import {
   CircleDot, Shield, TrendingUp, Cpu,
   Plus, X, Car, Save, Upload, Box, Loader2, Sparkles, Gauge,
 } from 'lucide-react';
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
+} from 'recharts';
 import * as model3dApi from '../api/model3d';
 import type { Job } from '../api/model3d';
 import {
@@ -82,6 +85,52 @@ export function FleetOverview() {
   const [registeredVehicles, setRegisteredVehicles] = useState<RegisteredVehicle[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [regError, setRegError] = useState('');
+
+  // Forecast state
+  interface ForecastPoint { step: string; value: number; lower: number; upper: number }
+  interface FeatureForecast { column: string; method: string; data: ForecastPoint[]; mae?: number; rmse?: number }
+  const [forecasts, setForecasts] = useState<FeatureForecast[]>([]);
+  const [forecastLoading, setForecastLoading] = useState(false);
+
+  // Fetch forecasts for Critical/High SHAP features when driver selected
+  useEffect(() => {
+    if (!selectedCar) { setForecasts([]); return; }
+    const criticalSystems = selectedCar.systems.filter(s => s.level === 'critical' || s.level === 'warning');
+    const features = criticalSystems.flatMap(s => s.metrics.slice(0, 2).map(m => m.label));
+    const unique = [...new Set(features)];
+    if (unique.length === 0) { setForecasts([]); return; }
+
+    let cancelled = false;
+    setForecastLoading(true);
+    Promise.all(
+      unique.map(col =>
+        fetch(`/api/omni/analytics/forecast/${selectedCar.code}?column=${encodeURIComponent(col)}&horizon=5`, { method: 'POST' })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      )
+    ).then(results => {
+      if (cancelled) return;
+      const fcs: FeatureForecast[] = [];
+      for (const r of results) {
+        if (!r?.values) continue;
+        fcs.push({
+          column: r.column,
+          method: r.method,
+          mae: r.mae,
+          rmse: r.rmse,
+          data: r.values.map((v: number, i: number) => ({
+            step: r.timestamps?.[i] ?? `+${i + 1}`,
+            value: v,
+            lower: r.lower_bound?.[i] ?? v,
+            upper: r.upper_bound?.[i] ?? v,
+          })),
+        });
+      }
+      setForecasts(fcs);
+      setForecastLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [selectedCar?.code, selectedCar?.level]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 3D generation state (inside Register Car modal)
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -539,6 +588,57 @@ export function FleetOverview() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* Feature Forecasts — from Critical/High SHAP features */}
+          {forecastLoading && (
+            <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF8000]" />
+              Forecasting anomaly features...
+            </div>
+          )}
+          {forecasts.length > 0 && (
+            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+              <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
+                <TrendingUp className="w-3 h-3 text-[#FF8000]" />
+                Feature Forecasts
+                <span className="text-[10px] text-muted-foreground font-normal ml-1">Critical/High anomaly drivers</span>
+              </h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {forecasts.map(fc => (
+                  <div key={fc.column} className="bg-[#0D1117] rounded-lg p-3 border border-[rgba(255,128,0,0.08)]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-medium text-foreground">{fc.column}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] text-muted-foreground font-mono uppercase">{fc.method}</span>
+                        {fc.rmse != null && (
+                          <span className="text-[9px] text-muted-foreground font-mono">RMSE {fc.rmse.toFixed(2)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <ResponsiveContainer width="100%" height={120}>
+                      <AreaChart data={fc.data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+                        <defs>
+                          <linearGradient id={`fc-${fc.column}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FF8000" stopOpacity={0.3} />
+                            <stop offset="100%" stopColor="#FF8000" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="step" tick={{ fontSize: 9, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} axisLine={false} tickLine={false} width={40} />
+                        <Tooltip
+                          contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,128,0,0.2)', borderRadius: 8, fontSize: 11 }}
+                          labelStyle={{ color: '#9ca3af' }}
+                        />
+                        <Area type="monotone" dataKey="upper" stroke="none" fill="#FF8000" fillOpacity={0.08} name="Upper bound" />
+                        <Area type="monotone" dataKey="lower" stroke="none" fill="#0D1117" fillOpacity={1} name="Lower bound" />
+                        <Area type="monotone" dataKey="value" stroke="#FF8000" fill={`url(#fc-${fc.column})`} strokeWidth={1.5} dot={false} name="Forecast" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                ))}
               </div>
             </div>
           )}
