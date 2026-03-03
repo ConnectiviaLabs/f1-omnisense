@@ -87,27 +87,7 @@ app.add_middleware(_RewriteMiddleware)
 app.include_router(model_3d_router)
 mount_3d_static(app)
 
-# Serve media files — MongoDB-backed with local fallback
-import base64 as _b64
-from fastapi.responses import Response as _Response
-
-@app.get("/media/{folder}/{filename}")
-async def serve_media_frame(folder: str, filename: str):
-    """Serve detection frame images from MongoDB (media_frames collection).
-    Falls back to local file if not in MongoDB."""
-    path = f"{folder}/{filename}"
-    _db = get_data_db()
-    doc = _db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1}) if _db else None
-    if doc:
-        data = _b64.b64decode(doc["data_b64"])
-        return _Response(content=data, media_type=doc.get("content_type", "image/jpeg"))
-    # Fallback to local file
-    local_path = Path(__file__).parent.parent / "f1data" / "McMedia" / folder / filename
-    if local_path.exists():
-        return _Response(content=local_path.read_bytes(), media_type="image/jpeg")
-    return _Response(status_code=404, content=b"Not found")
-
-# Also serve media root files (videos, clip_index.json etc.)
+# Local media fallback (if f1data/McMedia exists)
 from starlette.staticfiles import StaticFiles as _StaticFiles
 _media_root = Path(__file__).parent.parent / "f1data" / "McMedia"
 if _media_root.exists():
@@ -574,6 +554,22 @@ def get_data_db():
         # Share this connection with the opponents profiler
         init_profiler_with_db(_data_db)
     return _data_db
+
+import base64 as _b64
+from fastapi.responses import Response as _Response
+
+@app.get("/media/{folder}/{filename}")
+async def serve_media_frame(folder: str, filename: str):
+    """Serve detection frame images from MongoDB media_frames collection."""
+    path = f"{folder}/{filename}"
+    db = get_data_db()
+    doc = db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1})
+    if doc:
+        return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
+    local = Path(__file__).parent.parent / "f1data" / "McMedia" / folder / filename
+    if local.exists():
+        return _Response(content=local.read_bytes(), media_type="image/jpeg")
+    return _Response(status_code=404, content=b"Not found")
 
 @app.get("/api/local/jolpica/race_results")
 async def jolpica_race_results():
