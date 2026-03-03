@@ -130,7 +130,7 @@ def load_driver_lap_data(
     return df
 
 
-MIN_RACES_THRESHOLD = 24
+MIN_RACES_THRESHOLD = 20
 
 
 def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
