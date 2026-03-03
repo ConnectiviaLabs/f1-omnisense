@@ -24,6 +24,6 @@ COPY --from=build /app/frontend/dist /usr/share/nginx/html
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s \
-    CMD wget -qO- http://localhost/api/health || exit 1
+    CMD wget -qO- http://localhost/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
