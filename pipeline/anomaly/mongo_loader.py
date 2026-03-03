@@ -134,11 +134,11 @@ MIN_RACES_THRESHOLD = 20
 
 
 def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
-    """Get active drivers with sufficient historical data.
+    """Get all drivers with sufficient historical data.
 
-    Default (year=None): pulls the 2025 active grid from
-    jolpica_driver_standings, then filters to drivers with at least
-    MIN_RACES_THRESHOLD races in fastf1_laps.
+    Default (year=None): finds every unique driver in fastf1_laps with
+    at least MIN_RACES_THRESHOLD races.  Enriches name/team from the
+    latest jolpica standings or openf1_drivers when available.
 
     If year is set, returns that season's roster from openf1_drivers
     (legacy behaviour).
@@ -147,40 +147,51 @@ def get_grid_drivers(year: Optional[int] = None) -> list[dict]:
     """
     db = get_db()
 
-    # ── Active grid from jolpica standings (default) ──────────────
+    # ── All drivers from fastf1_laps meeting race threshold ────────
     if year is None:
-        results = list(db["jolpica_driver_standings"].find(
-            {"season": 2025},
-            {"driver_code": 1, "driver_name": 1, "constructor_name": 1, "_id": 0},
-        ).sort("points", -1))
+        all_codes = db["fastf1_laps"].distinct(
+            "Driver", {"IsAccurate": True, "SessionType": "R"}
+        )
 
-        if not results:
-            logger.warning("No 2025 standings found, falling back to openf1_drivers 2024")
-            return get_grid_drivers(year=2024)
+        # Build lookup for name/team from jolpica standings (latest season)
+        standings_lookup: dict[str, dict] = {}
+        for r in db["jolpica_driver_standings"].find(
+            {}, {"driver_code": 1, "driver_name": 1, "constructor_name": 1, "season": 1, "_id": 0}
+        ).sort("season", -1):
+            code = r.get("driver_code")
+            if code and code not in standings_lookup:
+                standings_lookup[code] = {
+                    "name": r.get("driver_name", code),
+                    "team": r.get("constructor_name", "Unknown"),
+                }
 
-        drivers = [
-            {
-                "code": r["driver_code"],
-                "name": r.get("driver_name", r["driver_code"]),
-                "team": r.get("constructor_name", "Unknown"),
-                "number": 0,
-            }
-            for r in results if r.get("driver_code")
-        ]
-
-        # Filter by minimum race count in fastf1_laps
         qualified = []
-        for d in drivers:
+        for code in sorted(all_codes):
+            if not code:
+                continue
             race_count = len(db["fastf1_laps"].distinct(
                 "Race",
-                {"Driver": d["code"], "IsAccurate": True, "SessionType": "R"},
+                {"Driver": code, "IsAccurate": True, "SessionType": "R"},
             ))
             if race_count >= MIN_RACES_THRESHOLD:
-                qualified.append(d)
+                info = standings_lookup.get(code, {})
+                # Fallback: get team from latest fastf1_laps entry
+                if not info.get("team") or info["team"] == "Unknown":
+                    doc = db["fastf1_laps"].find_one(
+                        {"Driver": code, "IsAccurate": True},
+                        {"Team": 1}, sort=[("Year", -1)]
+                    )
+                    info["team"] = doc.get("Team", "Unknown") if doc else "Unknown"
+                qualified.append({
+                    "code": code,
+                    "name": info.get("name", code),
+                    "team": info.get("team", "Unknown"),
+                    "number": 0,
+                })
             else:
                 logger.info(
                     "Skipping %s (%d races < %d minimum)",
-                    d["code"], race_count, MIN_RACES_THRESHOLD,
+                    code, race_count, MIN_RACES_THRESHOLD,
                 )
 
         return qualified
