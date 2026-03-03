@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import {
   Trophy, TrendingUp, Loader2, Flag, Users, Timer, Gauge, Activity, Disc, Shield,
+  Zap, AlertTriangle, ChevronUp, ChevronDown, Minus,
 } from 'lucide-react';
 import { HealthGauge } from './HealthGauge';
 import {
@@ -389,6 +390,147 @@ export function McLarenAnalytics() {
   // Driver colors
   const driverColors = ['#FF8000', '#00d4ff', '#22c55e', '#f59e0b'];
 
+  // ─── Intelligence Briefing — auto-extracted insights ──────────────
+  interface Insight {
+    icon: React.ElementType;
+    title: string;
+    body: string;
+    sentiment: 'positive' | 'negative' | 'neutral';
+  }
+
+  const insights = useMemo(() => {
+    const out: Insight[] = [];
+    const yearResults = allRaceResults.filter(r => matchSeason(r.season, year));
+    if (!yearResults.length) return out;
+
+    // Group results by round for McLaren
+    const rounds = new Map<number, any[]>();
+    yearResults.forEach(r => {
+      const rnd = Number(r.round || 0);
+      if (!rounds.has(rnd)) rounds.set(rnd, []);
+      rounds.get(rnd)!.push(r);
+    });
+    const sortedRounds = Array.from(rounds.entries()).sort((a, b) => a[0] - b[0]);
+    const totalRaces = sortedRounds.length;
+
+    // --- Championship momentum (last 3 vs previous 3) ---
+    if (totalRaces >= 6) {
+      const mcPtsPerRound = sortedRounds.map(([, results]) =>
+        results.filter(r => (r.constructor_id || '').toLowerCase().includes('mclaren'))
+          .reduce((s, r) => s + Number(r.points || 0), 0)
+      );
+      const recent3 = mcPtsPerRound.slice(-3).reduce((a, b) => a + b, 0);
+      const prev3 = mcPtsPerRound.slice(-6, -3).reduce((a, b) => a + b, 0);
+      const diff = recent3 - prev3;
+      if (diff > 10) {
+        out.push({ icon: ChevronUp, title: 'Momentum Surge', body: `McLaren scored ${recent3} pts in the last 3 races vs ${prev3} in the prior 3 (+${diff}). Championship push is accelerating.`, sentiment: 'positive' });
+      } else if (diff < -10) {
+        out.push({ icon: ChevronDown, title: 'Momentum Drop', body: `McLaren scored ${recent3} pts in the last 3 races vs ${prev3} in the prior 3 (${diff}). Scoring rate is declining.`, sentiment: 'negative' });
+      } else {
+        out.push({ icon: Minus, title: 'Steady Form', body: `McLaren scored ${recent3} pts in the last 3 races vs ${prev3} prior. Consistent pace maintained.`, sentiment: 'neutral' });
+      }
+    }
+
+    // --- Driver head-to-head ---
+    if (mcLarenDrivers.length >= 2) {
+      let d1Wins = 0, d2Wins = 0;
+      sortedRounds.forEach(([, results]) => {
+        const p1 = results.find(r => r.driver_code === mcLarenDrivers[0]);
+        const p2 = results.find(r => r.driver_code === mcLarenDrivers[1]);
+        if (p1 && p2) {
+          const pos1 = Number(p1.position), pos2 = Number(p2.position);
+          if (pos1 < pos2) d1Wins++;
+          else if (pos2 < pos1) d2Wins++;
+        }
+      });
+      const leader = d1Wins >= d2Wins ? mcLarenDrivers[0] : mcLarenDrivers[1];
+      const leaderWins = Math.max(d1Wins, d2Wins);
+      const trailingWins = Math.min(d1Wins, d2Wins);
+      out.push({
+        icon: Users,
+        title: 'Intra-Team Battle',
+        body: `${leader} leads the head-to-head ${leaderWins}-${trailingWins} in qualifying-style race finishes across ${totalRaces} races.`,
+        sentiment: leaderWins - trailingWins > 4 ? 'negative' : 'neutral',
+      });
+    }
+
+    // --- Anomaly health alerts ---
+    [norVehicle, piaVehicle].filter(Boolean).forEach(v => {
+      if (!v) return;
+      const criticalSystems = v.systems.filter(s => s.health < 60);
+      if (criticalSystems.length > 0) {
+        out.push({
+          icon: AlertTriangle,
+          title: `${v.code} System Alert`,
+          body: `${criticalSystems.map(s => `${s.name} at ${s.health}%`).join(', ')}. Overall health: ${v.overallHealth}% (${v.level}).`,
+          sentiment: 'negative',
+        });
+      } else if (v.overallHealth >= 85) {
+        out.push({
+          icon: Zap,
+          title: `${v.code} Peak Condition`,
+          body: `All systems nominal at ${v.overallHealth}% overall health. No maintenance actions required.`,
+          sentiment: 'positive',
+        });
+      }
+    });
+
+    // --- Telemetry speed trend ---
+    if (norSummary.length >= 4) {
+      const firstHalf = norSummary.slice(0, Math.floor(norSummary.length / 2));
+      const secondHalf = norSummary.slice(Math.floor(norSummary.length / 2));
+      const avgFirst = firstHalf.reduce((s, r) => s + r.topSpeed, 0) / firstHalf.length;
+      const avgSecond = secondHalf.reduce((s, r) => s + r.topSpeed, 0) / secondHalf.length;
+      const diff = avgSecond - avgFirst;
+      if (Math.abs(diff) > 1) {
+        out.push({
+          icon: Gauge,
+          title: `Speed ${diff > 0 ? 'Gain' : 'Loss'} Detected`,
+          body: `${mcLarenDrivers[0]}'s avg top speed ${diff > 0 ? 'increased' : 'decreased'} by ${Math.abs(diff).toFixed(1)} km/h in the second half of the season vs the first.`,
+          sentiment: diff > 0 ? 'positive' : 'negative',
+        });
+      }
+    }
+
+    // --- Pit stop trend ---
+    if (pitStopData.length >= 4) {
+      const firstHalf = pitStopData.slice(0, Math.floor(pitStopData.length / 2));
+      const secondHalf = pitStopData.slice(Math.floor(pitStopData.length / 2));
+      const avgDur = (data: any[]) => {
+        const vals = data.flatMap(r => mcLarenDrivers.map(d => r[d]).filter(Boolean) as number[]);
+        return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      };
+      const earlyAvg = avgDur(firstHalf);
+      const lateAvg = avgDur(secondHalf);
+      const diff = lateAvg - earlyAvg;
+      if (Math.abs(diff) > 0.5) {
+        out.push({
+          icon: Timer,
+          title: `Pit Crew ${diff < 0 ? 'Improving' : 'Slower'}`,
+          body: `Average pit stop ${diff < 0 ? 'improved' : 'worsened'} by ${Math.abs(diff).toFixed(1)}s in the second half (${lateAvg.toFixed(1)}s vs ${earlyAvg.toFixed(1)}s).`,
+          sentiment: diff < 0 ? 'positive' : 'negative',
+        });
+      }
+    }
+
+    // --- Podium rate ---
+    const mcPodiums = yearResults.filter(r =>
+      mcLarenDrivers.includes(r.driver_code) && Number(r.position) <= 3
+    ).length;
+    const mcStarts = yearResults.filter(r => mcLarenDrivers.includes(r.driver_code)).length;
+    if (mcStarts > 0) {
+      const rate = (mcPodiums / mcStarts * 100).toFixed(0);
+      out.push({
+        icon: Trophy,
+        title: 'Podium Rate',
+        body: `McLaren achieved ${mcPodiums} podiums from ${mcStarts} starts (${rate}% conversion rate) in ${year}.`,
+        sentiment: Number(rate) >= 40 ? 'positive' : Number(rate) >= 20 ? 'neutral' : 'negative',
+      });
+    }
+
+    return out;
+  }, [allRaceResults, year, mcLarenDrivers, norVehicle, piaVehicle, norSummary, pitStopData]);
+
   // ─── Render ───────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -418,6 +560,33 @@ export function McLarenAnalytics() {
           <KPI icon={<Trophy className="w-4 h-4 text-green-400" />} label="Constructors" value={`P${kpiStats.teamPos}`} detail={`${kpiStats.teamPts} pts`} />
           <KPI icon={<Flag className="w-4 h-4 text-amber-400" />} label="Last Race" value={`+${kpiStats.lastGained}`} detail="pts gained" />
         </div>
+      )}
+
+      {/* Intelligence Briefing — auto-extracted knowledge */}
+      {insights.length > 0 && (
+        <>
+          <Divider label="INTELLIGENCE BRIEFING" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {insights.map((ins, i) => {
+              const sentimentColors = {
+                positive: { border: 'rgba(5,223,114,0.2)', bg: 'rgba(5,223,114,0.05)', icon: '#05DF72' },
+                negative: { border: 'rgba(251,44,54,0.2)', bg: 'rgba(251,44,54,0.05)', icon: '#FB2C36' },
+                neutral: { border: 'rgba(255,128,0,0.15)', bg: 'rgba(255,128,0,0.03)', icon: '#FF8000' },
+              };
+              const sc = sentimentColors[ins.sentiment];
+              const Icon = ins.icon;
+              return (
+                <div key={i} className="rounded-xl p-3" style={{ border: `1px solid ${sc.border}`, background: sc.bg }}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: sc.icon }} />
+                    <span className="text-[12px] font-medium text-foreground">{ins.title}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{ins.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {/* Section 2: System Health Strip */}
