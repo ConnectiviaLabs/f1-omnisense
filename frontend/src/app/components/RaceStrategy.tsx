@@ -5,9 +5,10 @@ import {
 } from 'recharts';
 import {
   Loader2, Flag, Timer, Users, TrendingUp, AlertTriangle, Disc, Gauge, Zap,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Shield, Activity,
 } from 'lucide-react';
 import { strategy } from '../api/local';
+import { getOpponentDrivers } from '../api/driverIntel';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const compoundColors: Record<string, string> = {
@@ -73,6 +74,8 @@ export function RaceStrategy() {
   const [eltData, setEltData] = useState<any>(null);
   const [scData, setScData] = useState<any>(null);
   const [battleData, setBattleData] = useState<any>(null);
+  const [opponentData, setOpponentData] = useState<any>(null);
+  const [modelHealth, setModelHealth] = useState<any>(null);
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,13 +87,17 @@ export function RaceStrategy() {
       strategy.elt().catch(() => null),
       strategy.scProbability().catch(() => null),
       strategy.battleIntel().catch(() => null),
-    ]).then(([tracker, sims, deg, elt, sc, battle]) => {
+      getOpponentDrivers().catch(() => null),
+      fetch('/api/omni/dapt/health').then(r => r.json()).catch(() => null),
+    ]).then(([tracker, sims, deg, elt, sc, battle, opponents, health]) => {
       setTrackerData(tracker);
       setSimData(sims);
       setDegData(deg);
       setEltData(elt);
       setScData(sc);
       setBattleData(battle);
+      setOpponentData(opponents);
+      setModelHealth(health);
       setLoading(false);
     });
   }, []);
@@ -410,6 +417,57 @@ export function RaceStrategy() {
         </>
       )}
 
+      {/* ── Section 2c: Opponent Strategy Patterns ── */}
+      {opponentData?.drivers?.length > 0 && (
+        <>
+          <Divider label="OPPONENT STRATEGY PATTERNS" />
+          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-4 h-4 text-purple-400" />
+              <h3 className="text-foreground font-semibold text-sm">Rival Strategy Profiles</h3>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                {opponentData.count} drivers profiled
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                    <th className="text-left py-1.5 pr-2">Driver</th>
+                    <th className="text-left py-1.5 pr-2">Name</th>
+                    <th className="text-left py-1.5 pr-2">Nationality</th>
+                    <th className="text-right py-1.5 pr-2">Races</th>
+                    <th className="text-right py-1.5 pr-2">Wins</th>
+                    <th className="text-right py-1.5 pr-2">Podiums</th>
+                    <th className="text-right py-1.5">Seasons</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {opponentData.drivers.slice(0, 20).map((d: any) => (
+                    <tr
+                      key={d.driver_id}
+                      className="border-b border-[rgba(255,128,0,0.04)]"
+                    >
+                      <td className="py-1.5 pr-2 font-mono text-foreground">
+                        {d.driver_code || d.driver_id?.slice(0, 3).toUpperCase()}
+                      </td>
+                      <td className="py-1.5 pr-2 text-muted-foreground">{d.forename} {d.surname}</td>
+                      <td className="py-1.5 pr-2 text-muted-foreground">{d.nationality ?? '—'}</td>
+                      <td className="py-1.5 pr-2 text-right font-mono text-muted-foreground">{d.total_races ?? '—'}</td>
+                      <td className="py-1.5 pr-2 text-right font-mono text-foreground">{d.total_wins ?? '—'}</td>
+                      <td className="py-1.5 pr-2 text-right font-mono text-foreground">{d.total_podiums ?? '—'}</td>
+                      <td className="py-1.5 text-right font-mono text-muted-foreground">
+                        {d.seasons?.length ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Section 3: Optimal Strategies ── */}
       {optimalStrategies.length > 0 && (
         <>
@@ -563,7 +621,7 @@ export function RaceStrategy() {
               ))}
             </div>
 
-            {/* Feature importances */}
+            {/* Feature importances with descriptions */}
             {featureData.length > 0 && (
               <>
                 <div className="text-[11px] text-muted-foreground mb-2">Top Feature Importances</div>
@@ -575,6 +633,33 @@ export function RaceStrategy() {
                     <Bar dataKey="importance" name="Importance" fill="#eab308" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                <div className="mt-2 space-y-0.5">
+                  {featureData.slice(0, 5).map(f => {
+                    const desc: Record<string, string> = {
+                      lap_number: 'How far into the race — late-race incidents are more common',
+                      position_spread: 'Spread of positions — closer packs mean more contact risk',
+                      tyre_age_max: 'Oldest tyres on grid — degraded rubber increases lock-ups',
+                      speed_std: 'Speed variance across field — mixed pace leads to incidents',
+                      drs_enabled: 'DRS activation status — high-speed overtakes raise collision risk',
+                      pit_stops_total: 'Cumulative pit stops — busy pit phases correlate with SC',
+                      track_temp: 'Track temperature affecting grip and tyre blister risk',
+                      air_temp: 'Air temperature impacting engine cooling and reliability',
+                      humidity: 'Humidity level — high humidity reduces grip',
+                      rainfall: 'Rain on track — dramatically increases incident probability',
+                    };
+                    const key = f.feature.toLowerCase().replace(/[^a-z_]/g, '');
+                    const match = Object.entries(desc).find(([k]) => key.includes(k));
+                    if (!match) return null;
+                    return (
+                      <div key={f.feature} className="flex items-start gap-2 text-[10px]">
+                        <span className="text-yellow-500/60 shrink-0 mt-px">*</span>
+                        <span className="text-muted-foreground">
+                          <span className="text-foreground/70">{f.feature}</span> — {match[1]}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             )}
           </div>
@@ -586,6 +671,21 @@ export function RaceStrategy() {
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-4 h-4 text-yellow-500" />
               <h3 className="text-foreground font-semibold text-sm">SC Rate by Circuit</h3>
+              {(() => {
+                const currentCircuit = session?.circuit;
+                const currentRate = currentCircuit ? scData?.circuit_sc_rates?.[currentCircuit] : null;
+                const avgRate = scRateData.length > 0 ? scRateData.reduce((s, d) => s + d.rate, 0) / scRateData.length : 0;
+                if (currentRate != null) {
+                  const level = currentRate >= 1 ? 'HIGH' : currentRate >= 0.5 ? 'MED' : 'LOW';
+                  const color = currentRate >= 1 ? 'text-red-400 bg-red-400/10 border-red-400/20' : currentRate >= 0.5 ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' : 'text-green-400 bg-green-400/10 border-green-400/20';
+                  return (
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${color}`}>
+                      {currentCircuit}: {currentRate.toFixed(2)} SC/race — {level} {currentRate > avgRate ? '(above avg)' : '(below avg)'}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
               <span className="ml-auto text-[11px] text-muted-foreground">avg SC deployments per race</span>
             </div>
             <ResponsiveContainer width="100%" height={320}>
@@ -604,6 +704,44 @@ export function RaceStrategy() {
           </div>
         )}
       </div>
+
+      {/* Model Confidence */}
+      {modelHealth && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-foreground font-semibold text-sm">Model Confidence</h3>
+            <span className="ml-auto text-[11px] text-muted-foreground">OmniDapt drift detection</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(modelHealth.models || Object.entries(modelHealth).filter(([k]) => k !== 'status' && k !== 'timestamp'))
+              .map((item: any) => {
+                const name = item.name || item[0];
+                const data = item.status ? item : item[1];
+                const status = (typeof data === 'object' ? data.status : data) || 'unknown';
+                const isOk = status === 'ok' || status === 'healthy' || status === 'active';
+                const isDrift = status === 'drift' || status === 'degraded' || status === 'warning';
+                const color = isOk ? 'text-green-400 bg-green-400/10 border-green-400/20' :
+                  isDrift ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' :
+                  'text-red-400 bg-red-400/10 border-red-400/20';
+                const label = isOk ? 'OK' : isDrift ? 'DRIFT' : 'DOWN';
+                const lastTrained = typeof data === 'object' ? (data.last_trained || data.updated_at || data.timestamp) : null;
+                return (
+                  <div key={name} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${color}`}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isOk ? '#22c55e' : isDrift ? '#eab308' : '#ef4444' }} />
+                    <span className="text-[11px] font-mono text-foreground">{name}</span>
+                    <span className="text-[10px] font-semibold">{label}</span>
+                    {lastTrained && (
+                      <span className="text-[9px] text-muted-foreground">
+                        {new Date(lastTrained).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* ELT Driver Deltas */}
       {driverDeltaData.length > 0 && (

@@ -411,6 +411,13 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
       });
   }, [selectedCar, trendYear]);
 
+  // Split vehicles: McLaren first, then rest sorted by health
+  const mclarenVehicles = useMemo(() => vehicles.filter(v => v.team === 'McLaren'), [vehicles]);
+  const otherVehicles = useMemo(() =>
+    vehicles.filter(v => v.team !== 'McLaren').sort((a, b) => a.overallHealth - b.overallHealth),
+    [vehicles],
+  );
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -420,13 +427,23 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     );
   }
 
+  if (!loading && vehicles.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <Shield className="w-8 h-8 text-muted-foreground/30" />
+        <span className="text-sm text-muted-foreground">No anomaly data available</span>
+        <span className="text-[11px] text-muted-foreground/60">Run the anomaly detection pipeline to populate this view</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Fleet status bar */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2 bg-[#1A1F2E] rounded-lg px-3 py-2 border border-[rgba(255,128,0,0.12)]">
           <CircleDot className="w-3 h-3 text-[#FF8000]" />
-          <span className="text-[12px] text-muted-foreground">{vehicles.length + registeredVehicles.length} vehicles</span>
+          <span className="text-[12px] text-muted-foreground">{vehicles.length} drivers monitored</span>
           {liveSource && (
             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
               liveSource === 'live'
@@ -457,85 +474,120 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
         </button>
       </div>
 
-      {/* Driver cards — show all when none selected, only selected when one is active */}
-      <div className={selectedCar ? 'grid grid-cols-1 max-w-xl gap-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4'}>
-        {(selectedCar ? vehicles.filter(v => v.number === selectedCar.number) : vehicles).map(v => {
-          const isSelected = selectedCar?.number === v.number;
-          return (
-            <button
-              key={v.number}
-              onClick={() => setSelectedCar(isSelected ? null : v)}
-              className={`text-left bg-[#1A1F2E] rounded-xl border p-5 transition-all group ${
-                isSelected
-                  ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30 shadow-[0_0_20px_rgba(255,128,0,0.1)]'
-                  : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.2)]'
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold font-mono ${
-                    isSelected ? 'bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/40' : ''
+      {/* ── McLaren Drivers — full cards ── */}
+      {mclarenVehicles.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {mclarenVehicles.map(v => {
+            const isSelected = selectedCar?.number === v.number;
+            return (
+              <button
+                key={v.number}
+                onClick={() => setSelectedCar(isSelected ? null : v)}
+                className={`text-left bg-[#1A1F2E] rounded-xl border p-5 transition-all group ${
+                  isSelected
+                    ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30 shadow-[0_0_20px_rgba(255,128,0,0.1)]'
+                    : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.3)]'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold font-mono bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/40">
+                      #{v.number}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-[#FF8000]">{v.driver}</div>
+                      <div className="text-[12px] text-muted-foreground">{v.team} &middot; {v.lastRace}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-mono font-bold" style={{ color: levelColor(v.level) }}>
+                      {v.overallHealth}%
+                    </div>
+                    <div className="text-[11px] uppercase tracking-wider" style={{ color: levelColor(v.level) }}>
+                      {v.level}
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-[#0D1117] rounded-full overflow-hidden mb-4">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${v.overallHealth}%`, background: `linear-gradient(90deg, ${levelColor(v.level)}, ${levelColor(v.level)}88)` }}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {v.systems.map(sys => {
+                    const Icon = sys.icon;
+                    return (
+                      <div key={sys.name} className="bg-[#0D1117] rounded-lg p-2">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Icon className="w-2.5 h-2.5" style={{ color: levelColor(sys.level) }} />
+                          <span className="text-[10px] text-muted-foreground truncate">{sys.name}</span>
+                        </div>
+                        <div className="h-1 bg-[#222838] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
+                        </div>
+                        <div className="text-[11px] font-mono mt-0.5" style={{ color: levelColor(sys.level) }}>{sys.health}%</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Grid: all other drivers as compact rows ── */}
+      {otherVehicles.length > 0 && (
+        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[rgba(255,128,0,0.08)] flex items-center justify-between">
+            <span className="text-[12px] font-medium text-muted-foreground">All Drivers</span>
+            <span className="text-[10px] text-muted-foreground">{otherVehicles.length} drivers</span>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto">
+            {otherVehicles.map(v => {
+              const isSelected = selectedCar?.number === v.number;
+              return (
+                <button
+                  key={v.number}
+                  onClick={() => setSelectedCar(isSelected ? null : v)}
+                  className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b border-[rgba(255,128,0,0.04)] transition-colors ${
+                    isSelected
+                      ? 'bg-[#FF8000]/5 border-l-2 border-l-[#FF8000]'
+                      : 'hover:bg-[rgba(255,128,0,0.02)]'
                   }`}
-                    style={!isSelected ? { background: levelBg(v.level), color: levelColor(v.level), border: `1px solid ${levelColor(v.level)}22` } : undefined}>
+                >
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold font-mono shrink-0"
+                    style={{ background: levelBg(v.level), color: levelColor(v.level), border: `1px solid ${levelColor(v.level)}22` }}>
                     #{v.number}
                   </div>
-                  <div>
-                    <div className={`text-sm font-medium transition-colors ${
-                      isSelected ? 'text-[#FF8000]' : 'text-foreground group-hover:text-[#FF8000]'
-                    }`}>{v.driver}</div>
-                    <div className="text-[12px] text-muted-foreground">Last: {v.lastRace}</div>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-mono font-bold" style={{ color: levelColor(v.level) }}>
-                    {v.overallHealth}%
-                  </div>
-                  <div className="text-[11px] uppercase tracking-wider" style={{ color: levelColor(v.level) }}>
-                    {v.level}
-                  </div>
-                </div>
-              </div>
-
-              {/* Overall health bar */}
-              <div className="h-2 bg-[#0D1117] rounded-full overflow-hidden mb-4">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${v.overallHealth}%`, background: `linear-gradient(90deg, ${levelColor(v.level)}, ${levelColor(v.level)}88)` }}
-                />
-              </div>
-
-              {/* System mini-bars */}
-              <div className="grid grid-cols-3 gap-2">
-                {v.systems.map(sys => {
-                  const Icon = sys.icon;
-                  return (
-                    <div key={sys.name} className="bg-[#0D1117] rounded-lg p-2">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <Icon className="w-2.5 h-2.5" style={{ color: levelColor(sys.level) }} />
-                        <span className="text-[10px] text-muted-foreground truncate">{sys.name}</span>
-                      </div>
-                      <div className="h-1 bg-[#222838] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
-                      </div>
-                      <div className="text-[11px] font-mono mt-0.5" style={{ color: levelColor(sys.level) }}>{sys.health}%</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[12px] font-medium ${isSelected ? 'text-[#FF8000]' : 'text-foreground'}`}>{v.driver}</span>
+                      <span className="text-[10px] text-muted-foreground truncate">{v.team}</span>
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Selection indicator */}
-              <div className={`mt-3 flex items-center justify-end gap-1 text-[11px] transition-colors ${
-                isSelected
-                  ? 'text-[#FF8000]/70'
-                  : 'text-muted-foreground/50 group-hover:text-[#FF8000]/60'
-              }`}>
-                {isSelected ? 'Selected — click to collapse' : 'Click for details'}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                  </div>
+                  {/* Mini system bars */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {v.systems.map(sys => (
+                      <div key={sys.name} className="flex items-center gap-1" title={`${sys.name}: ${sys.health}%`}>
+                        <div className="w-12 h-1.5 bg-[#0D1117] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="w-12 text-right shrink-0">
+                    <span className="text-[12px] font-mono font-semibold" style={{ color: levelColor(v.level) }}>
+                      {v.overallHealth}%
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ─── Driver Detail Panel — shown when a driver is selected ─── */}
       {selectedCar && (() => {
@@ -566,13 +618,18 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                   </div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-2xl font-mono font-bold" style={{ color: levelColor(selectedCar.level) }}>
-                  {selectedCar.overallHealth}%
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-2xl font-mono font-bold" style={{ color: levelColor(selectedCar.level) }}>
+                    {selectedCar.overallHealth}%
+                  </div>
+                  <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: levelColor(selectedCar.level) }}>
+                    {selectedCar.level}
+                  </div>
                 </div>
-                <div className="text-[11px] uppercase tracking-wider font-medium" style={{ color: levelColor(selectedCar.level) }}>
-                  {selectedCar.level}
-                </div>
+                <button type="button" title="Close" onClick={() => setSelectedCar(null)} className="text-muted-foreground hover:text-foreground ml-2">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
 
