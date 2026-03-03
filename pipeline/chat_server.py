@@ -96,7 +96,8 @@ async def serve_media_frame(folder: str, filename: str):
     """Serve detection frame images from MongoDB (media_frames collection).
     Falls back to local file if not in MongoDB."""
     path = f"{folder}/{filename}"
-    doc = db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1})
+    _db = get_data_db()
+    doc = _db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1}) if _db else None
     if doc:
         data = _b64.b64decode(doc["data_b64"])
         return _Response(content=data, media_type=doc.get("content_type", "image/jpeg"))
