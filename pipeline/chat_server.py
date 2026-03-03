@@ -557,98 +557,20 @@ def get_data_db():
 @app.get("/api/local/jolpica/race_results")
 async def jolpica_race_results():
     db = get_data_db()
-    docs = list(db["race_results"].find({}, {"_id": 0}))
+    docs = list(db["jolpica_race_results"].find({}, {"_id": 0, "ingested_at": 0}))
     return docs
 
 @app.get("/api/local/jolpica/driver_standings")
 async def jolpica_driver_standings():
     db = get_data_db()
-    races = list(db["race_results"].find({}, {"_id": 0}).sort([("season", 1), ("round", 1)]))
-    # Build standings by aggregating points per driver per season
-    from collections import defaultdict
-    driver_data = defaultdict(lambda: {"points": 0, "wins": 0, "Driver": None, "Constructors": [], "season": ""})
-    for race in races:
-        season = race.get("season", "")
-        for result in race.get("Results", []):
-            driver = result.get("Driver", {})
-            did = driver.get("driverId", "")
-            key = f"{season}_{did}"
-            d = driver_data[key]
-            d["points"] += float(result.get("points", 0))
-            if result.get("position") == "1":
-                d["wins"] += 1
-            d["Driver"] = driver
-            d["season"] = season
-            constructor = result.get("Constructor", {})
-            if constructor and constructor not in d["Constructors"]:
-                d["Constructors"] = [constructor]
-    # Format as JolpicaDriverStanding[]
-    standings = []
-    for key, d in driver_data.items():
-        if d["Driver"]:
-            standings.append({
-                "position": "0",
-                "positionText": "0",
-                "points": str(d["points"]),
-                "wins": str(d["wins"]),
-                "Driver": d["Driver"],
-                "Constructors": d["Constructors"],
-                "season": d["season"],
-            })
-    # Sort by season desc, points desc
-    standings.sort(key=lambda x: (-int(x["season"] or "0"), -float(x["points"])))
-    # Assign positions per season
-    current_season = None
-    pos = 0
-    for s in standings:
-        if s["season"] != current_season:
-            current_season = s["season"]
-            pos = 1
-        s["position"] = str(pos)
-        s["positionText"] = str(pos)
-        pos += 1
-    return standings
+    docs = list(db["jolpica_driver_standings"].find({}, {"_id": 0, "ingested_at": 0}))
+    return docs
 
 @app.get("/api/local/jolpica/constructor_standings")
 async def jolpica_constructor_standings():
     db = get_data_db()
-    races = list(db["race_results"].find({}, {"_id": 0}).sort([("season", 1), ("round", 1)]))
-    from collections import defaultdict
-    constructor_data = defaultdict(lambda: {"points": 0, "wins": 0, "Constructor": None, "season": ""})
-    for race in races:
-        season = race.get("season", "")
-        for result in race.get("Results", []):
-            constructor = result.get("Constructor", {})
-            cid = constructor.get("constructorId", "")
-            key = f"{season}_{cid}"
-            d = constructor_data[key]
-            d["points"] += float(result.get("points", 0))
-            if result.get("position") == "1":
-                d["wins"] += 1
-            d["Constructor"] = constructor
-            d["season"] = season
-    standings = []
-    for key, d in constructor_data.items():
-        if d["Constructor"]:
-            standings.append({
-                "position": "0",
-                "positionText": "0",
-                "points": str(d["points"]),
-                "wins": str(d["wins"]),
-                "Constructor": d["Constructor"],
-                "season": d["season"],
-            })
-    standings.sort(key=lambda x: (-int(x["season"] or "0"), -float(x["points"])))
-    current_season = None
-    pos = 0
-    for s in standings:
-        if s["season"] != current_season:
-            current_season = s["season"]
-            pos = 1
-        s["position"] = str(pos)
-        s["positionText"] = str(pos)
-        pos += 1
-    return standings
+    docs = list(db["jolpica_constructor_standings"].find({}, {"_id": 0, "ingested_at": 0}))
+    return docs
 
 @app.get("/api/local/constructor_profiles")
 async def constructor_profiles(
