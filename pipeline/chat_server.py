@@ -71,6 +71,7 @@ class _RewriteMiddleware(BaseHTTPMiddleware):
     _PREFIXES = (
         "/api/openf1/", "/api/jolpica/", "/api/driver_intel/",
         "/api/circuit_intel/", "/api/pipeline/", "/api/constructor_profiles",
+        "/api/mclaren/",
     )
     async def dispatch(self, request: _Request, call_next):
         path = request.scope["path"]
@@ -1367,6 +1368,36 @@ async def mcdriver_summary(year: str, driver: str):
         })
     summaries.sort(key=lambda x: x["race"])
     return summaries
+
+@app.get("/api/local/mclaren/tire-strategy/{year}")
+async def mclaren_tire_strategy(year: str):
+    """Return tire compound usage per race for a given year from openf1 stints+sessions."""
+    db = get_data_db()
+    year_int = int(year) if year.isdigit() else year
+    # Get Race sessions for the year
+    sessions = list(db["openf1_sessions"].find(
+        {"session_type": "Race", "year": {"$in": [year, year_int]}},
+        {"_id": 0, "session_key": 1, "circuit_short_name": 1}
+    ))
+    if not sessions:
+        return []
+    sk_to_circuit = {s["session_key"]: s.get("circuit_short_name", "?") for s in sessions}
+    session_keys = list(sk_to_circuit.keys())
+    # Get stints for those sessions
+    stints = list(db["openf1_stints"].find(
+        {"session_key": {"$in": session_keys}},
+        {"_id": 0, "session_key": 1, "driver_number": 1, "compound": 1, "stint_number": 1}
+    ))
+    result = []
+    for s in stints:
+        result.append({
+            "circuit": sk_to_circuit.get(s["session_key"], "?"),
+            "driver_number": s.get("driver_number"),
+            "compound": (s.get("compound") or "").upper(),
+            "stint_number": s.get("stint_number", 0),
+        })
+    return result
+
 
 def _decompress_telemetry(db, source_file: str) -> list[dict]:
     """Decompress telemetry from telemetry_compressed for a specific race.

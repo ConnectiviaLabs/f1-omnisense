@@ -135,16 +135,8 @@ export function McLarenAnalytics() {
   // ── MongoDB: Pit stops ────────────────────────────────────────────
   const [pitStopsRaw, setPitStopsRaw] = useState<any[]>([]);
 
-  // ── MongoDB: Stints + sessions ────────────────────────────────────
-  const [stintsRaw, setStintsRaw] = useState<any[]>([]);
-  const [sessionsRaw, setSessionsRaw] = useState<any[]>([]);
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/openf1/stints').then(r => r.ok ? r.json() : []),
-      fetch('/api/openf1/sessions').then(r => r.ok ? r.json() : []),
-    ]).then(([st, sess]) => { setStintsRaw(st); setSessionsRaw(sess); })
-      .catch(() => {});
-  }, []);
+  // ── MongoDB: Tire strategy (year-filtered server join) ────────────
+  const [tireStrategyRaw, setTireStrategyRaw] = useState<any[]>([]);
 
   // ── MongoDB: Anomaly scores ───────────────────────────────────────
   const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
@@ -154,14 +146,7 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
-  // ── MongoDB: Rivals ───────────────────────────────────────────────
-  const [rivalsData, setRivalsData] = useState<any>(null);
-  useEffect(() => {
-    fetch('/api/omni/analytics/rivals/NOR')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setRivalsData(d))
-      .catch(() => {});
-  }, []);
+  // Tire strategy + pit stops fetched per year (alongside telemetry)
 
   // ── Detect McLaren drivers for selected year ──────────────────────
   const mcLarenDrivers = useMemo(() => {
@@ -191,6 +176,11 @@ export function McLarenAnalytics() {
     fetch(`/api/jolpica/pit_stops?season=${year}`)
       .then(r => r.ok ? r.json() : [])
       .then(d => setPitStopsRaw(d))
+      .catch(() => {});
+
+    fetch(`/api/mclaren/tire-strategy/${year}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setTireStrategyRaw(d))
       .catch(() => {});
   }, [year, mcLarenDrivers.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -309,50 +299,59 @@ export function McLarenAnalytics() {
     return all.length ? +(all.reduce((a, b) => a + b, 0) / all.length).toFixed(1) : 0;
   }, [pitStopData, mcLarenDrivers]);
 
-  // Tire compound grid from openf1_stints + openf1_sessions
+  // Tire compound grid from server-side join endpoint
+  const numToCode: Record<number, string> = { 1: 'VER', 3: 'RIC', 4: 'NOR', 11: 'PER', 14: 'ALO', 16: 'LEC', 55: 'SAI', 81: 'PIA', 2: 'SAR', 63: 'RUS', 44: 'HAM', 10: 'GAS', 31: 'OCO', 23: 'ALB', 22: 'TSU', 27: 'HUL', 20: 'MAG', 77: 'BOT', 24: 'ZHO', 18: 'STR', 21: 'DEV' };
   const tireGrid = useMemo(() => {
-    if (!stintsRaw.length || !sessionsRaw.length) return { races: [] as string[], drivers: {} as Record<string, Record<string, string[]>> };
-    const yearSessions = sessionsRaw.filter(s => s.session_type === 'Race' && matchSeason(s.year, year));
-    const sessionMap = new Map<number, string>();
-    yearSessions.forEach(s => { sessionMap.set(s.session_key, (s.circuit_short_name || '').slice(0, 10)); });
-    // Build driver_number → code map from openf1_drivers or hardcode common ones
-    // NOR=4, PIA=81, RIC=3, SAI=55, LEC=16, VER=1, etc
-    const numToCode: Record<number, string> = { 1: 'VER', 3: 'RIC', 4: 'NOR', 11: 'PER', 14: 'ALO', 16: 'LEC', 55: 'SAI', 81: 'PIA', 2: 'SAR', 63: 'RUS', 44: 'HAM', 10: 'GAS', 31: 'OCO', 23: 'ALB', 22: 'TSU', 27: 'HUL', 20: 'MAG', 77: 'BOT', 24: 'ZHO', 18: 'STR', 21: 'DEV' };
+    if (!tireStrategyRaw.length) return { races: [] as string[], drivers: {} as Record<string, Record<string, string[]>> };
     const races = new Set<string>();
     const drivers: Record<string, Record<string, string[]>> = {};
     mcLarenDrivers.forEach(d => { drivers[d] = {}; });
-    stintsRaw.forEach(stint => {
-      const race = sessionMap.get(stint.session_key);
-      if (!race) return;
+    tireStrategyRaw.forEach((stint: any) => {
+      const race = (stint.circuit || '').slice(0, 10);
       const code = numToCode[stint.driver_number];
-      if (!code || !mcLarenDrivers.includes(code)) return;
+      if (!code || !mcLarenDrivers.includes(code) || !race) return;
       races.add(race);
       if (!drivers[code][race]) drivers[code][race] = [];
-      const compound = (stint.compound || '').toUpperCase();
-      if (compound && !drivers[code][race].includes(compound)) drivers[code][race].push(compound);
+      if (stint.compound && !drivers[code][race].includes(stint.compound)) drivers[code][race].push(stint.compound);
     });
     return { races: Array.from(races), drivers };
-  }, [stintsRaw, sessionsRaw, mcLarenDrivers, year]);
+  }, [tireStrategyRaw, mcLarenDrivers]);
 
-  // NOR health trend
-  const norHealthTrend = useMemo(() => {
-    const v = norVehicle;
-    if (!v?.races?.length) return [];
-    return v.races.slice(-8).map(r => ({
-      race: r.race?.slice(0, 8) ?? '',
-      speed: r.systems['Speed']?.health ?? 0,
-      pace: r.systems['Lap Pace']?.health ?? 0,
-      tyre: r.systems['Tyre Management']?.health ?? 0,
-    }));
-  }, [norVehicle]);
-
-  // Rivals chart
-  const rivalsChart = useMemo(() => {
-    if (!rivalsData?.rivals) return [];
-    return rivalsData.rivals.slice(0, 6).map((r: any) => ({
-      code: r.code, anomalyPct: r.anomaly_pct,
-    }));
-  }, [rivalsData]);
+  // McLaren vs The World — avg finish + points/race for top drivers
+  const worldComparison = useMemo(() => {
+    const yearResults = allRaceResults.filter(r => matchSeason(r.season, year));
+    if (!yearResults.length) return { avgFinish: [] as any[], pointsPerRace: [] as any[] };
+    // Group by driver
+    const driverStats = new Map<string, { code: string; teamId: string; positions: number[]; points: number[]; races: number }>();
+    yearResults.forEach(r => {
+      const code = r.driver_code;
+      if (!code) return;
+      const pos = Number(r.position);
+      const pts = Number(r.points || 0);
+      if (!driverStats.has(code)) driverStats.set(code, { code, teamId: r.constructor_id || '', positions: [], points: [], races: 0 });
+      const s = driverStats.get(code)!;
+      if (pos > 0 && pos <= 20) s.positions.push(pos);
+      s.points.push(pts);
+      s.races++;
+    });
+    // Sort by total points desc, take top 12
+    const sorted = Array.from(driverStats.values())
+      .map(s => ({
+        code: s.code,
+        teamId: s.teamId,
+        avgFinish: s.positions.length ? +(s.positions.reduce((a, b) => a + b, 0) / s.positions.length).toFixed(1) : 20,
+        pointsPerRace: s.races ? +(s.points.reduce((a, b) => a + b, 0) / s.races).toFixed(1) : 0,
+        totalPts: s.points.reduce((a, b) => a + b, 0),
+        podiums: s.positions.filter(p => p <= 3).length,
+        races: s.races,
+      }))
+      .sort((a, b) => b.totalPts - a.totalPts)
+      .slice(0, 12);
+    return {
+      avgFinish: [...sorted].sort((a, b) => a.avgFinish - b.avgFinish),
+      pointsPerRace: sorted,
+    };
+  }, [allRaceResults, year]);
 
   // Race results table — flat rows: round, race_name, driver_code, constructor_id, position, points
   const raceResultsTable = useMemo(() => {
@@ -650,65 +649,53 @@ export function McLarenAnalytics() {
         </div>
       </div>
 
-      {/* Section 6: Competitive Intelligence */}
-      <Divider label="COMPETITIVE INTELLIGENCE" />
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-5 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-foreground mb-3 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />{mcLarenDrivers[0] || 'NOR'} Health Trend</h3>
-          {norHealthTrend.length > 0 ? (
-            <div className="space-y-3">
-              {[{ key: 'speed', label: 'Speed', color: '#FF8000' }, { key: 'pace', label: 'Lap Pace', color: '#00d4ff' }, { key: 'tyre', label: 'Tyre Mgmt', color: '#22c55e' }].map(sys => (
-                <div key={sys.key}>
-                  <span className="text-[10px] text-muted-foreground">{sys.label}</span>
-                  <ResponsiveContainer width="100%" height={60}>
-                    <AreaChart data={norHealthTrend} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
-                      <defs>
-                        <linearGradient id={`ht-${sys.key}`} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor={sys.color} stopOpacity={0.3} />
-                          <stop offset="100%" stopColor={sys.color} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="race" tick={false} axisLine={false} />
-                      <YAxis domain={[0, 100]} tick={false} axisLine={false} width={0} />
-                      <Area type="monotone" dataKey={sys.key} stroke={sys.color} fill={`url(#ht-${sys.key})`} strokeWidth={1.5} dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ))}
+      {/* Section 6: McLaren vs The World */}
+      <Divider label="MCLAREN VS THE WORLD" />
+      {worldComparison.pointsPerRace.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />Points Per Race</h3>
+            <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — avg points per GP</p>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={worldComparison.pointsPerRace} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <XAxis type="number" stroke="#8888a0" fontSize={10} />
+                  <YAxis dataKey="code" type="category" stroke="#8888a0" fontSize={11} width={40} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="pointsPerRace" radius={[0, 4, 4, 0]} name="Pts/Race">
+                    {worldComparison.pointsPerRace.map((e, i) => (
+                      <Cell key={i} fill={mcLarenDrivers.includes(e.code) ? '#FF8000' : teamColors[e.teamId] ?? '#6b7280'} opacity={mcLarenDrivers.includes(e.code) ? 1 : 0.6} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground text-sm">No health data</div>
-          )}
-        </div>
+          </div>
 
-        <div className="col-span-7 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-foreground mb-1">{mcLarenDrivers[0] || 'NOR'} vs Field</h3>
-          <p className="text-[12px] text-muted-foreground mb-3">Anomaly rate comparison — higher = more anomalies</p>
-          {rivalsChart.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={[
-                ...(rivalsData?.target ? [{ code: rivalsData.target.code, anomalyPct: rivalsData.target.anomaly_pct }] : []),
-                ...rivalsChart,
-              ].sort((a, b) => b.anomalyPct - a.anomalyPct)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
-                <XAxis type="number" stroke="#8888a0" fontSize={10} unit="%" />
-                <YAxis dataKey="code" type="category" stroke="#8888a0" fontSize={11} width={40} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="anomalyPct" radius={[0, 4, 4, 0]} name="Anomaly %">
-                  {[
-                    ...(rivalsData?.target ? [{ code: rivalsData.target.code, anomalyPct: rivalsData.target.anomaly_pct }] : []),
-                    ...rivalsChart,
-                  ].sort((a, b) => b.anomalyPct - a.anomalyPct).map((e, i) => (
-                    <Cell key={i} fill={mcLarenDrivers.includes(e.code) ? '#FF8000' : '#6b7280'} opacity={0.8} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-[220px] text-muted-foreground text-sm">Loading rival data...</div>
-          )}
+          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Users className="w-3.5 h-3.5 text-[#FF8000]" />Average Finish Position</h3>
+            <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — lower is better</p>
+            <div className="h-[320px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={worldComparison.avgFinish} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <XAxis type="number" stroke="#8888a0" fontSize={10} reversed />
+                  <YAxis dataKey="code" type="category" stroke="#8888a0" fontSize={11} width={40} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="avgFinish" radius={[0, 4, 4, 0]} name="Avg Finish">
+                    {worldComparison.avgFinish.map((e, i) => (
+                      <Cell key={i} fill={mcLarenDrivers.includes(e.code) ? '#FF8000' : teamColors[e.teamId] ?? '#6b7280'} opacity={mcLarenDrivers.includes(e.code) ? 1 : 0.6} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="text-center py-6 text-muted-foreground text-sm">No comparison data for {year}</div>
+      )}
 
       {/* Section 7: Race Results */}
       <Divider label="RACE RESULTS" />
