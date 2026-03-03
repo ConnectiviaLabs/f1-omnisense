@@ -20,17 +20,24 @@ interface CarSummary {
 
 // ─── Shared helpers ─────────────────────────────────────────────────
 const teamColors: Record<string, string> = {
-  'Red Bull': '#3671C6', 'McLaren': '#FF8000', 'Ferrari': '#E8002D',
-  'Mercedes': '#27F4D2', 'Aston Martin': '#229971', 'Alpine': '#FF87BC',
-  'Williams': '#64C4FF', 'RB': '#6692FF', 'Kick Sauber': '#52E252',
-  'Haas F1 Team': '#B6BABD',
+  'red_bull': '#3671C6', 'mclaren': '#FF8000', 'ferrari': '#E8002D',
+  'mercedes': '#27F4D2', 'aston_martin': '#229971', 'alpine': '#FF87BC',
+  'williams': '#64C4FF', 'rb': '#6692FF', 'sauber': '#52E252',
+  'haas': '#B6BABD',
+};
+
+const teamDisplayNames: Record<string, string> = {
+  'red_bull': 'Red Bull', 'mclaren': 'McLaren', 'ferrari': 'Ferrari',
+  'mercedes': 'Mercedes', 'aston_martin': 'Aston Martin', 'alpine': 'Alpine',
+  'williams': 'Williams', 'rb': 'RB', 'sauber': 'Kick Sauber',
+  'haas': 'Haas', 'alphatauri': 'AlphaTauri', 'alfa': 'Alfa Romeo',
+  'toro_rosso': 'Toro Rosso', 'renault': 'Renault', 'racing_point': 'Racing Point',
 };
 
 const compoundColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
 };
 
-// Helper: match season regardless of string/number type in MongoDB
 const matchSeason = (docSeason: any, year: string) => String(docSeason) === year;
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -77,7 +84,7 @@ const SYSTEM_ICONS: Record<string, React.ElementType> = { 'Speed': Gauge, 'Lap P
 // ─── Component ──────────────────────────────────────────────────────
 export function McLarenAnalytics() {
   const [year, setYear] = useState('2024');
-  const [availableYears, setAvailableYears] = useState<string[]>(['2024', '2023']);
+  const [availableYears, setAvailableYears] = useState<string[]>(['2024']);
 
   // ── Fetch available seasons from MongoDB ──────────────────────────
   useEffect(() => {
@@ -90,10 +97,9 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
-  // ── MongoDB: race_results (raw) — derive standings + results ──────
+  // ── MongoDB: jolpica_race_results (flat rows) ─────────────────────
   const [allRaceResults, setAllRaceResults] = useState<any[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-
   useEffect(() => {
     setDataLoading(true);
     fetch('/api/jolpica/race_results')
@@ -103,25 +109,7 @@ export function McLarenAnalytics() {
       .finally(() => setDataLoading(false));
   }, []);
 
-  // Filter race results for selected year (handle string/number season)
-  const raceResults = useMemo(() =>
-    allRaceResults.filter(r => matchSeason(r.season, year)).sort((a, b) => Number(a.round) - Number(b.round)),
-    [allRaceResults, year]);
-
-  // ── MongoDB: constructor_standings ─────────────────────────────────
-  const [allConstructorStandings, setAllConstructorStandings] = useState<any[]>([]);
-  useEffect(() => {
-    fetch('/api/jolpica/constructor_standings')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setAllConstructorStandings(d))
-      .catch(() => {});
-  }, []);
-
-  const constructorStandings = useMemo(() =>
-    allConstructorStandings.filter(s => matchSeason(s.season, year)),
-    [allConstructorStandings, year]);
-
-  // ── MongoDB: driver_standings ──────────────────────────────────────
+  // ── MongoDB: jolpica_driver_standings ──────────────────────────────
   const [allDriverStandings, setAllDriverStandings] = useState<any[]>([]);
   useEffect(() => {
     fetch('/api/jolpica/driver_standings')
@@ -130,35 +118,24 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
-  const driverStandings = useMemo(() =>
-    allDriverStandings.filter(s => matchSeason(s.season, year)),
-    [allDriverStandings, year]);
+  // ── MongoDB: jolpica_constructor_standings ─────────────────────────
+  const [allConstructorStandings, setAllConstructorStandings] = useState<any[]>([]);
+  useEffect(() => {
+    fetch('/api/jolpica/constructor_standings')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setAllConstructorStandings(d))
+      .catch(() => {});
+  }, []);
 
   // ── MongoDB: Telemetry race summaries ─────────────────────────────
   const [norSummary, setNorSummary] = useState<CarSummary[]>([]);
   const [piaSummary, setPiaSummary] = useState<CarSummary[]>([]);
   const [telLoading, setTelLoading] = useState(true);
 
-  useEffect(() => {
-    setTelLoading(true);
-    Promise.all([
-      fetch(`/api/local/mccar-summary/${year}/NOR`).then(r => r.ok ? r.json() : []),
-      fetch(`/api/local/mccar-summary/${year}/PIA`).then(r => r.ok ? r.json() : []),
-    ]).then(([n, p]) => { setNorSummary(n); setPiaSummary(p); })
-      .catch(() => {})
-      .finally(() => setTelLoading(false));
-  }, [year]);
-
-  // ── MongoDB: Pit stops from jolpica_pit_stops collection ──────────
+  // ── MongoDB: Pit stops ────────────────────────────────────────────
   const [pitStopsRaw, setPitStopsRaw] = useState<any[]>([]);
-  useEffect(() => {
-    fetch(`/api/jolpica/pit_stops?season=${year}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setPitStopsRaw(d))
-      .catch(() => {});
-  }, [year]);
 
-  // ── MongoDB: Stints + sessions from openf1 collections ───────────
+  // ── MongoDB: Stints + sessions ────────────────────────────────────
   const [stintsRaw, setStintsRaw] = useState<any[]>([]);
   const [sessionsRaw, setSessionsRaw] = useState<any[]>([]);
   useEffect(() => {
@@ -177,7 +154,7 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
-  // ── MongoDB: Rivals via omni analytics ────────────────────────────
+  // ── MongoDB: Rivals ───────────────────────────────────────────────
   const [rivalsData, setRivalsData] = useState<any>(null);
   useEffect(() => {
     fetch('/api/omni/analytics/rivals/NOR')
@@ -186,128 +163,182 @@ export function McLarenAnalytics() {
       .catch(() => {});
   }, []);
 
+  // ── Detect McLaren drivers for selected year ──────────────────────
+  const mcLarenDrivers = useMemo(() => {
+    const drivers = new Set<string>();
+    allRaceResults.forEach(r => {
+      if (matchSeason(r.season, year) && (r.constructor_id || '').toLowerCase().includes('mclaren')) {
+        if (r.driver_code) drivers.add(r.driver_code);
+      }
+    });
+    return Array.from(drivers).sort();
+  }, [allRaceResults, year]);
+
+  // Fetch telemetry + pit stops per year + McLaren drivers
+  useEffect(() => {
+    if (!mcLarenDrivers.length) { setTelLoading(false); return; }
+    setTelLoading(true);
+    Promise.all(
+      mcLarenDrivers.map(code =>
+        fetch(`/api/local/mccar-summary/${year}/${code}`).then(r => r.ok ? r.json() : [])
+      )
+    ).then(results => {
+      // Store first two drivers' telemetry (primary + secondary)
+      setNorSummary(results[0] || []);
+      setPiaSummary(results[1] || []);
+    }).catch(() => {}).finally(() => setTelLoading(false));
+
+    fetch(`/api/jolpica/pit_stops?season=${year}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => setPitStopsRaw(d))
+      .catch(() => {});
+  }, [year, mcLarenDrivers.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Derived data ─────────────────────────────────────────────────
 
-  const norVehicle = anomalyVehicles.find(v => v.code === 'NOR');
-  const piaVehicle = anomalyVehicles.find(v => v.code === 'PIA');
+  const norVehicle = anomalyVehicles.find(v => mcLarenDrivers.includes(v.code));
+  const piaVehicle = anomalyVehicles.find(v => mcLarenDrivers.includes(v.code) && v.code !== norVehicle?.code);
 
-  // KPIs from MongoDB standings
+  // Filter standings for selected year
+  const driverStandings = useMemo(() =>
+    allDriverStandings.filter(s => matchSeason(s.season, year)),
+    [allDriverStandings, year]);
+
+  const constructorStandings = useMemo(() =>
+    allConstructorStandings.filter(s => matchSeason(s.season, year)).sort((a, b) => Number(a.position) - Number(b.position)),
+    [allConstructorStandings, year]);
+
+  // KPIs — fields: season, position, points, driver_code, constructor_name
   const kpiStats = useMemo(() => {
-    const norS = driverStandings.find(s => s.Driver?.code === 'NOR');
-    const piaS = driverStandings.find(s => s.Driver?.code === 'PIA');
-    const mcS = constructorStandings.find(s =>
-      s.Constructor?.name?.toLowerCase().includes('mclaren'));
+    const d1 = driverStandings.find(s => s.driver_code === mcLarenDrivers[0]);
+    const d2 = driverStandings.find(s => s.driver_code === mcLarenDrivers[1]);
+    const mcS = constructorStandings.find(s => (s.constructor_id || '').toLowerCase().includes('mclaren'));
 
-    // Last race points gained for McLaren
-    const lastRace = raceResults.slice(-1)[0];
-    const lastGained = lastRace
-      ? (lastRace.Results || [])
-          .filter((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren'))
-          .reduce((sum: number, r: any) => sum + Number(r.points || 0), 0)
-      : 0;
+    // Last race points gained
+    const yearResults = allRaceResults.filter(r => matchSeason(r.season, year));
+    const maxRound = Math.max(0, ...yearResults.map(r => Number(r.round || 0)));
+    const lastRacePts = yearResults
+      .filter(r => Number(r.round) === maxRound && (r.constructor_id || '').toLowerCase().includes('mclaren'))
+      .reduce((sum, r) => sum + Number(r.points || 0), 0);
 
     return {
-      norPts: norS?.points ?? '—', norPos: norS?.position ?? '—',
-      piaPts: piaS?.points ?? '—', piaPos: piaS?.position ?? '—',
+      d1Code: mcLarenDrivers[0] || '—', d1Pts: d1?.points ?? '—', d1Pos: d1?.position ?? '—',
+      d2Code: mcLarenDrivers[1] || '—', d2Pts: d2?.points ?? '—', d2Pos: d2?.position ?? '—',
       teamPts: mcS?.points ?? '—', teamPos: mcS?.position ?? '—',
-      lastGained: String(lastGained),
+      lastGained: String(lastRacePts),
     };
-  }, [driverStandings, constructorStandings, raceResults]);
+  }, [driverStandings, constructorStandings, allRaceResults, mcLarenDrivers, year]);
 
-  // Points progression from MongoDB race_results
+  // Points progression — flat rows: season, round, race_name, driver_code, constructor_name, points
   const pointsProgression = useMemo(() => {
-    if (!raceResults.length) return [];
-    let norCum = 0, piaCum = 0, teamCum = 0;
-    return raceResults.map(race => {
-      const gpName = (race.raceName || '').replace(' Grand Prix', '');
-      let raceTeamPts = 0;
-      for (const result of (race.Results || [])) {
-        const code = result.Driver?.code;
-        const pts = Number(result.points || 0);
-        const isMcLaren = result.Constructor?.name?.toLowerCase().includes('mclaren');
-        if (code === 'NOR') norCum += pts;
-        if (code === 'PIA') piaCum += pts;
-        if (isMcLaren) raceTeamPts += pts;
-      }
-      teamCum += raceTeamPts;
-      return { race: gpName, NOR: norCum, PIA: piaCum, Team: teamCum };
+    const yearResults = allRaceResults.filter(r => matchSeason(r.season, year));
+    if (!yearResults.length) return [];
+    // Group by round
+    const rounds = new Map<number, { race: string; results: any[] }>();
+    yearResults.forEach(r => {
+      const rnd = Number(r.round || 0);
+      if (!rounds.has(rnd)) rounds.set(rnd, { race: (r.race_name || '').replace(' Grand Prix', ''), results: [] });
+      rounds.get(rnd)!.results.push(r);
     });
-  }, [raceResults]);
+    const sorted = Array.from(rounds.entries()).sort((a, b) => a[0] - b[0]);
+    const cum: Record<string, number> = {};
+    mcLarenDrivers.forEach(d => { cum[d] = 0; });
+    let teamCum = 0;
+    return sorted.map(([, { race, results }]) => {
+      let raceTeam = 0;
+      results.forEach(r => {
+        const pts = Number(r.points || 0);
+        const isMc = (r.constructor_id || '').toLowerCase().includes('mclaren');
+        if (mcLarenDrivers.includes(r.driver_code)) cum[r.driver_code] = (cum[r.driver_code] || 0) + pts;
+        if (isMc) raceTeam += pts;
+      });
+      teamCum += raceTeam;
+      const point: any = { race, Team: teamCum };
+      mcLarenDrivers.forEach(d => { point[d] = cum[d] || 0; });
+      return point;
+    });
+  }, [allRaceResults, mcLarenDrivers, year]);
 
   // Telemetry merged
   const telemetryData = useMemo(() => {
     const raceMap = new Map<string, any>();
+    const d1 = mcLarenDrivers[0] || 'D1';
+    const d2 = mcLarenDrivers[1] || 'D2';
     norSummary.forEach(r => {
-      raceMap.set(r.race, { race: r.race.slice(0, 12), norTop: r.topSpeed, norThrottle: r.avgThrottle, norBrake: r.brakePct, norDrs: r.drsPct });
+      raceMap.set(r.race, { race: r.race.slice(0, 12), [`${d1}Top`]: r.topSpeed, [`${d1}Throttle`]: r.avgThrottle, [`${d1}Brake`]: r.brakePct, [`${d1}Drs`]: r.drsPct });
     });
     piaSummary.forEach(r => {
       const e = raceMap.get(r.race) ?? { race: r.race.slice(0, 12) };
-      e.piaTop = r.topSpeed; e.piaThrottle = r.avgThrottle; e.piaBrake = r.brakePct; e.piaDrs = r.drsPct;
+      e[`${d2}Top`] = r.topSpeed; e[`${d2}Throttle`] = r.avgThrottle; e[`${d2}Brake`] = r.brakePct; e[`${d2}Drs`] = r.drsPct;
       raceMap.set(r.race, e);
     });
     return Array.from(raceMap.values());
-  }, [norSummary, piaSummary]);
+  }, [norSummary, piaSummary, mcLarenDrivers]);
 
-  // Pit stop data from MongoDB jolpica_pit_stops
+  // Pit stops — fields: season, race_name, driver_id (e.g. "norris"), duration_s
   const pitStopData = useMemo(() => {
-    if (!pitStopsRaw.length) return [];
-    const raceStops = new Map<string, { race: string; NOR: number[]; PIA: number[] }>();
-    pitStopsRaw.forEach(stop => {
-      const race = (stop.raceName || '').replace(' Grand Prix', '').slice(0, 12);
-      const driver = stop.driverId || '';
-      const dur = parseFloat(stop.duration || '0');
-      if (dur <= 0 || dur > 60 || !race) return;
-      if (!raceStops.has(race)) raceStops.set(race, { race, NOR: [], PIA: [] });
-      const entry = raceStops.get(race)!;
-      if (driver.includes('norris')) entry.NOR.push(dur);
-      else if (driver.includes('piastri')) entry.PIA.push(dur);
+    if (!pitStopsRaw.length || !mcLarenDrivers.length) return [];
+    // Map driver_id to driver_code
+    const driverIdMap: Record<string, string> = {};
+    allRaceResults.filter(r => matchSeason(r.season, year) && mcLarenDrivers.includes(r.driver_code)).forEach(r => {
+      if (r.driver_id) driverIdMap[r.driver_id] = r.driver_code;
     });
-    return Array.from(raceStops.values()).map(r => ({
-      race: r.race,
-      NOR: r.NOR.length ? +(r.NOR.reduce((a, b) => a + b, 0) / r.NOR.length).toFixed(1) : null,
-      PIA: r.PIA.length ? +(r.PIA.reduce((a, b) => a + b, 0) / r.PIA.length).toFixed(1) : null,
-    }));
-  }, [pitStopsRaw]);
+    const raceStops = new Map<string, Record<string, number[]>>();
+    pitStopsRaw.forEach(stop => {
+      const race = (stop.race_name || '').replace(' Grand Prix', '').slice(0, 12);
+      const code = driverIdMap[stop.driver_id || ''];
+      const dur = Number(stop.duration_s || 0);
+      if (!code || dur <= 0 || dur > 60 || !race) return;
+      if (!raceStops.has(race)) raceStops.set(race, {});
+      const entry = raceStops.get(race)!;
+      if (!entry[code]) entry[code] = [];
+      entry[code].push(dur);
+    });
+    return Array.from(raceStops.entries()).map(([race, drivers]) => {
+      const row: any = { race };
+      mcLarenDrivers.forEach(d => {
+        const stops = drivers[d];
+        row[d] = stops?.length ? +(stops.reduce((a, b) => a + b, 0) / stops.length).toFixed(1) : null;
+      });
+      return row;
+    });
+  }, [pitStopsRaw, mcLarenDrivers, allRaceResults, year]);
 
   const avgPitDuration = useMemo(() => {
-    const all = pitStopData.flatMap(r => [r.NOR, r.PIA].filter(Boolean) as number[]);
+    const all = pitStopData.flatMap(r => mcLarenDrivers.map(d => r[d]).filter(Boolean) as number[]);
     return all.length ? +(all.reduce((a, b) => a + b, 0) / all.length).toFixed(1) : 0;
-  }, [pitStopData]);
+  }, [pitStopData, mcLarenDrivers]);
 
-  // Tire compound grid from MongoDB openf1_stints + openf1_sessions
+  // Tire compound grid from openf1_stints + openf1_sessions
   const tireGrid = useMemo(() => {
-    if (!stintsRaw.length || !sessionsRaw.length) return { races: [] as string[], NOR: {} as Record<string, string[]>, PIA: {} as Record<string, string[]> };
-    // Filter sessions for selected year
+    if (!stintsRaw.length || !sessionsRaw.length) return { races: [] as string[], drivers: {} as Record<string, Record<string, string[]>> };
     const yearSessions = sessionsRaw.filter(s => s.session_type === 'Race' && matchSeason(s.year, year));
     const sessionMap = new Map<number, string>();
-    yearSessions.forEach(s => {
-      sessionMap.set(s.session_key, (s.circuit_short_name || s.meeting_name || '').slice(0, 10));
-    });
-    const yearSessionKeys = new Set(yearSessions.map(s => s.session_key));
-    // Driver numbers: NOR=4, PIA=81
-    const driverMap: Record<number, 'NOR' | 'PIA'> = { 4: 'NOR', 81: 'PIA' };
+    yearSessions.forEach(s => { sessionMap.set(s.session_key, (s.circuit_short_name || '').slice(0, 10)); });
+    // Build driver_number → code map from openf1_drivers or hardcode common ones
+    // NOR=4, PIA=81, RIC=3, SAI=55, LEC=16, VER=1, etc
+    const numToCode: Record<number, string> = { 1: 'VER', 3: 'RIC', 4: 'NOR', 11: 'PER', 14: 'ALO', 16: 'LEC', 55: 'SAI', 81: 'PIA', 2: 'SAR', 63: 'RUS', 44: 'HAM', 10: 'GAS', 31: 'OCO', 23: 'ALB', 22: 'TSU', 27: 'HUL', 20: 'MAG', 77: 'BOT', 24: 'ZHO', 18: 'STR', 21: 'DEV' };
     const races = new Set<string>();
-    const nor: Record<string, string[]> = {};
-    const pia: Record<string, string[]> = {};
+    const drivers: Record<string, Record<string, string[]>> = {};
+    mcLarenDrivers.forEach(d => { drivers[d] = {}; });
     stintsRaw.forEach(stint => {
-      if (!yearSessionKeys.has(stint.session_key)) return;
       const race = sessionMap.get(stint.session_key);
       if (!race) return;
-      const code = driverMap[stint.driver_number];
-      if (!code) return;
+      const code = numToCode[stint.driver_number];
+      if (!code || !mcLarenDrivers.includes(code)) return;
       races.add(race);
-      const target = code === 'NOR' ? nor : pia;
-      if (!target[race]) target[race] = [];
+      if (!drivers[code][race]) drivers[code][race] = [];
       const compound = (stint.compound || '').toUpperCase();
-      if (compound && !target[race].includes(compound)) target[race].push(compound);
+      if (compound && !drivers[code][race].includes(compound)) drivers[code][race].push(compound);
     });
-    return { races: Array.from(races), NOR: nor, PIA: pia };
-  }, [stintsRaw, sessionsRaw, year]);
+    return { races: Array.from(races), drivers };
+  }, [stintsRaw, sessionsRaw, mcLarenDrivers, year]);
 
   // NOR health trend
   const norHealthTrend = useMemo(() => {
-    if (!norVehicle?.races?.length) return [];
-    return norVehicle.races.slice(-8).map(r => ({
+    const v = norVehicle;
+    if (!v?.races?.length) return [];
+    return v.races.slice(-8).map(r => ({
       race: r.race?.slice(0, 8) ?? '',
       speed: r.systems['Speed']?.health ?? 0,
       pace: r.systems['Lap Pace']?.health ?? 0,
@@ -315,35 +346,49 @@ export function McLarenAnalytics() {
     }));
   }, [norVehicle]);
 
-  // Rivals chart data
+  // Rivals chart
   const rivalsChart = useMemo(() => {
     if (!rivalsData?.rivals) return [];
     return rivalsData.rivals.slice(0, 6).map((r: any) => ({
       code: r.code, anomalyPct: r.anomaly_pct,
-      fill: r.code === 'NOR' ? '#FF8000' : '#6b7280',
     }));
   }, [rivalsData]);
 
-  // Race results table
+  // Race results table — flat rows: round, race_name, driver_code, constructor_id, position, points
   const raceResultsTable = useMemo(() => {
-    if (!raceResults.length) return [];
-    return raceResults.slice(-8).reverse().map(race => {
-      const results = race.Results || [];
-      const norResult = results.find((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'NOR');
-      const piaResult = results.find((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren') && r.Driver?.code === 'PIA');
-      const winner = results[0];
-      const gpName = (race.raceName || '').replace(' Grand Prix', '');
-      const gained = results
-        .filter((r: any) => r.Constructor?.name?.toLowerCase().includes('mclaren'))
-        .reduce((sum: number, r: any) => sum + Number(r.points || 0), 0);
-      return {
-        round: race.round, gp: gpName,
-        norPos: norResult?.position ?? '—', piaPos: piaResult?.position ?? '—',
-        winner: winner?.Driver?.code ?? '—', winnerTeam: winner?.Constructor?.name ?? '',
-        gained: String(gained),
-      };
+    const yearResults = allRaceResults.filter(r => matchSeason(r.season, year));
+    if (!yearResults.length) return [];
+    // Group by round
+    const rounds = new Map<number, { race: string; results: any[] }>();
+    yearResults.forEach(r => {
+      const rnd = Number(r.round || 0);
+      if (!rounds.has(rnd)) rounds.set(rnd, { race: (r.race_name || '').replace(' Grand Prix', ''), results: [] });
+      rounds.get(rnd)!.results.push(r);
     });
-  }, [raceResults]);
+    return Array.from(rounds.entries())
+      .sort((a, b) => b[0] - a[0]) // most recent first
+      .slice(0, 8)
+      .map(([rnd, { race, results }]) => {
+        const winner = results.find(r => String(r.position) === '1');
+        const mcPts = results
+          .filter(r => (r.constructor_id || '').toLowerCase().includes('mclaren'))
+          .reduce((sum, r) => sum + Number(r.points || 0), 0);
+        const row: any = {
+          round: rnd, gp: race,
+          winner: winner?.driver_code ?? '—',
+          winnerTeam: teamDisplayNames[winner?.constructor_id] || winner?.constructor_name || '',
+          gained: String(mcPts),
+        };
+        mcLarenDrivers.forEach(d => {
+          const dr = results.find(r => r.driver_code === d);
+          row[d] = dr?.position ?? '—';
+        });
+        return row;
+      });
+  }, [allRaceResults, mcLarenDrivers, year]);
+
+  // Driver colors
+  const driverColors = ['#FF8000', '#00d4ff', '#22c55e', '#f59e0b'];
 
   // ─── Render ───────────────────────────────────────────────────────
   return (
@@ -369,8 +414,8 @@ export function McLarenAnalytics() {
         <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-4 gap-3">
-          <KPI icon={<Users className="w-4 h-4 text-[#FF8000]" />} label="NOR" value={`P${kpiStats.norPos}`} detail={`${kpiStats.norPts} pts`} />
-          <KPI icon={<Users className="w-4 h-4 text-cyan-400" />} label="PIA" value={`P${kpiStats.piaPts} pts`} detail={`P${kpiStats.piaPos}`} />
+          <KPI icon={<Users className="w-4 h-4 text-[#FF8000]" />} label={kpiStats.d1Code} value={`P${kpiStats.d1Pos}`} detail={`${kpiStats.d1Pts} pts`} />
+          <KPI icon={<Users className="w-4 h-4 text-cyan-400" />} label={kpiStats.d2Code} value={`P${kpiStats.d2Pos}`} detail={`${kpiStats.d2Pts} pts`} />
           <KPI icon={<Trophy className="w-4 h-4 text-green-400" />} label="Constructors" value={`P${kpiStats.teamPos}`} detail={`${kpiStats.teamPts} pts`} />
           <KPI icon={<Flag className="w-4 h-4 text-amber-400" />} label="Last Race" value={`+${kpiStats.lastGained}`} detail="pts gained" />
         </div>
@@ -381,15 +426,16 @@ export function McLarenAnalytics() {
         <>
           <Divider label="SYSTEM HEALTH" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[{ v: norVehicle, label: 'NOR', color: '#FF8000' }, { v: piaVehicle, label: 'PIA', color: '#00d4ff' }].map(({ v, label, color }) => {
+            {[norVehicle, piaVehicle].filter(Boolean).map((v, idx) => {
               if (!v) return null;
+              const color = driverColors[idx];
               return (
-                <div key={label} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <div key={v.code} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
                   <div className="flex items-center gap-4">
                     <HealthGauge value={v.overallHealth} size={60} strokeWidth={5} showLabel={false} />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-medium" style={{ color }}>{label}</span>
+                        <span className="text-sm font-medium" style={{ color }}>{v.code}</span>
                         <span className="text-[11px] font-mono" style={{ color: levelColor(v.level) }}>
                           {v.overallHealth}% — {v.level.toUpperCase()}
                         </span>
@@ -427,20 +473,18 @@ export function McLarenAnalytics() {
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-8 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
           <h3 className="text-sm text-foreground mb-1">Points Progression</h3>
-          <p className="text-[12px] text-muted-foreground mb-3">NOR + PIA + Constructors cumulative</p>
+          <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers.join(' + ')} + Constructors cumulative</p>
           <div className="h-[260px]">
             {pointsProgression.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={pointsProgression}>
                   <defs>
-                    <linearGradient id="norGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#FF8000" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#FF8000" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="piaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#00d4ff" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#00d4ff" stopOpacity={0} />
-                    </linearGradient>
+                    {mcLarenDrivers.map((d, i) => (
+                      <linearGradient key={d} id={`grad-${d}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={driverColors[i]} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={driverColors[i]} stopOpacity={0} />
+                      </linearGradient>
+                    ))}
                     <linearGradient id="teamGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#22c55e" stopOpacity={0.2} />
                       <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
@@ -451,8 +495,9 @@ export function McLarenAnalytics() {
                   <YAxis stroke="#8888a0" fontSize={10} />
                   <Tooltip content={<CustomTooltip />} />
                   <Area type="monotone" dataKey="Team" stroke="#22c55e" fill="url(#teamGrad)" strokeWidth={1.5} dot={false} name="Constructors" strokeDasharray="4 2" />
-                  <Area type="monotone" dataKey="NOR" stroke="#FF8000" fill="url(#norGrad)" strokeWidth={2} dot={false} name="NOR" />
-                  <Area type="monotone" dataKey="PIA" stroke="#00d4ff" fill="url(#piaGrad)" strokeWidth={2} dot={false} name="PIA" />
+                  {mcLarenDrivers.map((d, i) => (
+                    <Area key={d} type="monotone" dataKey={d} stroke={driverColors[i]} fill={`url(#grad-${d})`} strokeWidth={2} dot={false} name={d} />
+                  ))}
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -468,20 +513,15 @@ export function McLarenAnalytics() {
             {constructorStandings.slice(0, 5).map((team, i) => {
               const pts = Number(team.points);
               const leaderPts = Number(constructorStandings[0]?.points ?? 0);
-              const isMcLaren = team.Constructor?.name?.toLowerCase().includes('mclaren');
+              const isMcLaren = (team.constructor_id || '').toLowerCase().includes('mclaren');
+              const name = teamDisplayNames[team.constructor_id] || team.constructor_name || team.constructor_id;
               return (
-                <div key={team.Constructor?.name || i} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-[#FF8000]/10 border border-[#FF8000]/20' : ''}`}>
-                  <span className="text-[12px] text-muted-foreground w-5 font-mono">P{i + 1}</span>
-                  <div className="w-2 h-5 rounded-full" style={{ backgroundColor: teamColors[team.Constructor?.name] ?? '#555' }} />
-                  <span className={`text-sm flex-1 truncate ${isMcLaren ? 'text-[#FF8000] font-medium' : 'text-foreground'}`}>
-                    {team.Constructor?.name}
-                  </span>
+                <div key={team.constructor_id || i} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-[#FF8000]/10 border border-[#FF8000]/20' : ''}`}>
+                  <span className="text-[12px] text-muted-foreground w-5 font-mono">P{team.position}</span>
+                  <div className="w-2 h-5 rounded-full" style={{ backgroundColor: teamColors[team.constructor_id] ?? '#555' }} />
+                  <span className={`text-sm flex-1 truncate ${isMcLaren ? 'text-[#FF8000] font-medium' : 'text-foreground'}`}>{name}</span>
                   <span className="text-sm font-mono text-foreground">{pts}</span>
-                  {i > 0 && (
-                    <span className="text-[11px] font-mono text-muted-foreground w-12 text-right">
-                      {pts - leaderPts}
-                    </span>
-                  )}
+                  {i > 0 && <span className="text-[11px] font-mono text-muted-foreground w-12 text-right">{pts - leaderPts}</span>}
                 </div>
               );
             })}
@@ -493,11 +533,11 @@ export function McLarenAnalytics() {
       <Divider label="CAR TELEMETRY INTELLIGENCE" />
       {telLoading ? (
         <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
-      ) : telemetryData.length > 0 ? (
+      ) : telemetryData.length > 0 && mcLarenDrivers.length >= 2 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
             <h3 className="text-sm text-foreground mb-1">Top Speed</h3>
-            <p className="text-[12px] text-muted-foreground mb-3">NOR vs PIA — km/h per race</p>
+            <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers[0]} vs {mcLarenDrivers[1]} — km/h per race</p>
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={telemetryData}>
@@ -505,8 +545,8 @@ export function McLarenAnalytics() {
                   <XAxis dataKey="race" stroke="#8888a0" fontSize={9} angle={-30} textAnchor="end" height={50} />
                   <YAxis stroke="#8888a0" fontSize={10} domain={['dataMin - 5', 'dataMax + 5']} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="norTop" fill="#FF8000" opacity={0.8} radius={[3, 3, 0, 0]} name="NOR" />
-                  <Bar dataKey="piaTop" fill="#00d4ff" opacity={0.8} radius={[3, 3, 0, 0]} name="PIA" />
+                  <Bar dataKey={`${mcLarenDrivers[0]}Top`} fill={driverColors[0]} opacity={0.8} radius={[3, 3, 0, 0]} name={mcLarenDrivers[0]} />
+                  <Bar dataKey={`${mcLarenDrivers[1]}Top`} fill={driverColors[1]} opacity={0.8} radius={[3, 3, 0, 0]} name={mcLarenDrivers[1]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -522,9 +562,9 @@ export function McLarenAnalytics() {
                   return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : 0;
                 };
                 const data = [
-                  { metric: 'Throttle %', NOR: avg(norSummary, 'avgThrottle'), PIA: avg(piaSummary, 'avgThrottle') },
-                  { metric: 'Brake %', NOR: avg(norSummary, 'brakePct'), PIA: avg(piaSummary, 'brakePct') },
-                  { metric: 'DRS %', NOR: avg(norSummary, 'drsPct'), PIA: avg(piaSummary, 'drsPct') },
+                  { metric: 'Throttle %', [mcLarenDrivers[0]]: avg(norSummary, 'avgThrottle'), [mcLarenDrivers[1]]: avg(piaSummary, 'avgThrottle') },
+                  { metric: 'Brake %', [mcLarenDrivers[0]]: avg(norSummary, 'brakePct'), [mcLarenDrivers[1]]: avg(piaSummary, 'brakePct') },
+                  { metric: 'DRS %', [mcLarenDrivers[0]]: avg(norSummary, 'drsPct'), [mcLarenDrivers[1]]: avg(piaSummary, 'drsPct') },
                 ];
                 return (
                   <ResponsiveContainer width="100%" height="100%">
@@ -533,8 +573,8 @@ export function McLarenAnalytics() {
                       <XAxis type="number" stroke="#8888a0" fontSize={10} unit="%" />
                       <YAxis dataKey="metric" type="category" stroke="#8888a0" fontSize={11} width={80} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Bar dataKey="NOR" fill="#FF8000" opacity={0.8} radius={[0, 4, 4, 0]} name="NOR" />
-                      <Bar dataKey="PIA" fill="#00d4ff" opacity={0.8} radius={[0, 4, 4, 0]} name="PIA" />
+                      <Bar dataKey={mcLarenDrivers[0]} fill={driverColors[0]} opacity={0.8} radius={[0, 4, 4, 0]} name={mcLarenDrivers[0]} />
+                      <Bar dataKey={mcLarenDrivers[1]} fill={driverColors[1]} opacity={0.8} radius={[0, 4, 4, 0]} name={mcLarenDrivers[1]} />
                     </BarChart>
                   </ResponsiveContainer>
                 );
@@ -561,8 +601,9 @@ export function McLarenAnalytics() {
                   <YAxis stroke="#8888a0" fontSize={10} />
                   <Tooltip content={<CustomTooltip />} />
                   <ReferenceLine y={avgPitDuration} stroke="rgba(255,128,0,0.3)" strokeDasharray="4 2" />
-                  <Line type="monotone" dataKey="NOR" stroke="#FF8000" strokeWidth={2} dot={{ r: 3, fill: '#FF8000' }} name="NOR" connectNulls />
-                  <Line type="monotone" dataKey="PIA" stroke="#00d4ff" strokeWidth={2} dot={{ r: 3, fill: '#00d4ff' }} name="PIA" connectNulls />
+                  {mcLarenDrivers.map((d, i) => (
+                    <Line key={d} type="monotone" dataKey={d} stroke={driverColors[i]} strokeWidth={2} dot={{ r: 3, fill: driverColors[i] }} name={d} connectNulls />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -586,14 +627,14 @@ export function McLarenAnalytics() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[{ label: 'NOR', data: tireGrid.NOR, color: '#FF8000' }, { label: 'PIA', data: tireGrid.PIA, color: '#00d4ff' }].map(({ label, data, color }) => (
-                    <tr key={label} className="border-b border-[rgba(255,128,0,0.04)]">
-                      <td className="py-1.5 px-1 font-mono font-medium" style={{ color }}>{label}</td>
+                  {mcLarenDrivers.map((d, i) => (
+                    <tr key={d} className="border-b border-[rgba(255,128,0,0.04)]">
+                      <td className="py-1.5 px-1 font-mono font-medium" style={{ color: driverColors[i] }}>{d}</td>
                       {tireGrid.races.map(race => (
                         <td key={race} className="py-1 px-0.5 text-center">
                           <div className="flex gap-0.5 justify-center">
-                            {(data[race] ?? []).map((c, i) => (
-                              <span key={i} className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: compoundColors[c] ?? '#555' }} title={c} />
+                            {(tireGrid.drivers[d]?.[race] ?? []).map((c, j) => (
+                              <span key={j} className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: compoundColors[c] ?? '#555' }} title={c} />
                             ))}
                           </div>
                         </td>
@@ -613,7 +654,7 @@ export function McLarenAnalytics() {
       <Divider label="COMPETITIVE INTELLIGENCE" />
       <div className="grid grid-cols-12 gap-4">
         <div className="col-span-5 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-foreground mb-3 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />NOR Health Trend</h3>
+          <h3 className="text-sm text-foreground mb-3 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />{mcLarenDrivers[0] || 'NOR'} Health Trend</h3>
           {norHealthTrend.length > 0 ? (
             <div className="space-y-3">
               {[{ key: 'speed', label: 'Speed', color: '#FF8000' }, { key: 'pace', label: 'Lap Pace', color: '#00d4ff' }, { key: 'tyre', label: 'Tyre Mgmt', color: '#22c55e' }].map(sys => (
@@ -641,12 +682,12 @@ export function McLarenAnalytics() {
         </div>
 
         <div className="col-span-7 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-foreground mb-1">NOR vs Field</h3>
+          <h3 className="text-sm text-foreground mb-1">{mcLarenDrivers[0] || 'NOR'} vs Field</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Anomaly rate comparison — higher = more anomalies</p>
           {rivalsChart.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={[
-                ...(rivalsData?.target ? [{ code: rivalsData.target.code || 'NOR', anomalyPct: rivalsData.target.anomaly_pct }] : []),
+                ...(rivalsData?.target ? [{ code: rivalsData.target.code, anomalyPct: rivalsData.target.anomaly_pct }] : []),
                 ...rivalsChart,
               ].sort((a, b) => b.anomalyPct - a.anomalyPct)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
@@ -655,10 +696,10 @@ export function McLarenAnalytics() {
                 <Tooltip content={<CustomTooltip />} />
                 <Bar dataKey="anomalyPct" radius={[0, 4, 4, 0]} name="Anomaly %">
                   {[
-                    ...(rivalsData?.target ? [{ code: rivalsData.target.code || 'NOR', anomalyPct: rivalsData.target.anomaly_pct }] : []),
+                    ...(rivalsData?.target ? [{ code: rivalsData.target.code, anomalyPct: rivalsData.target.anomaly_pct }] : []),
                     ...rivalsChart,
                   ].sort((a, b) => b.anomalyPct - a.anomalyPct).map((e, i) => (
-                    <Cell key={i} fill={e.code === 'NOR' ? '#FF8000' : '#6b7280'} opacity={0.8} />
+                    <Cell key={i} fill={mcLarenDrivers.includes(e.code) ? '#FF8000' : '#6b7280'} opacity={0.8} />
                   ))}
                 </Bar>
               </BarChart>
@@ -673,15 +714,20 @@ export function McLarenAnalytics() {
       <Divider label="RACE RESULTS" />
       <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
         <div className="space-y-1">
-          <div className="grid grid-cols-[40px_160px_60px_60px_60px_100px_60px] gap-2 px-2 py-1 text-[11px] text-muted-foreground tracking-wider">
-            <span>RND</span><span>GRAND PRIX</span><span>NOR</span><span>PIA</span><span>WIN</span><span>TEAM</span><span>+PTS</span>
+          <div className={`grid gap-2 px-2 py-1 text-[11px] text-muted-foreground tracking-wider`}
+            style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>
+            <span>RND</span><span>GRAND PRIX</span>
+            {mcLarenDrivers.map(d => <span key={d}>{d}</span>)}
+            <span>WIN</span><span>TEAM</span><span>+PTS</span>
           </div>
           {raceResultsTable.map(r => (
-            <div key={r.round} className="grid grid-cols-[40px_160px_60px_60px_60px_100px_60px] gap-2 px-2 py-1.5 rounded-lg hover:bg-[#222838] transition-colors text-sm items-center">
+            <div key={r.round} className="grid gap-2 px-2 py-1.5 rounded-lg hover:bg-[#222838] transition-colors text-sm items-center"
+              style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>
               <span className="text-[#FF8000] font-mono">R{r.round}</span>
               <span className="text-foreground truncate">{r.gp}</span>
-              <span className="font-mono" style={{ color: '#FF8000' }}>P{r.norPos}</span>
-              <span className="font-mono" style={{ color: '#00d4ff' }}>P{r.piaPos}</span>
+              {mcLarenDrivers.map((d, i) => (
+                <span key={d} className="font-mono" style={{ color: driverColors[i] }}>P{r[d]}</span>
+              ))}
               <span className="text-foreground font-mono">{r.winner}</span>
               <span className="text-muted-foreground truncate">{r.winnerTeam}</span>
               <span className={`font-mono ${Number(r.gained) > 0 ? 'text-green-400' : 'text-muted-foreground'}`}>
