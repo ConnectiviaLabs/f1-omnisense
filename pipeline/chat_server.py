@@ -2212,6 +2212,8 @@ if __name__ == "__main__":
     print(f"Starting F1 OmniSense API on port {PORT}")
     print(f"  Knowledge Agent: {GROQ_MODEL}")
     print(f"  3D Model Gen:   enabled")
-    print(f"  Vector store:   MongoDB Atlas")
+    _uri = os.getenv("MONGODB_URI", "")
+    _vs_label = "MongoDB Atlas" if "mongodb.net" in _uri else "MongoDB Local"
+    print(f"  Vector store:   {_vs_label}")
     print(f"  Frontend:       {'enabled' if _frontend_dist.exists() else 'not found'}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)
