@@ -48,6 +48,9 @@ def load_race_telemetry(db, year: int | None = None) -> pd.DataFrame:
     for doc in db["openf1_drivers"].find({}, {"driver_number": 1, "name_acronym": 1, "_id": 0}):
         num_to_code[str(doc["driver_number"])] = doc["name_acronym"]
 
+    print(f"  Race files to load: {race_files}")
+    print(f"  Driver mapping: {len(num_to_code)} entries")
+
     frames = []
     for fi, fname in enumerate(race_files):
         chunks = list(db["telemetry_compressed"].find(
@@ -55,22 +58,28 @@ def load_race_telemetry(db, year: int | None = None) -> pd.DataFrame:
             {"data": 1, "chunk": 1, "_id": 0},
         ))
         chunks.sort(key=lambda d: d.get("chunk", 0))
+        print(f"  {fname}: {len(chunks)} chunks")
 
-        for doc in chunks:
+        for ci, doc in enumerate(chunks):
             try:
                 df = pickle.loads(gzip.decompress(doc["data"]))
                 frames.append(df)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"    WARN: chunk {ci} of {fname} failed: {e}")
 
         if (fi + 1) % 10 == 0:
             print(f"  [{fi + 1}/{len(race_files)}] loaded...")
 
     if not frames:
+        print("  WARNING: No frames loaded from chunks!")
         return pd.DataFrame()
 
     tel = pd.concat(frames, ignore_index=True)
+    print(f"  Raw rows after concat: {len(tel):,}")
+    print(f"  Sample Driver values: {tel['Driver'].head(5).tolist()}")
     tel["Driver"] = tel["Driver"].astype(str).map(num_to_code)
+    mapped = tel["Driver"].notna().sum()
+    print(f"  Mapped drivers: {mapped:,} / {len(tel):,}")
     tel = tel.dropna(subset=["Driver"])
     return tel
 
