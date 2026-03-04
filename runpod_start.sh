@@ -17,6 +17,27 @@ echo -e "${O}══════════════════════�
 echo -e "${O}  F1 OmniSense — RunPod Startup (port $PORT)${C}"
 echo -e "${O}════════════════════════════════════════════════════${C}"
 
+# ── Ensure MongoDB is running ────────────────────────────────
+if command -v mongod &>/dev/null; then
+  if ! pgrep -x mongod &>/dev/null; then
+    MONGO_DATA="/workspace/mongodb_data"
+    mkdir -p "$MONGO_DATA"
+    echo -e "${O}  Starting MongoDB (data: $MONGO_DATA)...${C}"
+    mongod --dbpath "$MONGO_DATA" --bind_ip_all --port 27017 --fork --logpath /var/log/mongod.log
+    # Wait for ready
+    for i in $(seq 1 15); do
+      if mongosh --quiet --eval "db.runCommand({ping:1})" &>/dev/null; then
+        echo -e "${G}  [✓] MongoDB ready${C}"
+        break
+      fi
+      [ "$i" -eq 15 ] && echo -e "${R}  [✗] MongoDB failed to start${C}"
+      sleep 1
+    done
+  else
+    echo -e "${G}  [✓] MongoDB already running${C}"
+  fi
+fi
+
 # Kill existing process on our port
 PIDS=$(lsof -ti:$PORT 2>/dev/null || true)
 if [ -n "$PIDS" ]; then
@@ -38,5 +59,5 @@ fi
 # Start backend (serves API + frontend SPA on same port)
 echo -e "\n${O}  Starting server (port $PORT)...${C}"
 export API_PORT="$PORT"
-export PYTHONPATH="$ROOT:$ROOT/pipeline"
+export PYTHONPATH="$ROOT:$ROOT/omnisuitef1:$ROOT/pipeline"
 exec python3 "$ROOT/pipeline/chat_server.py"
