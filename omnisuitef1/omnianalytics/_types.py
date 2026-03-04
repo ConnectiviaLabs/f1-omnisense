@@ -72,6 +72,14 @@ class ForecastResult:
     upper_bound: List[float] = field(default_factory=list)
     mae: Optional[float] = None
     rmse: Optional[float] = None
+    # Heuristic fields
+    trend_direction: Optional[str] = None   # "rising" | "falling" | "stable"
+    trend_pct: Optional[float] = None       # % change first→last forecast value
+    volatility: Optional[float] = None      # normalised confidence band width
+    risk_flag: bool = False                 # True when forecast suggests degradation
+    # Historical context
+    history: List[float] = field(default_factory=list)
+    history_timestamps: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)

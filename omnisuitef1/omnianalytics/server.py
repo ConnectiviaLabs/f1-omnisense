@@ -1,7 +1,7 @@
 """FastAPI server exposing all OmniAnalytics capabilities.
 
 Usage:
-    uvicorn omnianalytics.server:app --host 0.0.0.0 --port 8100
+    uvicorn omnianalytics.server:app --host 0.0.0.0 --port 8300
 """
 
 from __future__ import annotations
