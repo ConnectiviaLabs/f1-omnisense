@@ -2,60 +2,59 @@ import {
   LayoutDashboard,
   BarChart3,
   Brain,
-  BookOpen,
   Activity,
-  Video,
-  MessageCircle,
   Box,
   Users,
-  MapPin,
   Gauge,
-  Flag,
+  AlertTriangle,
+  TrendingUp,
+  Combine,
+  GitMerge,
+  Bot,
+  Wrench,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
 interface SidebarProps {
   activeView: ViewType;
   onViewChange: (view: ViewType) => void;
+  anomalyCount?: number;
 }
 
-type NavItem = { id: ViewType; label: string; icon: React.ElementType };
+type NavItem = { id: ViewType; label: string; icon: React.ElementType; badge?: number };
 
-const navGroups: { label: string; items: NavItem[] }[] = [
-  {
-    label: 'DRIVER & CAR',
-    items: [
-      { id: 'driver-intel', label: 'Driver Intel', icon: Users },
-      { id: 'car' as ViewType, label: 'Car Telemetry', icon: Gauge },
-    ],
-  },
-  {
-    label: 'FIELD & TEAM',
-    items: [
-      { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
-      { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
-      { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
-      { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
-      { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
-    ],
-  },
-  {
-    label: 'KNOWLEDGE',
-    items: [
-      { id: 'ai-insights', label: 'Knowledge Base', icon: Brain },
-      { id: 'regulations', label: 'Regulations', icon: BookOpen },
-      { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
-    ],
-  },
-  {
-    label: 'MEDIA',
-    items: [
-      { id: 'media', label: 'Media Intel', icon: Video },
-    ],
-  },
-];
+export function Sidebar({ activeView, onViewChange, anomalyCount }: SidebarProps) {
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: 'OPERATIONS',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
+        { id: 'race-strategy', label: 'Repair Priority', icon: Wrench },
+        { id: 'mclaren-analytics', label: 'Analytics', icon: BarChart3 },
+        { id: 'ai-insights', label: 'AI Insights', icon: Brain },
+        { id: 'driver', label: 'Driver Biodata', icon: Users },
+      ],
+    },
+    {
+      label: 'INTELLIGENCE PILLARS',
+      items: [
+        { id: 'car', label: 'Telemetry', icon: Gauge },
+        { id: 'anomaly-detection', label: 'Anomaly Detection', icon: AlertTriangle, badge: anomalyCount },
+        { id: 'forecasting', label: 'Forecasting', icon: TrendingUp },
+      ],
+    },
+    {
+      label: 'INTELLIGENCE INTERSECTIONS',
+      items: [
+        { id: 'driver-intel', label: 'Crossover Intel \u2014 A', icon: Combine },
+        { id: 'circuit-intel', label: 'Crossover Intel \u2014 B', icon: Combine },
+        { id: 'regulations', label: 'Convergence', icon: GitMerge },
+        { id: 'chat', label: 'AI Agents', icon: Bot },
+      ],
+    },
+  ];
 
-export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
     <aside className="w-[220px] min-h-full bg-[#0D1117] border-r border-[rgba(255,128,0,0.12)] flex flex-col">
       {/* Logo Area */}
@@ -78,7 +77,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         {navGroups.map(({ label: groupLabel, items }) => (
           <div key={groupLabel} className="mb-1">
             <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">{groupLabel}</div>
-            {items.map(({ id, label, icon: Icon }) => (
+            {items.map(({ id, label, icon: Icon, badge }) => (
               <button
                 key={id}
                 onClick={() => onViewChange(id)}
@@ -89,7 +88,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                <span className="tracking-wide">{label}</span>
+                <span className="tracking-wide flex-1 text-left">{label}</span>
+                {badge != null && badge > 0 && (
+                  <span className="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>

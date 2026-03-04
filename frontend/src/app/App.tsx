@@ -18,18 +18,20 @@ import { parseAnomalyDrivers } from './components/anomalyHelpers';
 import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
 
 const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
-  dashboard: { title: 'Live Race Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
-  'mclaren-analytics': { title: 'McLaren Analytics', subtitle: 'Season standings, race strategy, tire stints & pit stops' },
-  'driver-intel': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
-  'circuit-intel': { title: 'Circuit Intelligence', subtitle: 'Track layouts, pit loss times, air density & environmental conditions' },
-  car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data across all drivers' },
-  driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
-  'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
-  regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
-  media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
-  chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
+  dashboard: { title: 'Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
   'fleet-overview': { title: 'Fleet Overview', subtitle: 'McLaren predictive maintenance & vehicle health monitoring' },
-  'race-strategy': { title: 'Race Strategy', subtitle: 'Tyre degradation, pit windows, optimal strategies & SC probability' },
+  'race-strategy': { title: 'Repair Priority', subtitle: 'Tyre degradation, pit windows, optimal strategies & SC probability' },
+  'mclaren-analytics': { title: 'Analytics', subtitle: 'Season standings, race strategy, tire stints & pit stops' },
+  'ai-insights': { title: 'AI Insights', subtitle: 'Pipeline intelligence & extraction stats' },
+  driver: { title: 'Driver Biodata', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
+  car: { title: 'Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data across all drivers' },
+  'anomaly-detection': { title: 'Anomaly Detection', subtitle: 'Ensemble anomaly scoring across all driver telemetry' },
+  forecasting: { title: 'Forecasting', subtitle: 'Time series predictions for key performance metrics' },
+  'driver-intel': { title: 'Crossover Intel \u2014 A', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
+  'circuit-intel': { title: 'Crossover Intel \u2014 B', subtitle: 'Track layouts, pit loss times, air density & environmental conditions' },
+  regulations: { title: 'Convergence', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
+  chat: { title: 'AI Agents', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
+  media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
 };
 
 export default function App() {
@@ -123,13 +125,15 @@ export default function App() {
       case 'chat': return <Chatbot />;
       case 'fleet-overview': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
       case 'race-strategy': return <RaceStrategy />;
+      case 'anomaly-detection': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
+      case 'forecasting': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
       default: return <LiveDashboard />;
     }
   };
 
   return (
     <div className="h-full flex bg-[#0D1117] font-['Inter',sans-serif] overflow-hidden">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} anomalyCount={fleetVehicles.filter(v => v.systems.some(s => s.level === 'critical')).length || undefined} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
