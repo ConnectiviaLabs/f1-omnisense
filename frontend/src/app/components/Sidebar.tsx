@@ -11,51 +11,62 @@ import {
   MapPin,
   Gauge,
   Flag,
+  AlertTriangle,
+  TrendingUp,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
 interface SidebarProps {
   activeView: ViewType;
   onViewChange: (view: ViewType) => void;
+  anomalyCount?: number;
 }
 
-type NavItem = { id: ViewType; label: string; icon: React.ElementType };
+type NavItem = { id: ViewType; label: string; icon: React.ElementType; badge?: number };
 
-const navGroups: { label: string; items: NavItem[] }[] = [
-  {
-    label: 'DRIVER & CAR',
-    items: [
-      { id: 'driver-intel', label: 'Driver Intel', icon: Users },
-      { id: 'car' as ViewType, label: 'Car Telemetry', icon: Gauge },
-    ],
-  },
-  {
-    label: 'FIELD & TEAM',
-    items: [
-      { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
-      { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
-      { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
-      { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
-      { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
-    ],
-  },
-  {
-    label: 'KNOWLEDGE',
-    items: [
-      { id: 'ai-insights', label: 'Knowledge Base', icon: Brain },
-      { id: 'regulations', label: 'Regulations', icon: BookOpen },
-      { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
-    ],
-  },
-  {
-    label: 'MEDIA',
-    items: [
-      { id: 'media', label: 'Media Intel', icon: Video },
-    ],
-  },
-];
+export function Sidebar({ activeView, onViewChange, anomalyCount }: SidebarProps) {
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: 'DRIVER & CAR',
+      items: [
+        { id: 'driver-intel', label: 'Driver Intel', icon: Users },
+        { id: 'car' as ViewType, label: 'Car Telemetry', icon: Gauge },
+      ],
+    },
+    {
+      label: 'FIELD & TEAM',
+      items: [
+        { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
+        { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
+        { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
+        { id: 'mclaren-analytics', label: 'McLaren Analytics', icon: BarChart3 },
+        { id: 'fleet-overview', label: 'Fleet Overview', icon: Box },
+      ],
+    },
+    {
+      label: 'INTELLIGENCE PILLARS',
+      items: [
+        { id: 'car' as ViewType, label: 'Telemetry', icon: Gauge },
+        { id: 'anomaly-detection' as ViewType, label: 'Anomaly Detection', icon: AlertTriangle, badge: anomalyCount },
+        { id: 'forecasting' as ViewType, label: 'Forecasting', icon: TrendingUp },
+      ],
+    },
+    {
+      label: 'KNOWLEDGE',
+      items: [
+        { id: 'ai-insights', label: 'Knowledge Base', icon: Brain },
+        { id: 'regulations', label: 'Regulations', icon: BookOpen },
+        { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
+      ],
+    },
+    {
+      label: 'MEDIA',
+      items: [
+        { id: 'media', label: 'Media Intel', icon: Video },
+      ],
+    },
+  ];
 
-export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   return (
     <aside className="w-[220px] min-h-full bg-[#0D1117] border-r border-[rgba(255,128,0,0.12)] flex flex-col">
       {/* Logo Area */}
@@ -78,9 +89,9 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
         {navGroups.map(({ label: groupLabel, items }) => (
           <div key={groupLabel} className="mb-1">
             <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">{groupLabel}</div>
-            {items.map(({ id, label, icon: Icon }) => (
+            {items.map(({ id, label, icon: Icon, badge }) => (
               <button
-                key={id}
+                key={`${groupLabel}-${id}`}
                 onClick={() => onViewChange(id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === id
@@ -89,7 +100,12 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
-                <span className="tracking-wide">{label}</span>
+                <span className="tracking-wide flex-1 text-left">{label}</span>
+                {badge != null && badge > 0 && (
+                  <span className="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>

@@ -30,6 +30,8 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
   'fleet-overview': { title: 'Fleet Overview', subtitle: 'McLaren predictive maintenance & vehicle health monitoring' },
   'race-strategy': { title: 'Race Strategy', subtitle: 'Tyre degradation, pit windows, optimal strategies & SC probability' },
+  'anomaly-detection': { title: 'Anomaly Detection', subtitle: 'Ensemble anomaly scoring across all driver telemetry' },
+  forecasting: { title: 'Forecasting', subtitle: 'Time series predictions for key performance metrics' },
 };
 
 export default function App() {
@@ -123,13 +125,15 @@ export default function App() {
       case 'chat': return <Chatbot />;
       case 'fleet-overview': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
       case 'race-strategy': return <RaceStrategy />;
+      case 'anomaly-detection': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
+      case 'forecasting': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
       default: return <LiveDashboard />;
     }
   };
 
   return (
     <div className="h-full flex bg-[#0D1117] font-['Inter',sans-serif] overflow-hidden">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} anomalyCount={fleetVehicles.filter(v => v.systems.some(s => s.level === 'critical')).length || undefined} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
