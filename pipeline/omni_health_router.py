@@ -16,7 +16,12 @@ from pipeline.anomaly.mongo_loader import (
     load_driver_race_telemetry,
     get_grid_drivers,
 )
-from omnihealth import assess
+
+try:
+    from omnihealth import assess
+except ImportError:
+    assess = None
+    logging.getLogger(__name__).warning("omnihealth not installed — /api/omni/health endpoints disabled")
 
 logger = logging.getLogger(__name__)
 

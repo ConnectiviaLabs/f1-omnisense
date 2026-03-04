@@ -183,7 +183,7 @@ export function CarTelemetry() {
 
   // Load metadata on mount
   useEffect(() => {
-    fetch('/api/mccar-summary/meta')
+    fetch('/api/local/mccar-summary/meta')
       .then(r => r.json())
       .then((m: TelemetryMeta) => {
         setMeta(m);
@@ -221,8 +221,8 @@ export function CarTelemetry() {
     setLoading(true);
     setError(null);
     Promise.allSettled([
-      fetch(`/api/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).then(d => setRawData(d)),
-      fetch(`/api/mccar-race-stints/${year}/${race}`).then(r => r.json()).then(d => setStintsData(d)),
+      fetch(`/api/local/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).then(d => setRawData(d)),
+      fetch(`/api/local/mccar-race-stints/${year}/${race}`).then(r => r.json()).then(d => setStintsData(d)),
     ]).then(results => {
       if (results[0].status === 'rejected') { setError('Race data not available'); setRawData([]); }
     }).finally(() => setLoading(false));
@@ -232,7 +232,7 @@ export function CarTelemetry() {
   useEffect(() => {
     if (tab !== 'season' || !year || !driver) return;
     setSummaryLoading(true);
-    fetch(`/api/mccar-summary/${year}/${driver}`)
+    fetch(`/api/local/mccar-summary/${year}/${driver}`)
       .then(res => res.json())
       .then(data => setSeasonSummary(data))
       .catch(() => setSeasonSummary([]))
@@ -243,7 +243,7 @@ export function CarTelemetry() {
   useEffect(() => {
     if (tab !== 'h2h' || h2hMode !== 'race' || !year || !race) return;
     setH2hLoading(true);
-    fetch(`/api/mccar-race-telemetry/${year}/${race}`)
+    fetch(`/api/local/mccar-race-telemetry/${year}/${race}`)
       .then(r => r.json())
       .then(d => setH2hRaceData(d))
       .catch(() => setH2hRaceData([]))
@@ -255,8 +255,8 @@ export function CarTelemetry() {
     if (tab !== 'h2h' || h2hMode !== 'season' || !driver || !h2hDriver2 || !year) return;
     setH2hLoading(true);
     Promise.all([
-      fetch(`/api/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/mccar-summary/${year}/${h2hDriver2}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-summary/${year}/${h2hDriver2}`).then(r => r.json()).catch(() => []),
     ]).then(([d1, d2]) => { setH2hSeason1(d1); setH2hSeason2(d2); })
       .finally(() => setH2hLoading(false));
   }, [year, driver, h2hDriver2, tab, h2hMode]);
@@ -266,8 +266,8 @@ export function CarTelemetry() {
     if (tab !== 'racecompare' || compareMode !== 'race' || !year || !race || !race2) return;
     setCompareLoading(true);
     Promise.all([
-      fetch(`/api/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/mccar-race-telemetry/${year}/${race2}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-race-telemetry/${year}/${race2}`).then(r => r.json()).catch(() => []),
     ]).then(([d1, d2]) => { setCompareData1(d1); setCompareData2(d2); })
       .finally(() => setCompareLoading(false));
   }, [year, race, race2, driver, tab, compareMode]);
@@ -277,8 +277,8 @@ export function CarTelemetry() {
     if (tab !== 'racecompare' || compareMode !== 'year' || !driver || !year || !year2) return;
     setCompareLoading(true);
     Promise.all([
-      fetch(`/api/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
-      fetch(`/api/mccar-summary/${year2}/${driver}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-summary/${year}/${driver}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/local/mccar-summary/${year2}/${driver}`).then(r => r.json()).catch(() => []),
     ]).then(([s1, s2]) => { setCompareSeason1(s1); setCompareSeason2(s2); })
       .finally(() => setCompareLoading(false));
   }, [driver, year, year2, tab, compareMode]);

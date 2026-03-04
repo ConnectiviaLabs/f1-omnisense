@@ -1,41 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# RunPod setup script for F1 OmniSense
-# Installs MongoDB + mongo-express directly (no Docker — RunPod IS a container).
-# Stores MongoDB data on the persistent volume for survival across restarts.
+# RunPod FULL setup script for F1 OmniSense
+# Installs: Python deps, MongoDB 7, mongo-express, migrates Atlas data, starts app.
+# Run once on a fresh RunPod pod. Idempotent — safe to re-run.
 
-echo "=== F1 OmniSense — RunPod Setup ==="
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 
-# ── Detect volume mount ───────────────────────────────────────
+echo "════════════════════════════════════════════════════"
+echo "  F1 OmniSense — RunPod Full Setup"
+echo "════════════════════════════════════════════════════"
+
+# ── 0. Detect volume mount ──────────────────────────────────────
 VOLUME_PATH=""
 for p in /workspace /runpod-volume; do
-    if [ -d "$p" ]; then
-        VOLUME_PATH="$p"
-        break
-    fi
+    [ -d "$p" ] && VOLUME_PATH="$p" && break
 done
-
 if [ -z "$VOLUME_PATH" ]; then
-    echo "WARNING: No RunPod volume found. MongoDB data will NOT persist across restarts."
+    echo "WARNING: No RunPod volume found. Data will NOT persist."
     VOLUME_PATH="/tmp"
 fi
-echo "Volume: $VOLUME_PATH"
-
+echo "  Volume: $VOLUME_PATH"
 MONGO_DATA="$VOLUME_PATH/mongodb_data"
 mkdir -p "$MONGO_DATA"
 
-# ── 1. Install MongoDB 7 ─────────────────────────────────────
+# ── 1. Install Python dependencies ─────────────────────────────
+echo ""
+echo "[1/5] Installing Python dependencies..."
+pip install --upgrade pip -q
+
+# Fix known conflicts first
+pip uninstall fitz -y 2>/dev/null || true
+pip install PyMuPDF -q 2>/dev/null || true
+
+# Install from requirements
+if [ -f "$ROOT/pipeline/requirements.txt" ]; then
+    pip install -r "$ROOT/pipeline/requirements.txt" -q 2>&1 | tail -3
+    echo "  [done] pipeline/requirements.txt"
+fi
+
+# Extras not in requirements.txt
+pip install pymongo python-dotenv groq pdfplumber python-docx -q 2>/dev/null || true
+echo "  [done] extra deps"
+
+# ── 2. Install MongoDB 7 ───────────────────────────────────────
+echo ""
+echo "[2/5] Setting up MongoDB..."
 if ! command -v mongod &>/dev/null; then
-    echo "Installing MongoDB 7..."
-    apt-get update
-    apt-get install -y gnupg curl
+    apt-get update -qq
+    apt-get install -y -qq gnupg curl > /dev/null
 
-    # MongoDB 7.0 repo for Ubuntu/Debian
     curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-        gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+        gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg 2>/dev/null
 
-    # Detect OS
     . /etc/os-release
     if [[ "$ID" == "ubuntu" ]]; then
         echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${VERSION_CODENAME}/mongodb-org/7.0 multiverse" \
@@ -45,95 +63,94 @@ if ! command -v mongod &>/dev/null; then
             > /etc/apt/sources.list.d/mongodb-org-7.0.list
     fi
 
-    apt-get update
-    apt-get install -y mongodb-org
-    echo "MongoDB installed: $(mongod --version | head -1)"
+    apt-get update -qq
+    apt-get install -y -qq mongodb-org > /dev/null
+    echo "  Installed: $(mongod --version | head -1)"
 else
-    echo "MongoDB already installed: $(mongod --version | head -1)"
+    echo "  Already installed: $(mongod --version | head -1)"
 fi
 
-# ── 2. Start MongoDB ─────────────────────────────────────────
+# ── 3. Start MongoDB ───────────────────────────────────────────
+echo ""
+echo "[3/5] Starting MongoDB..."
 if pgrep -x mongod &>/dev/null; then
-    echo "MongoDB already running"
+    echo "  Already running"
 else
-    echo "Starting MongoDB (data: $MONGO_DATA)..."
     mongod --dbpath "$MONGO_DATA" --bind_ip_all --port 27017 --fork --logpath /var/log/mongod.log
 
-    # Wait for ready
     for i in $(seq 1 20); do
         if mongosh --quiet --eval "db.runCommand({ping:1})" &>/dev/null; then
-            echo "MongoDB is ready!"
+            echo "  MongoDB is ready!"
             break
         fi
         [ "$i" -eq 20 ] && { echo "ERROR: MongoDB did not start"; exit 1; }
         sleep 1
     done
-
-    # Create admin user (first time only)
-    mongosh --quiet --eval "
-        try {
-            db.getSiblingDB('admin').createUser({
-                user: 'admin',
-                pwd: '${MONGO_ROOT_PASSWORD:-maripf1admin}',
-                roles: ['root']
-            });
-            print('Admin user created');
-        } catch(e) {
-            if (e.code === 51003) print('Admin user already exists');
-            else print('User creation: ' + e.message);
-        }
-    "
 fi
 
-# ── 3. Install & start mongo-express ─────────────────────────
+# ── 4. Install & start mongo-express ───────────────────────────
+echo ""
+echo "[4/5] Setting up mongo-express..."
 if ! command -v npx &>/dev/null; then
-    echo "Installing Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
+    apt-get install -y -qq nodejs > /dev/null
 fi
 
 if ! npm list -g mongo-express &>/dev/null 2>&1; then
-    echo "Installing mongo-express..."
-    npm install -g mongo-express
+    npm install -g mongo-express --silent 2>/dev/null
 fi
 
-# Kill existing mongo-express if running
 pkill -f "mongo-express" 2>/dev/null || true
+sleep 1
 
-echo "Starting mongo-express on port 8081..."
 ME_CONFIG_MONGODB_URL="mongodb://localhost:27017/" \
 ME_CONFIG_BASICAUTH="false" \
 ME_CONFIG_SITE_BASEURL="/" \
     npx mongo-express &>/var/log/mongo-express.log &
-echo "  PID: $!"
+echo "  mongo-express started on port 8081 (PID: $!)"
 
-# ── 4. Run Atlas migration (if not already done) ─────────────
+# ── 5. Migrate Atlas → local (first time only) ────────────────
+echo ""
+echo "[5/5] Data migration..."
 MARKER="$MONGO_DATA/.migration_complete"
 if [ ! -f "$MARKER" ]; then
-    echo ""
-    echo "Running data migration from Atlas..."
-
-    # Install pymongo if needed
-    pip install pymongo python-dotenv 2>/dev/null || true
+    echo "  Migrating all data from Atlas to local MongoDB..."
 
     LOCAL_URI="mongodb://localhost:27017/marip_f1" \
-        python3 scripts/migrate_atlas_to_local.py
+        python3 "$ROOT/scripts/migrate_atlas_to_local.py"
 
     touch "$MARKER"
-    echo "Migration marker set. Won't re-run on next start."
+    echo "  Migration complete. Marker set."
 else
-    echo "Migration already completed (marker found). Skipping."
+    echo "  Already migrated (marker found). Skipping."
 fi
 
-# ── 5. Start the app ─────────────────────────────────────────
+# ── 6. Update .env to use local MongoDB ────────────────────────
 echo ""
-echo "=== Setup complete ==="
+if grep -q "^MONGODB_URI=mongodb://localhost" "$ROOT/.env" 2>/dev/null; then
+    echo ".env already points to localhost"
+else
+    echo "Updating .env to use local MongoDB..."
+    sed -i 's|^MONGODB_URI=.*|MONGODB_URI=mongodb://localhost:27017/marip_f1|' "$ROOT/.env"
+    echo "  Done"
+fi
+
+# ── 7. Build frontend if needed ────────────────────────────────
+if [ ! -d "$ROOT/frontend/dist" ]; then
+    echo ""
+    echo "Building frontend..."
+    cd "$ROOT/frontend" && npm install --silent && npm run build
+    cd "$ROOT"
+fi
+
+# ── Done ───────────────────────────────────────────────────────
+echo ""
+echo "════════════════════════════════════════════════════"
+echo "  Setup complete!"
+echo "════════════════════════════════════════════════════"
 echo "  MongoDB:       localhost:27017 (data: $MONGO_DATA)"
-echo "  Mongo Express: http://localhost:8081"
+echo "  Mongo Express: port 8081"
 echo ""
-echo "To start the backend:"
-echo "  cd $(dirname "$0")/.."
-echo "  MONGODB_URI=mongodb://localhost:27017/marip_f1 python pipeline/chat_server.py"
+echo "  Start the app:"
+echo "    cd $ROOT && ./runpod_start.sh"
 echo ""
-echo "To start the frontend:"
-echo "  cd frontend && npm run dev"
