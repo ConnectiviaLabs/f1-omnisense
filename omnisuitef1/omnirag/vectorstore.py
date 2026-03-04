@@ -299,32 +299,18 @@ class ChromaStore:
 
 # ── Factory ──────────────────────────────────────────────────────────
 
-def _is_atlas_uri(uri: str) -> bool:
-    """Check if a MongoDB URI points to Atlas."""
-    return "mongodb.net" in uri or "mongodb+srv" in uri
-
-
 def get_vectorstore(
     backend: str = "auto",
     collection_name: str = "rag_knowledge",
     **kwargs,
 ) -> VectorStoreProtocol:
-    """Create vector store. Auto-detect based on MongoDB URI.
-
-    - Atlas URI → AtlasStore ($vectorSearch)
-    - Self-hosted URI → ChromaDB (no $vectorSearch on Community MongoDB)
-    - No URI → ChromaDB
+    """Create vector store. Auto-detect: Atlas if MONGO_URI set, else ChromaDB.
 
     backend: "auto", "atlas", or "chroma"
     """
-    mongo_uri = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI", "")
-
-    if backend == "atlas" or (backend == "auto" and mongo_uri and _is_atlas_uri(mongo_uri)):
-        logger.info("Using MongoDB Atlas vector store ($vectorSearch)")
+    if backend == "atlas" or (backend == "auto" and os.getenv("MONGO_URI")):
+        logger.info("Using MongoDB Atlas vector store")
         return AtlasStore(collection_name=collection_name, **kwargs)
 
-    if backend == "auto" and mongo_uri and not _is_atlas_uri(mongo_uri):
-        logger.info("Self-hosted MongoDB detected — using ChromaDB for vector search")
-
-    logger.info("Using ChromaDB local vector store")
+    logger.info("Using ChromaDB local vector store (no MONGO_URI set)")
     return ChromaStore(collection_name=collection_name, **kwargs)

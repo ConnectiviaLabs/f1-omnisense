@@ -14,7 +14,7 @@ frontend/.vercel/
 f1data/
 /data/
 /output/
-omnisuitef1/
+omnisuitef1/Data/
 *.zip
 
 # ─── Build output ────────────────────────────────────
