@@ -161,8 +161,8 @@ async def upload_and_ingest(
             embeddings.extend(embedder.embed_texts(batch))
 
         # 4. Upsert to Atlas
-        from pipeline.vectorstore import AtlasVectorStore
-        vs = AtlasVectorStore()
+        from pipeline.vectorstore import get_vector_store
+        vs = get_vector_store()
         count = vs.upsert_documents(docs, embeddings)
 
         return {

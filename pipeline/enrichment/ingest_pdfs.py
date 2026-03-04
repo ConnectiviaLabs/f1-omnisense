@@ -76,14 +76,14 @@ def main():
     from omnidoc.ingest import process_document
     from omnidoc.embedder import get_embedder
     from langchain_core.documents import Document
-    from pipeline.vectorstore import AtlasVectorStore
+    from pipeline.vectorstore import get_vector_store
 
     # Init embedder (BGE 1024-dim, no CLIP needed)
     print("\n  Loading BGE embedder...")
     embedder = get_embedder(enable_clip=False)
 
     # Init vectorstore
-    vs = AtlasVectorStore()
+    vs = get_vector_store()
     if args.rebuild:
         print("  Dropping existing collection (--rebuild)...")
         vs.delete_collection()

@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from groq import Groq
-from pipeline.vectorstore import AtlasVectorStore
+from pipeline.vectorstore import get_vector_store
 from pipeline.embeddings import NomicEmbedder
 from pipeline.model_3d_server import router as model_3d_router, mount_3d_static
 from pipeline.omni_health_router import router as omni_health_router
@@ -102,7 +102,7 @@ app.include_router(updater_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
-_vs: AtlasVectorStore | None = None
+_vs = None
 _embedder: NomicEmbedder | None = None
 _clip_index: dict | None = None
 _clip_embedder = None
@@ -117,10 +117,10 @@ def get_groq() -> Groq:
     return _groq
 
 
-def get_vs() -> AtlasVectorStore:
+def get_vs():
     global _vs
     if _vs is None:
-        _vs = AtlasVectorStore()
+        _vs = get_vector_store()
     return _vs
 
 
