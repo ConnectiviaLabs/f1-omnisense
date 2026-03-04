@@ -48,7 +48,7 @@ echo ""
 
 # ── 2. Build telemetry_lap_summary + telemetry_race_summary ──
 echo -e "${O}[2/6] Building telemetry summaries (lap + race)...${C}"
-python3 -m pipeline.enrichment.build_telemetry_summaries
+python3 -m pipeline.enrichment.build_telemetry_summaries --year 2025
 echo -e "${G}  [done]${C}"
 echo ""
 

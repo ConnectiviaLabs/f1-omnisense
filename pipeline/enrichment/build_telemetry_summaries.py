@@ -30,10 +30,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from updater._db import get_db
 
 
-def load_race_telemetry(db) -> pd.DataFrame:
-    """Load race telemetry from telemetry_compressed."""
+def load_race_telemetry(db, year: int | None = None) -> pd.DataFrame:
+    """Load race telemetry from telemetry_compressed.
+
+    Args:
+        year: If set, only load chunks for that year (e.g. '2025_R.parquet').
+              This avoids OOM on machines with limited RAM.
+    """
     filenames = sorted(db["telemetry_compressed"].distinct("filename"))
     race_files = [f for f in filenames if "_R." in f]
+
+    if year is not None:
+        race_files = [f for f in race_files if f.startswith(f"{year}_")]
 
     # Build driver number → code mapping
     num_to_code = {}
@@ -67,7 +75,7 @@ def load_race_telemetry(db) -> pd.DataFrame:
     return tel
 
 
-def build_lap_summaries(tel: pd.DataFrame, db) -> int:
+def build_lap_summaries(tel: pd.DataFrame, db, drop_collection: bool = True) -> int:
     """Build telemetry_lap_summary: per-driver per-race per-lap stats."""
     print("\n  Building lap summaries...")
 
@@ -122,20 +130,17 @@ def build_lap_summaries(tel: pd.DataFrame, db) -> int:
     print(f"  Total: {len(lap_docs):,} lap summaries")
 
     if lap_docs:
-        db["telemetry_lap_summary"].drop()
+        if drop_collection:
+            db["telemetry_lap_summary"].drop()
         # Insert in batches
         BATCH = 10000
         for i in range(0, len(lap_docs), BATCH):
             db["telemetry_lap_summary"].insert_many(lap_docs[i:i + BATCH])
 
-        db["telemetry_lap_summary"].create_index("_source_file")
-        db["telemetry_lap_summary"].create_index([("Driver", 1), ("Year", 1), ("Race", 1)])
-        db["telemetry_lap_summary"].create_index([("Year", 1), ("Race", 1), ("LapNumber", 1)])
-
     return len(lap_docs)
 
 
-def build_race_summaries(tel: pd.DataFrame, db) -> int:
+def build_race_summaries(tel: pd.DataFrame, db, drop_collection: bool = True) -> int:
     """Build telemetry_race_summary: per-driver per-race car/biometric stats."""
     print("\n  Building race summaries...")
 
@@ -186,10 +191,9 @@ def build_race_summaries(tel: pd.DataFrame, db) -> int:
     print(f"  Total: {len(race_docs):,} race summaries")
 
     if race_docs:
-        db["telemetry_race_summary"].drop()
+        if drop_collection:
+            db["telemetry_race_summary"].drop()
         db["telemetry_race_summary"].insert_many(race_docs)
-        db["telemetry_race_summary"].create_index([("Driver", 1), ("Year", 1)])
-        db["telemetry_race_summary"].create_index("_source_file")
 
     return len(race_docs)
 
@@ -203,23 +207,52 @@ def main():
         print("  ⚠ telemetry_compressed is empty, nothing to summarize")
         return
 
-    print(f"\nLoading race telemetry from {count} compressed chunks...")
-    tel = load_race_telemetry(db)
+    # Discover which years exist (e.g. "2024_R.parquet" → 2024)
+    filenames = db["telemetry_compressed"].distinct("filename")
+    years = sorted({int(f.split("_")[0]) for f in filenames if "_R." in f})
+    print(f"\nFound {count} chunks across years: {years}")
 
-    if tel.empty:
-        print("  ⚠ No race telemetry found")
-        return
+    # Process one year at a time to avoid OOM
+    total_lap = 0
+    total_race = 0
 
-    print(f"  Loaded {len(tel):,} rows, {tel['Driver'].nunique()} drivers")
-    now = datetime.now(timezone.utc)
+    for year in years:
+        year_chunks = db["telemetry_compressed"].count_documents(
+            {"filename": f"{year}_R.parquet"}
+        )
+        print(f"\n{'='*50}")
+        print(f"  Year {year}: {year_chunks} chunks")
 
-    lap_count = build_lap_summaries(tel, db)
-    race_count = build_race_summaries(tel, db)
+        tel = load_race_telemetry(db, year=year)
+        if tel.empty:
+            print(f"  ⚠ No race telemetry for {year}")
+            continue
 
-    # Stats
+        print(f"  Loaded {len(tel):,} rows, {tel['Driver'].nunique()} drivers")
+
+        # For lap summaries: delete existing for this year, then insert
+        db["telemetry_lap_summary"].delete_many({"Year": year})
+        lap_count = build_lap_summaries(tel, db, drop_collection=False)
+        total_lap += lap_count
+
+        # For race summaries: delete existing for this year, then insert
+        db["telemetry_race_summary"].delete_many({"Year": year})
+        race_count = build_race_summaries(tel, db, drop_collection=False)
+        total_race += race_count
+
+        # Free memory before next year
+        del tel
+
+    # Ensure indexes exist
+    db["telemetry_lap_summary"].create_index("_source_file")
+    db["telemetry_lap_summary"].create_index([("Driver", 1), ("Year", 1), ("Race", 1)])
+    db["telemetry_lap_summary"].create_index([("Year", 1), ("Race", 1), ("LapNumber", 1)])
+    db["telemetry_race_summary"].create_index([("Driver", 1), ("Year", 1)])
+    db["telemetry_race_summary"].create_index("_source_file")
+
     print(f"\n✅ Pre-aggregation complete:")
-    print(f"  telemetry_lap_summary:  {lap_count:,} docs")
-    print(f"  telemetry_race_summary: {race_count:,} docs")
+    print(f"  telemetry_lap_summary:  {total_lap:,} docs")
+    print(f"  telemetry_race_summary: {total_race:,} docs")
 
     # Size check
     for coll in ["telemetry_lap_summary", "telemetry_race_summary"]:
@@ -232,4 +265,36 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Support --year 2025 to only process a single year (saves RAM)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--year", type=int, help="Only process this year")
+    args = parser.parse_args()
+    if args.year:
+        # Quick single-year mode
+        db = get_db()
+        print("✅ Connected to MongoDB")
+        year_chunks = db["telemetry_compressed"].count_documents(
+            {"filename": f"{args.year}_R.parquet"}
+        )
+        if year_chunks == 0:
+            print(f"  ⚠ No telemetry_compressed chunks for {args.year}")
+            sys.exit(1)
+        print(f"\nProcessing year {args.year} ({year_chunks} chunks)...")
+        tel = load_race_telemetry(db, year=args.year)
+        if tel.empty:
+            print(f"  ⚠ No race telemetry for {args.year}")
+            sys.exit(1)
+        print(f"  Loaded {len(tel):,} rows, {tel['Driver'].nunique()} drivers")
+        db["telemetry_lap_summary"].delete_many({"Year": args.year})
+        lap_count = build_lap_summaries(tel, db, drop_collection=False)
+        db["telemetry_race_summary"].delete_many({"Year": args.year})
+        race_count = build_race_summaries(tel, db, drop_collection=False)
+        db["telemetry_lap_summary"].create_index("_source_file")
+        db["telemetry_lap_summary"].create_index([("Driver", 1), ("Year", 1), ("Race", 1)])
+        db["telemetry_lap_summary"].create_index([("Year", 1), ("Race", 1), ("LapNumber", 1)])
+        db["telemetry_race_summary"].create_index([("Driver", 1), ("Year", 1)])
+        db["telemetry_race_summary"].create_index("_source_file")
+        print(f"\n✅ Done: {lap_count:,} lap summaries, {race_count:,} race summaries")
+    else:
+        main()
