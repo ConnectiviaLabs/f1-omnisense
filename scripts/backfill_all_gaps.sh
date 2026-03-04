@@ -10,7 +10,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export PYTHONPATH="$ROOT:$ROOT/pipeline:$ROOT/omnisuitef1"
-export MONGODB_URI="${MONGODB_URI:-mongodb://localhost:27017/marip_f1}"
+export MONGODB_URI="${MONGODB_URI:-mongodb://195.26.233.3:28857/marip_f1}"
 export MONGODB_DB="${MONGODB_DB:-marip_f1}"
 
 O='\033[0;33m'

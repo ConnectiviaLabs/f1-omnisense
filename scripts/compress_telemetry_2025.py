@@ -20,7 +20,7 @@ from pymongo import MongoClient, UpdateOne
 YEAR = 2025
 SESSION_TYPES = ["R"]
 CHUNK_SIZE = 500_000
-MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://localhost:27017/marip_f1")
+MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb://195.26.233.3:28857/marip_f1")
 DB_NAME = os.environ.get("MONGODB_DB", "marip_f1")
 
 session_code_map = {"R": "Race", "Q": "Qualifying", "S": "Sprint"}
