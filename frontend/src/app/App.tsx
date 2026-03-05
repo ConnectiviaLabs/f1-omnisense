@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { Home } from './components/Home';
+import { Home_v3 as Home } from './components/Home_v3';
 import { LiveDashboard } from './components/LiveDashboard';
 import { CarTelemetry } from './components/CarTelemetry';
 import { DriverBiometrics } from './components/DriverBiometrics';

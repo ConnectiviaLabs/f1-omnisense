@@ -20,7 +20,7 @@ const primeStats = [
   { value: 'AI', label: 'Powered' },
 ];
 
-export function Home({ onSelectPlatform }: HomeProps) {
+export function Home_v2({ onSelectPlatform }: HomeProps) {
   const [hovered, setHovered] = useState<'raceday' | 'prime' | null>(null);
 
   return (
@@ -82,7 +82,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             style={{ width: 200, height: 200 }}
           />
 
-          {/* Top section */}
           <div className="relative mb-8">
             <div className="inline-flex items-center gap-1.5 mb-6">
               <span className="relative flex h-2 w-2">
@@ -102,7 +101,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             </p>
           </div>
 
-          {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {raceDayStats.map(({ value, label }) => (
               <div key={label} className="rounded-xl bg-[#0D1117]/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
@@ -112,10 +110,8 @@ export function Home({ onSelectPlatform }: HomeProps) {
             ))}
           </div>
 
-          {/* Divider */}
           <div className="relative h-px bg-[#FF8000]/8 mb-8" />
 
-          {/* Feature list */}
           <div className="relative flex flex-col gap-4 flex-1">
             {[
               { icon: Zap, label: 'Live Dashboard', sub: 'Real-time race positions, gaps & race control messages' },
@@ -135,7 +131,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             ))}
           </div>
 
-          {/* CTA */}
           <div className="relative mt-8 pt-6 border-t border-[#FF8000]/8 flex items-center justify-between">
             <span className="text-[10px] text-white/15 tracking-widest uppercase">Race Intelligence Platform</span>
             <div className="flex items-center gap-2 text-[#FF8000]/60 text-xs font-medium tracking-wide group-hover:text-[#FF8000] transition-colors duration-300">
@@ -145,7 +140,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
           </div>
         </button>
 
-        {/* Divider */}
         <div className="w-px bg-[#FF8000]/10 flex-shrink-0" />
 
         {/* ── Prime ── */}
@@ -168,7 +162,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             style={{ width: 200, height: 200 }}
           />
 
-          {/* Top section */}
           <div className="relative mb-8">
             <div className="inline-flex items-center gap-1.5 mb-6">
               <div className="w-2 h-2 rounded-sm bg-[#FF8000]/50" />
@@ -185,7 +178,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             </p>
           </div>
 
-          {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {primeStats.map(({ value, label }) => (
               <div key={label} className="rounded-xl bg-[#0D1117]/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
@@ -195,10 +187,8 @@ export function Home({ onSelectPlatform }: HomeProps) {
             ))}
           </div>
 
-          {/* Divider */}
           <div className="relative h-px bg-[#FF8000]/8 mb-8" />
 
-          {/* Feature list */}
           <div className="relative flex flex-col gap-4 flex-1">
             {[
               { icon: Brain, label: 'Driver Intelligence', sub: 'Career stats, head-to-head comparisons & performance markers' },
@@ -218,7 +208,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
             ))}
           </div>
 
-          {/* CTA */}
           <div className="relative mt-8 pt-6 border-t border-[#FF8000]/8 flex items-center justify-between">
             <span className="text-[10px] text-white/15 tracking-widest uppercase">Deep Analytics Platform</span>
             <div className="flex items-center gap-2 text-[#FF8000]/60 text-xs font-medium tracking-wide group-hover:text-[#FF8000] transition-colors duration-300">
@@ -229,7 +218,6 @@ export function Home({ onSelectPlatform }: HomeProps) {
         </button>
       </div>
 
-      {/* Footer */}
       <div className="relative z-10 flex justify-center pb-6">
         <span className="text-[10px] text-white/10 tracking-[0.2em] uppercase">F1 OmniSense · All rights reserved</span>
       </div>
