@@ -7,6 +7,7 @@ import {
 import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ReferenceLine,
 } from 'recharts';
+import KexBriefingCard from './KexBriefingCard';
 import * as model3dApi from '../api/model3d';
 import type { Job } from '../api/model3d';
 import {
@@ -104,9 +105,8 @@ interface AnomalyKex {
   text: string;
   model_used: string;
   provider_used: string;
-  sentiment: { label: string; score: number };
-  entities: { text: string; label: string }[];
-  topics: string[];
+  scores: Record<string, number>;
+  summary: string;
   generated_at: number;
 }
 
@@ -512,10 +512,10 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
       {mclarenVehicles.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {mclarenVehicles.map(v => {
-            const isSelected = selectedCar?.number === v.number;
+            const isSelected = selectedCar?.code === v.code;
             return (
               <button
-                key={v.number}
+                key={v.code || v.number}
                 onClick={() => setSelectedCar(isSelected ? null : v)}
                 className={`text-left bg-[#1A1F2E] rounded-xl border p-5 transition-all group ${
                   isSelected
@@ -580,10 +580,10 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
           </div>
           <div className="max-h-[400px] overflow-y-auto">
             {otherVehicles.map(v => {
-              const isSelected = selectedCar?.number === v.number;
+              const isSelected = selectedCar?.code === v.code;
               return (
                 <button
-                  key={v.number}
+                  key={v.code || v.number}
                   onClick={() => setSelectedCar(isSelected ? null : v)}
                   className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b border-[rgba(255,128,0,0.04)] transition-colors ${
                     isSelected
@@ -852,41 +852,13 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
           </div>
 
           {/* ── WISE Anomaly Briefing ── */}
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-            <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
-              <Sparkles className="w-4 h-4" /> WISE Anomaly Briefing
-            </h3>
-            {kexLoading && (
-              <div className="flex items-center justify-center gap-2 py-6">
-                <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
-                <span className="text-[11px] text-muted-foreground">Extracting anomaly intelligence…</span>
-              </div>
-            )}
-            {kex && !kexLoading && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#3b82f6]/20 text-[#3b82f6]">REALTIME</span>
-                  {kex.sentiment && (
-                    <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
-                      kex.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
-                      kex.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
-                      'bg-zinc-500/15 text-zinc-400'
-                    }`}>
-                      {kex.sentiment.label === 'positive' ? '\u25B2' : kex.sentiment.label === 'negative' ? '\u25BC' : '\u25CF'} {kex.sentiment.score}
-                    </span>
-                  )}
-                  {kex.topics?.length > 0 && kex.topics.map(t => (
-                    <span key={t} className="text-[8px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{t}</span>
-                  ))}
-                </div>
-                <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">{kex.text}</div>
-                <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,128,0,0.06)]">
-                  <span className="text-[9px] text-muted-foreground/50 font-mono">via {kex.model_used} ({kex.provider_used})</span>
-                  <span className="text-[9px] text-muted-foreground/50">{new Date(kex.generated_at * 1000).toLocaleString()}</span>
-                </div>
-              </div>
-            )}
-          </div>
+          <KexBriefingCard
+            title="WISE Anomaly Briefing"
+            icon="sparkles"
+            kex={kex}
+            loading={kexLoading}
+            loadingText="Extracting anomaly intelligence\u2026"
+          />
 
           {/* ── Season Health Trend ── */}
           {trendData.length > 0 && (

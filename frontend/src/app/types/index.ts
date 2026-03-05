@@ -405,4 +405,4 @@ export interface JolpicaSprintResult {
 }
 
 // View types
-export type ViewType = 'home' | 'dashboard' | 'car' | 'driver' | 'prime-driver' | 'prime-car' | 'prime-strategy' | 'ai-insights' | 'regulations' | 'media' | 'chat';
+export type ViewType = 'home' | 'dashboard' | 'car' | 'driver' | 'prime-driver' | 'prime-car' | 'prime-team' | 'prime-strategy' | 'ai-insights' | 'regulations' | 'media' | 'chat';

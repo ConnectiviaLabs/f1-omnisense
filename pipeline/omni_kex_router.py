@@ -303,14 +303,14 @@ def mclaren_briefing(year: int, force: bool = False):
                 verify=True,
             )
             grounding_score = insight.grounding.grounding_score if insight.grounding else 0.0
-            nlp_meta = _enrich_nlp(insight.text)
             insights.append({
                 "pillar": insight.pillar.value,
                 "driver": code,
                 "text": insight.text,
                 "grounding_score": round(grounding_score, 2),
                 "model_used": insight.model_used,
-                **nlp_meta,
+                "scores": {},
+                "summary": "",
             })
         except Exception:
             logger.exception("WISE realtime extraction failed for %s/%s", code, year)

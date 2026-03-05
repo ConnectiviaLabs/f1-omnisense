@@ -4,6 +4,7 @@ import {
   Video,
   MessageCircle,
   Box,
+  Shield,
   Users,
   Gauge,
   Flag,
@@ -45,6 +46,7 @@ const RACE_DAY_ITEMS: NavItem[] = [
 const PRIME_INTEL_ITEMS: (anomalyCount?: number) => NavItem[] = (anomalyCount) => [
   { id: 'prime-driver', label: 'Driver', icon: Users },
   { id: 'prime-car', label: 'Car', icon: Box, badge: anomalyCount },
+  { id: 'prime-team', label: 'Team', icon: Shield },
 ];
 
 const PILLAR_ITEMS: SubItem[] = [

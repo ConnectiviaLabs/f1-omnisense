@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Play, Film, Sparkles,
+  Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Film, Sparkles,
+  Upload, ChevronDown,
 } from 'lucide-react';
 import { pipeline } from '../api/local';
+
+// ── Interfaces ──
 
 interface GDinoFrame {
   frame_index: number;
@@ -47,14 +50,55 @@ interface MediaVideo {
   analyzed: boolean;
 }
 
-/** Video player with bbox overlay drawn on canvas, synced to detection frames */
+interface StructuredAnalysis {
+  scene: string;
+  key_objects: string[];
+  track_conditions: string;
+  strategic_notes: string;
+  incidents: string[];
+}
+
+interface DetectionSummary {
+  category: string;
+  count: number;
+  avgConfidence: number;
+  bestConfidence: number;
+}
+
+// ── Helpers ──
+
+function computeDetectionSummary(frames: GDinoFrame[]): DetectionSummary[] {
+  const map: Record<string, { count: number; scores: number[] }> = {};
+  for (const f of frames) {
+    for (const d of (f.detections ?? [])) {
+      if (!d.category) continue;
+      if (!map[d.category]) map[d.category] = { count: 0, scores: [] };
+      map[d.category].count++;
+      map[d.category].scores.push(d.score ?? 0);
+    }
+  }
+  return Object.entries(map)
+    .map(([category, { count, scores }]) => ({
+      category,
+      count,
+      avgConfidence: scores.reduce((a, b) => a + b, 0) / scores.length,
+      bestConfidence: Math.max(...scores),
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ── AnnotatedVideoPlayer ──
+
 function AnnotatedVideoPlayer({
   videoSrc, frames, fps, narrations,
+  confidenceThreshold, activeCategories,
 }: {
   videoSrc: string;
   frames: GDinoFrame[];
   fps: number;
   narrations?: NarrationFrame[];
+  confidenceThreshold: number;
+  activeCategories: Set<string>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -64,7 +108,6 @@ function AnnotatedVideoPlayer({
 
   const frameTimes = frames.map(f => f.frame_index / fps);
 
-  // Colors for different categories
   const catColors: Record<string, string> = {};
   const palette = ['#FF8000', '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#eab308', '#06b6d4'];
   let colorIdx = 0;
@@ -80,7 +123,6 @@ function AnnotatedVideoPlayer({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Match canvas to displayed video size
     const rect = video.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
@@ -89,34 +131,81 @@ function AnnotatedVideoPlayer({
     const frame = frames[frameIdx];
     if (!frame?.detections?.length) return;
 
-    // Scale from original video resolution to displayed size
     const scaleX = rect.width / (video.videoWidth || 1);
     const scaleY = rect.height / (video.videoHeight || 1);
 
-    for (const det of frame.detections) {
-      if (!det.bbox || det.bbox.length < 4) continue;
+    const NMS_IOU = 0.45;
+    const filtered = frame.detections
+      .filter((d: any) =>
+        d.bbox?.length >= 4 &&
+        (d.score ?? 0) >= confidenceThreshold &&
+        activeCategories.has(d.category)
+      )
+      .sort((a: any, b: any) => (b.score ?? 0) - (a.score ?? 0));
+
+    // NMS
+    const iou = (a: number[], b: number[]) => {
+      const ix1 = Math.max(a[0], b[0]), iy1 = Math.max(a[1], b[1]);
+      const ix2 = Math.min(a[2], b[2]), iy2 = Math.min(a[3], b[3]);
+      const inter = Math.max(0, ix2 - ix1) * Math.max(0, iy2 - iy1);
+      const areaA = (a[2] - a[0]) * (a[3] - a[1]);
+      const areaB = (b[2] - b[0]) * (b[3] - b[1]);
+      return inter / (areaA + areaB - inter + 1e-6);
+    };
+    const keep: typeof filtered = [];
+    for (const det of filtered) {
+      if (keep.some(k => iou(k.bbox, det.bbox) > NMS_IOU)) continue;
+      keep.push(det);
+    }
+
+    const shortLabel = (cat: string) => {
+      const words = cat.split(/[\s\-–]+/).filter(w => !['a','the','of','and','with','car','one'].includes(w.toLowerCase()));
+      return (words[0] || cat).slice(0, 12);
+    };
+
+    const labelRects: { x: number; y: number; w: number; h: number }[] = [];
+    const LABEL_H = 14;
+
+    for (const det of keep) {
       const [x1, y1, x2, y2] = det.bbox;
       const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
       const sw = (x2 - x1) * scaleX, sh = (y2 - y1) * scaleY;
       const color = getColor(det.category);
 
-      // Draw box
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
       ctx.strokeRect(sx1, sy1, sw, sh);
 
-      // Draw label background
-      const label = `${det.category} ${((det.score ?? 0) * 100).toFixed(0)}%`;
-      ctx.font = 'bold 11px monospace';
-      const textW = ctx.measureText(label).width;
-      ctx.fillStyle = color;
-      ctx.fillRect(sx1, sy1 - 16, textW + 8, 16);
+      const label = `${shortLabel(det.category)} ${((det.score ?? 0) * 100).toFixed(0)}%`;
+      ctx.font = 'bold 9px system-ui, sans-serif';
+      const textW = ctx.measureText(label).width + 6;
 
-      // Draw label text
+      let labelY = sy1 - 2;
+      let attempts = 0;
+      while (attempts < 8) {
+        const candidate = { x: sx1, y: labelY - LABEL_H, w: textW, h: LABEL_H };
+        const overlaps = labelRects.some(r =>
+          candidate.x < r.x + r.w && candidate.x + candidate.w > r.x &&
+          candidate.y < r.y + r.h && candidate.y + candidate.h > r.y
+        );
+        if (!overlaps) break;
+        labelY -= LABEL_H + 1;
+        attempts++;
+      }
+      if (labelY - LABEL_H < 0) labelY = sy1 + sh + LABEL_H + 2;
+
+      labelRects.push({ x: sx1, y: labelY - LABEL_H, w: textW, h: LABEL_H });
+
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(sx1, labelY - LABEL_H, textW, LABEL_H);
+      ctx.globalAlpha = 1.0;
+
       ctx.fillStyle = '#000';
-      ctx.fillText(label, sx1 + 4, sy1 - 4);
+      ctx.fillText(label, sx1 + 3, labelY - 3);
     }
-  }, [frames]);
+  }, [frames, confidenceThreshold, activeCategories]);
 
   const onTimeUpdate = useCallback(() => {
     const video = videoRef.current;
@@ -140,8 +229,11 @@ function AnnotatedVideoPlayer({
     if (videoRef.current) videoRef.current.currentTime = frameTimes[idx];
   };
 
+  // Redraw on resize or filter change
+  useEffect(() => {
+    drawBoxes(activeFrameIdx);
+  }, [activeFrameIdx, drawBoxes, confidenceThreshold, activeCategories]);
 
-  // Redraw on resize
   useEffect(() => {
     const handleResize = () => drawBoxes(activeFrameIdx);
     window.addEventListener('resize', handleResize);
@@ -149,18 +241,14 @@ function AnnotatedVideoPlayer({
   }, [activeFrameIdx, drawBoxes]);
 
   const activeFrame = frames[activeFrameIdx];
-
-  // Find narration matching the active frame (by frame_index)
   const activeNarration = narrations?.find(n => {
     if (!activeFrame) return false;
-    // Match by frame_index, or by 1-based index (frame_index in narrations is 1-based)
-    return n.frame_index === activeFrame.frame_index
-      || n.frame_index === activeFrameIdx + 1;
+    return n.frame_index === activeFrame.frame_index || n.frame_index === activeFrameIdx + 1;
   });
 
   return (
-    <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)] space-y-3">
-      {/* Video with canvas overlay for bounding boxes */}
+    <div className="space-y-2">
+      {/* Video + canvas overlay */}
       <div ref={containerRef} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
         <video
           ref={videoRef}
@@ -174,83 +262,99 @@ function AnnotatedVideoPlayer({
         <canvas
           ref={canvasRef}
           className="absolute top-0 left-0 w-full h-full pointer-events-none"
-          style={{ height: 'calc(100% - 36px)' }}  /* avoid covering video controls */
+          style={{ height: 'calc(100% - 36px)' }}
         />
-        {/* Frame info badge */}
         {hasFrames && activeFrame && (
           <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none">
             <span className="text-[10px] font-mono bg-black/70 text-[#FF8000] px-2 py-0.5 rounded">
               Frame {activeFrame.frame_index} — {frameTimes[activeFrameIdx].toFixed(1)}s
             </span>
             <span className="text-[10px] font-mono bg-black/70 text-green-400 px-2 py-0.5 rounded">
-              {activeFrame.detections?.length ?? 0} detections
+              {activeFrame.detections?.filter(d => (d.score ?? 0) >= confidenceThreshold && activeCategories.has(d.category)).length ?? 0} detections
             </span>
           </div>
         )}
       </div>
 
-      {/* AI Insight — narration for active frame */}
-      {activeNarration && (
-        <div className="bg-[#0D1117] border border-purple-500/20 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Brain className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-[11px] text-purple-400 tracking-wider font-mono">AI INSIGHT</span>
-            <span className="text-[10px] text-muted-foreground ml-auto">{activeNarration.tokens} tok · {activeNarration.time_s}s</span>
-          </div>
-          <p className="text-[12px] text-foreground/90 leading-relaxed">{activeNarration.narration}</p>
+      {/* Detection timeline heatmap */}
+      {hasFrames && (
+        <div className="relative h-5 bg-[#0D1117] rounded overflow-hidden border border-[rgba(255,128,0,0.08)]">
+          {frames.map((f, i) => {
+            const detCount = f.detections?.filter(d =>
+              (d.score ?? 0) >= confidenceThreshold && activeCategories.has(d.category)
+            ).length ?? 0;
+            const maxDets = Math.max(...frames.map(fr => fr.detections?.length ?? 0), 1);
+            const intensity = detCount / maxDets;
+            return (
+              <button
+                key={f.frame_index}
+                type="button"
+                onClick={() => seekToFrame(i)}
+                className="absolute top-0 bottom-0 hover:ring-1 hover:ring-[#FF8000]/50"
+                style={{
+                  left: `${(i / frames.length) * 100}%`,
+                  width: `${Math.max(100 / frames.length, 2)}%`,
+                  backgroundColor: `rgba(255, 128, 0, ${0.05 + intensity * 0.7})`,
+                }}
+                title={`${frameTimes[i].toFixed(1)}s — ${detCount} detections`}
+              />
+            );
+          })}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-white/80 z-10 pointer-events-none"
+            style={{ left: `${(activeFrameIdx / Math.max(frames.length - 1, 1)) * 100}%` }}
+          />
         </div>
       )}
 
-      {hasFrames && (
-        <>
-          {/* Detection list for active frame */}
-          {activeFrame?.detections?.length > 0 && (
-            <div className="bg-[#0D1117] rounded-lg p-2 space-y-0.5">
-              {activeFrame.detections.map((det, i) => (
-                <div key={i} className="flex items-center gap-3 text-[11px]">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getColor(det.category) }} />
-                  <span className="text-[#FF8000] font-mono w-10">{((det.score ?? 0) * 100).toFixed(0)}%</span>
-                  <span className="text-foreground">{det.category}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Frame timeline — click to seek */}
-          <div className="flex gap-1 overflow-x-auto pb-1">
-            {frames.map((f, i) => {
-              const detCount = f.detections?.length ?? 0;
-              const hasNarr = narrations?.some(n => n.frame_index === f.frame_index || n.frame_index === i + 1);
-              return (
-                <button
-                  key={f.frame_index}
-                  type="button"
-                  onClick={() => seekToFrame(i)}
-                  className={`shrink-0 rounded-md px-2.5 py-1.5 text-center transition-all border ${
-                    i === activeFrameIdx
-                      ? 'bg-[#FF8000]/15 border-[#FF8000] text-[#FF8000]'
-                      : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] text-muted-foreground hover:border-[#FF8000]/30'
-                  }`}
-                >
-                  <div className="text-[10px] font-mono">{frameTimes[i].toFixed(1)}s</div>
-                  <div className="text-[9px]">
-                    {detCount} det{hasNarr ? ' ✦' : ''}
-                  </div>
-                </button>
-              );
-            })}
+      {/* AI narration for frame */}
+      {activeNarration && (
+        <div className="bg-[#0D1117] border border-purple-500/20 rounded-lg p-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <Brain className="w-3 h-3 text-purple-400" />
+            <span className="text-[10px] text-purple-400 tracking-wider font-mono">AI INSIGHT</span>
+            <span className="text-[9px] text-muted-foreground ml-auto">{activeNarration.tokens} tok</span>
           </div>
-        </>
+          <p className="text-[11px] text-foreground/90 leading-relaxed">{activeNarration.narration}</p>
+        </div>
+      )}
+
+      {/* Frame strip */}
+      {hasFrames && (
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {frames.map((f, i) => {
+            const detCount = f.detections?.filter(d =>
+              (d.score ?? 0) >= confidenceThreshold && activeCategories.has(d.category)
+            ).length ?? 0;
+            return (
+              <button
+                key={f.frame_index}
+                type="button"
+                onClick={() => seekToFrame(i)}
+                className={`shrink-0 rounded-md px-2 py-1 text-center transition-all border ${
+                  i === activeFrameIdx
+                    ? 'bg-[#FF8000]/15 border-[#FF8000] text-[#FF8000]'
+                    : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] text-muted-foreground hover:border-[#FF8000]/30'
+                }`}
+              >
+                <div className="text-[9px] font-mono">{frameTimes[i].toFixed(1)}s</div>
+                <div className="text-[8px]">{detCount} det</div>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {!hasFrames && (
-        <div className="text-[12px] text-muted-foreground text-center py-2">
-          No detection frames — click <span className="text-[#FF8000]">Analyze Video</span> to run the pipeline
+        <div className="text-[11px] text-muted-foreground text-center py-3">
+          No detection data — click <span className="text-[#FF8000]">Analyze</span> to run the pipeline
         </div>
       )}
     </div>
   );
 }
+
+// ── Main Component ──
 
 export function MediaIntelligence() {
   const [gdinoData, setGdinoData] = useState<Record<string, GDinoFrame[]> | null>(null);
@@ -258,24 +362,36 @@ export function MediaIntelligence() {
   const [videomaeData, setVideomaeData] = useState<Record<string, VideoModelResult> | null>(null);
   const [timesformerData, setTimesformerData] = useState<Record<string, VideoModelResult> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [narrationData, setNarrationData] = useState<Record<string, NarrationFrame[]> | null>(null);
+
+  // CLIP
   const [clipQuery, setClipQuery] = useState('');
   const [clipResults, setClipResults] = useState<VisualSearchResult[] | null>(null);
   const [clipSearching, setClipSearching] = useState(false);
   const [allTags, setAllTags] = useState<VisualTagImage[] | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [topTags, setTopTags] = useState<{ label: string; max_score: number }[]>([]);
-  const [narrationData, setNarrationData] = useState<Record<string, NarrationFrame[]> | null>(null);
+  const [clipExpanded, setClipExpanded] = useState(false);
 
-  // Video picker state
+  // Video state
   const [videos, setVideos] = useState<MediaVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [vlmAnalysis, setVlmAnalysis] = useState<{ analysis: string; tokens: number; time_s: number; tok_per_s: number; frames_analyzed: number; model: string } | null>(null);
 
+  // Detection controls
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.35);
+  const [activeCategories, setActiveCategories] = useState<Set<string>>(new Set());
+
+  // Analysis pipeline
+  const [analyzeProgress, setAnalyzeProgress] = useState<'idle' | 'detecting' | 'analyzing' | 'done' | 'error'>('idle');
+  const [vlmAnalysis, setVlmAnalysis] = useState<{ analysis: string; structured?: StructuredAnalysis | null; tokens: number; time_s: number; tok_per_s: number; frames_analyzed: number; model: string } | null>(null);
+
+  // Upload
+  const [uploadDragging, setUploadDragging] = useState(false);
+
+  // Load pipeline data
   useEffect(() => {
     Promise.allSettled([
-      pipeline.gdino().then(d => setGdinoData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : null)),
+      pipeline.gdino().then(d => setGdinoData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : (d && typeof d === 'object' && !Array.isArray(d) ? d : null))),
       pipeline.fused().then(d => setFusedData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : null)),
       pipeline.videomae().then(d => {
         if (d?.results) {
@@ -284,9 +400,7 @@ export function MediaIntelligence() {
             mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
           }
           setVideomaeData(mapped);
-        } else {
-          setVideomaeData(d);
-        }
+        } else { setVideomaeData(d); }
       }),
       pipeline.timesformer().then(d => {
         if (d?.results) {
@@ -295,9 +409,7 @@ export function MediaIntelligence() {
             mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
           }
           setTimesformerData(mapped);
-        } else {
-          setTimesformerData(d);
-        }
+        } else { setTimesformerData(d); }
       }),
       pipeline.videos().then(d => setVideos(d?.videos ?? [])),
       pipeline.minicpm().then(d => setNarrationData(d ?? null)),
@@ -306,448 +418,578 @@ export function MediaIntelligence() {
     fetch('/api/visual-tags')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) {
-          setAllTags(data.images);
-          setTopTags(data.tags || []);
-        }
+        if (data) { setAllTags(data.images); setTopTags(data.tags || []); }
       })
       .catch(() => {});
   }, []);
+
+  // Compute categories from all detection data
+  const allFrames = useMemo(() =>
+    gdinoData ? Object.values(gdinoData).flat().filter(Boolean) : [],
+  [gdinoData]);
+
+  const categories = useMemo(() =>
+    [...new Set(allFrames.flatMap(f => (f.detections ?? []).map(d => d.category)).filter(Boolean))],
+  [allFrames]);
+
+  const totalDetections = allFrames.reduce((s, f) => s + (f.detections?.length ?? 0), 0);
+  const totalFramesAnalyzed = allFrames.length;
+
+  // Init categories filter when data loads
+  useEffect(() => {
+    if (categories.length > 0 && activeCategories.size === 0) {
+      setActiveCategories(new Set(categories));
+    }
+  }, [categories]);
+
+  // ── Handlers ──
+
+  const analyzeVideo = async (filename: string) => {
+    setAnalyzeProgress('detecting');
+    setVlmAnalysis(null);
+
+    try {
+      // Step 1: Run GDino
+      await fetch('/api/run-gdino', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+
+      // Poll for completion
+      await new Promise<void>((resolve, reject) => {
+        const poll = setInterval(async () => {
+          try {
+            const r = await fetch(`/api/gdino-status?filename=${encodeURIComponent(filename)}`);
+            const data = await r.json();
+            if (data.status === 'done') {
+              clearInterval(poll);
+              // Reload results
+              const fresh = await pipeline.gdino();
+              if (fresh) {
+                if (fresh.results?.length) {
+                  setGdinoData(Object.fromEntries(
+                    fresh.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])
+                  ));
+                } else if (typeof fresh === 'object' && !Array.isArray(fresh)) {
+                  setGdinoData(fresh);
+                }
+              }
+              resolve();
+            } else if (data.status === 'error') {
+              clearInterval(poll);
+              reject(new Error(data.error || 'GDino failed'));
+            }
+          } catch { clearInterval(poll); reject(new Error('Polling failed')); }
+        }, 3000);
+
+        // Timeout after 10 min
+        setTimeout(() => { clearInterval(poll); reject(new Error('Timeout')); }, 600000);
+      });
+
+      // Step 2: VLM analysis
+      setAnalyzeProgress('analyzing');
+      const res = await fetch('/api/vlm-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setVlmAnalysis(data);
+      }
+      setAnalyzeProgress('done');
+    } catch {
+      setAnalyzeProgress('error');
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    const res = await fetch('/api/upload-video', {
+      method: 'POST',
+      headers: { 'X-Filename': file.name },
+      body: file,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setVideos(prev => [data, ...prev]);
+    }
+  };
 
   const doClipSearch = async (query: string) => {
     if (!query.trim()) { setClipResults(null); return; }
     setClipSearching(true);
     try {
       const res = await fetch(`/api/visual-search?q=${encodeURIComponent(query)}&k=12`);
-      if (res.ok) {
-        const data = await res.json();
-        setClipResults(data.results);
-      }
-    } catch { /* server not running */ }
+      if (res.ok) setClipResults((await res.json()).results);
+    } catch { /* */ }
     finally { setClipSearching(false); }
-  };
-
-  const runVlmAnalysis = async (filename: string) => {
-    setAnalyzing(true);
-    setVlmAnalysis(null);
-    try {
-      const res = await fetch('/api/vlm-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setVlmAnalysis(data);
-      } else {
-        const err = await res.json().catch(() => ({ error: 'Request failed' }));
-        setVlmAnalysis({ analysis: err.error || 'Analysis failed', tokens: 0, time_s: 0, tok_per_s: 0, frames_analyzed: 0, model: 'qwen3.5:2b' });
-      }
-    } catch (e) {
-      setVlmAnalysis({ analysis: String(e), tokens: 0, time_s: 0, tok_per_s: 0, frames_analyzed: 0, model: 'qwen3.5:2b' });
-    } finally {
-      setAnalyzing(false);
-    }
   };
 
   const filteredByTag = selectedTag && allTags
     ? allTags.filter(img => img.auto_tags.some(t => t.label === selectedTag))
     : null;
 
+  // ── Render ──
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
-        <span className="ml-3 text-muted-foreground text-sm">Loading media pipeline results...</span>
+        <span className="ml-3 text-muted-foreground text-sm">Loading media pipeline...</span>
       </div>
     );
   }
 
-  const allFrames = gdinoData ? Object.values(gdinoData).flat().filter(Boolean) : [];
-  const totalDetections = allFrames.reduce((s, f) => s + (f.detections?.length ?? 0), 0);
-  const totalFramesAnalyzed = allFrames.length;
-  const categories = [...new Set(allFrames.flatMap(f => (f.detections ?? []).map(d => d.category)))];
-
-  const pipelineStats = [
-    { label: 'Videos Processed', value: gdinoData ? String(Object.keys(gdinoData).length) : '—' },
-    { label: 'Frames Analyzed', value: String(totalFramesAnalyzed) },
-    { label: 'Detections', value: String(totalDetections) },
-    { label: 'VideoMAE Runs', value: videomaeData ? String(Object.keys(videomaeData).length) : '—' },
-    { label: 'Videos Available', value: String(videos.length) },
-  ];
-
   return (
-    <div className="space-y-4">
-      {/* Pipeline Status Bar */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-        <div className="flex items-center justify-between mb-3">
+    <div className="space-y-3">
+
+      {/* ── HEADER BAR ── */}
+      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
               <Brain className="w-4 h-4 text-[#FF8000]" />
             </div>
             <div>
-              <h3 className="text-sm text-foreground">Media Analysis Pipeline</h3>
-              <div className="text-[12px] text-muted-foreground">GroundingDINO + SAM2 + VideoMAE + TimeSformer + CLIP</div>
+              <h3 className="text-sm text-foreground tracking-wide">OMNISENSE MEDIA INTELLIGENCE</h3>
+              <div className="text-[11px] text-muted-foreground font-mono">
+                GDino + SAM2 + VideoMAE + TimeSformer + CLIP + VLM
+              </div>
             </div>
           </div>
-          <span className="flex items-center gap-1.5 text-[12px] text-green-400 bg-green-500/10 px-2 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            Results Loaded
-          </span>
-        </div>
-        <div className="grid grid-cols-5 gap-3">
-          {pipelineStats.map((stat) => (
-            <div key={stat.label} className="bg-[#0D1117] rounded-lg p-2">
-              <div className="text-[11px] text-muted-foreground tracking-wider mb-1">{stat.label}</div>
-              <div className="text-sm font-mono text-foreground">{stat.value}</div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span>{videos.length} videos</span>
+              <span className="text-[rgba(255,128,0,0.3)]">|</span>
+              <span>{totalFramesAnalyzed} frames</span>
+              <span className="text-[rgba(255,128,0,0.3)]">|</span>
+              <span>{totalDetections} detections</span>
             </div>
-          ))}
+            <label className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] bg-[#FF8000]/15 text-[#FF8000] rounded-lg hover:bg-[#FF8000]/25 cursor-pointer transition-colors">
+              <Upload className="w-3 h-3" />
+              Upload
+              <input
+                type="file"
+                accept=".mp4,.webm,.mov"
+                className="hidden"
+                onChange={e => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }}
+              />
+            </label>
+          </div>
         </div>
       </div>
 
-      {/* CLIP Visual Search */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-            <ImageIcon className="w-4 h-4 text-purple-400" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm text-foreground">CLIP Visual Search</h3>
-            <div className="text-[12px] text-muted-foreground">Search images by text description — CLIP ViT-B/32 (512-dim)</div>
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search: &quot;pit stop crew&quot;, &quot;rain conditions&quot;, &quot;cockpit view&quot;..."
-              value={clipQuery}
-              onChange={e => setClipQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') doClipSearch(clipQuery); }}
-              className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.12)] rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-purple-400/40"
-            />
-          </div>
-          <button
-            onClick={() => doClipSearch(clipQuery)}
-            disabled={clipSearching || !clipQuery.trim()}
-            className="px-4 py-2 bg-purple-500/20 text-purple-400 text-sm rounded-lg hover:bg-purple-500/30 disabled:opacity-30 transition-colors"
-          >
-            {clipSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
-          </button>
-        </div>
-
-        {/* Auto-Tag Filter Chips */}
-        {topTags.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap mb-3">
-            <Tag className="w-3 h-3 text-muted-foreground shrink-0" />
-            <button
-              onClick={() => { setSelectedTag(null); setClipResults(null); }}
-              className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
-                !selectedTag ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
-              }`}
-            >
-              All
-            </button>
-            {topTags.slice(0, 12).map(tag => {
-              const shortLabel = tag.label.replace(/formula one |on a formula one car|of a formula one car/g, '').replace(/ car$/, '').trim();
-              return (
-                <button
-                  key={tag.label}
-                  onClick={() => { setSelectedTag(selectedTag === tag.label ? null : tag.label); setClipResults(null); }}
-                  className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
-                    selectedTag === tag.label ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
-                  }`}
-                >
-                  {shortLabel}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Search Results */}
-        {clipResults && (
-          <div>
-            <div className="text-[12px] text-muted-foreground mb-2">{clipResults.length} results for &quot;{clipQuery}&quot;</div>
-            <div className="grid grid-cols-6 gap-2">
-              {clipResults.map((r, i) => (
-                <div key={r.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
-                  <img
-                    src={`/media/${r.path}`}
-                    alt={r.path}
-                    className="w-full h-20 object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 flex items-center justify-between">
-                    <span className="text-[10px] text-purple-400 font-mono font-bold">{(r.score * 100).toFixed(1)}%</span>
-                    <span className="text-[9px] text-muted-foreground">#{i + 1}</span>
-                  </div>
-                  <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[9px] text-white/80">{r.source_video} f{r.frame_index}</span>
+      {/* ── VIDEO STRIP ── */}
+      <div
+        className={`bg-[#1A1F2E] border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
+          uploadDragging ? 'border-[#FF8000]' : 'border-[rgba(255,128,0,0.12)]'
+        }`}
+        onDragOver={e => { e.preventDefault(); setUploadDragging(true); }}
+        onDragLeave={() => setUploadDragging(false)}
+        onDrop={e => {
+          e.preventDefault();
+          setUploadDragging(false);
+          const file = e.dataTransfer.files[0];
+          if (file && /\.(mp4|webm|mov)$/i.test(file.name)) handleUpload(file);
+        }}
+      >
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {videos.map(v => {
+            const isSelected = selectedVideo === v.filename;
+            const hasGdino = !!gdinoData?.[v.filename]?.length;
+            const thumbFrame = gdinoData?.[v.filename]?.[0]?.output_image;
+            return (
+              <button
+                key={v.filename}
+                type="button"
+                onClick={() => {
+                  setSelectedVideo(isSelected ? null : v.filename);
+                  setAnalyzeProgress('idle');
+                  setVlmAnalysis(null);
+                }}
+                className={`shrink-0 w-36 rounded-lg overflow-hidden border transition-all ${
+                  isSelected
+                    ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30'
+                    : 'border-[rgba(255,128,0,0.12)] hover:border-[#FF8000]/30'
+                }`}
+              >
+                <div className="h-20 bg-[#0D1117] relative">
+                  {thumbFrame ? (
+                    <img
+                      src={`/media/gdino_results/${thumbFrame}`}
+                      className="w-full h-full object-cover"
+                      alt=""
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Film className="w-5 h-5 text-muted-foreground/40" />
+                    </div>
+                  )}
+                  <div className="absolute top-1 right-1">
+                    {hasGdino ? (
+                      <span className="text-[8px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-medium">
+                        {gdinoData![v.filename].length}f
+                      </span>
+                    ) : (
+                      <span className="text-[8px] bg-[#FF8000]/20 text-[#FF8000] px-1.5 py-0.5 rounded">Pending</span>
+                    )}
                   </div>
                 </div>
-              ))}
+                <div className="px-2 py-1.5 bg-[#0D1117]">
+                  <div className="text-[10px] text-foreground truncate">{v.filename}</div>
+                  <div className="text-[9px] text-muted-foreground">{v.size_mb} MB</div>
+                </div>
+              </button>
+            );
+          })}
+          {videos.length === 0 && (
+            <div className="text-[12px] text-muted-foreground py-6 text-center w-full">
+              {uploadDragging ? 'Drop video here...' : 'No videos — drag & drop or click Upload'}
             </div>
-          </div>
-        )}
-
-        {/* Tag-Filtered Results */}
-        {!clipResults && filteredByTag && (
-          <div>
-            <div className="text-[12px] text-muted-foreground mb-2">{filteredByTag.length} images tagged &quot;{selectedTag}&quot;</div>
-            <div className="grid grid-cols-6 gap-2">
-              {filteredByTag.map(img => {
-                const tagScore = img.auto_tags.find(t => t.label === selectedTag)?.score ?? 0;
-                return (
-                  <div key={img.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
-                    <img
-                      src={`/media/${img.path}`}
-                      alt={img.path}
-                      className="w-full h-20 object-cover"
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-black/70">
-                      <span className="text-[10px] text-purple-400 font-mono">{(tagScore * 100).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
-        {/* Left — Results Feed */}
-        <div className="col-span-7 space-y-4">
-          {/* Detection Gallery */}
-          {(fusedData || gdinoData) && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-              <h3 className="text-sm text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
-                <Scan className="w-3 h-3" />
-                DETECTION GALLERY — {totalDetections} objects across {totalFramesAnalyzed} frames
-              </h3>
-              <div className="text-[12px] text-muted-foreground mb-3 flex items-center flex-wrap gap-1">
-                <span>Categories:</span>
-                {categories.map(c => (
-                  <span key={c} className="inline-block px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{c}</span>
-                ))}
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {Object.entries(fusedData ?? gdinoData!).flatMap(([video, frames]) =>
-                  (frames ?? []).filter(f => f.output_image).map((frame) => ({ video, frame }))
-                ).slice(0, 4).map(({ video, frame }) => (
-                    <button
-                      key={`${video}-${frame.frame_index}`}
-                      type="button"
-                      onClick={() => setSelectedImage(selectedImage === frame.output_image ? null : frame.output_image)}
-                      className={`relative rounded-lg overflow-hidden border transition-all ${
-                        selectedImage === frame.output_image ? 'border-[#FF8000]' : 'border-[rgba(255,128,0,0.12)] hover:border-[#FF8000]/30'
-                      }`}
-                    >
-                      <img
-                        src={`/media/gdino_results/${frame.output_image}`}
-                        alt={frame.output_image}
-                        className="w-full h-20 object-cover"
-                        onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/fused_results/${frame.output_image}`; } }}
-                      />
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1.5 py-0.5 flex items-center justify-between">
-                        <span className="text-[10px] text-foreground font-mono">{frame.detections?.length ?? 0} det</span>
-                        <span className="text-[9px] text-muted-foreground">f{frame.frame_index}</span>
-                      </div>
-                    </button>
-                  ))}
-              </div>
-              {selectedImage && (
-                <div className="mt-4 space-y-2">
-                  <div className="rounded-lg overflow-hidden border border-[#FF8000]/20">
-                    <img
-                      src={`/media/gdino_results/${selectedImage}`}
-                      alt="Detection detail"
-                      className="w-full"
-                      onError={(e) => { const img = e.target as HTMLImageElement; if (!img.dataset.fallback) { img.dataset.fallback = '1'; img.src = `/media/fused_results/${selectedImage}`; } }}
-                    />
-                  </div>
-                  {(() => {
-                    const frame = Object.values(fusedData ?? gdinoData!).flat().find(f => f.output_image === selectedImage);
-                    if (!frame) return null;
-                    return (
-                      <div className="bg-[#0D1117] rounded-lg p-3 space-y-1">
-                        <div className="text-[11px] text-muted-foreground tracking-wider mb-1">DETECTIONS — Frame {frame.frame_index}</div>
-                        {(frame.detections ?? []).map((det, i) => (
-                          <div key={i} className="flex items-center gap-3 text-[11px]">
-                            <span className="text-[#FF8000] font-mono w-8">{(det.score * 100).toFixed(0)}%</span>
-                            <span className="text-foreground">{det.category}</span>
-                            <span className="text-muted-foreground font-mono text-[11px]">
-                              [{det.bbox.join(', ')}]
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
-          )}
+      {/* ── MAIN CONTENT ── */}
+      {selectedVideo && (() => {
+        const resultData = fusedData ?? gdinoData;
+        const frames = resultData?.[selectedVideo] ?? [];
+        const fps = videomaeData?.[selectedVideo]?.fps ?? timesformerData?.[selectedVideo]?.fps ?? 30;
+        const hasGdino = frames.length > 0;
+        const summary = computeDetectionSummary(frames);
+        const vmae = videomaeData?.[selectedVideo];
+        const tsf = timesformerData?.[selectedVideo];
+        const maxCount = Math.max(...summary.map(s => s.count), 1);
+        const structured = vlmAnalysis?.structured;
 
-          {/* Video Classification Results */}
-          {(videomaeData || timesformerData) && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-              <h3 className="text-sm text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
-                <Video className="w-3 h-3" />
-                VIDEO CLASSIFICATION
-              </h3>
-              <div className="space-y-3">
-                {Object.keys(videomaeData ?? timesformerData ?? {}).slice(0, 4).map(video => {
-                  const vmae = videomaeData?.[video];
-                  const tsf = timesformerData?.[video];
-                  return (
-                    <div key={video} className="bg-[#0D1117] rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-[#FF8000] font-mono">{video}</span>
-                        <span className="text-[11px] text-muted-foreground">{vmae?.total_frames ?? tsf?.total_frames} frames @ {vmae?.fps ?? tsf?.fps}fps</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        {vmae && (
-                          <div>
-                            <div className="text-[11px] text-purple-400 tracking-wider mb-1">VideoMAE</div>
-                            {vmae.top_predictions.slice(0, 3).map((p, i) => (
-                              <div key={i} className="flex items-center gap-2 text-[12px]">
-                                <div className="w-16 h-1 bg-[#222838] rounded-full overflow-hidden">
-                                  <div className="h-full bg-purple-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
-                                </div>
-                                <span className="font-mono text-foreground">{(p.score * 100).toFixed(1)}%</span>
-                                <span className="text-muted-foreground truncate">{p.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {tsf && (
-                          <div>
-                            <div className="text-[11px] text-cyan-400 tracking-wider mb-1">TimeSformer</div>
-                            {tsf.top_predictions.slice(0, 3).map((p, i) => (
-                              <div key={i} className="flex items-center gap-2 text-[12px]">
-                                <div className="w-16 h-1 bg-[#222838] rounded-full overflow-hidden">
-                                  <div className="h-full bg-cyan-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
-                                </div>
-                                <span className="font-mono text-foreground">{(p.score * 100).toFixed(1)}%</span>
-                                <span className="text-muted-foreground truncate">{p.label}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        return (
+          <div className="grid grid-cols-12 gap-3">
 
-        {/* Right Column — Video Picker */}
-        <div className="col-span-5 space-y-4">
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-            <h3 className="text-sm text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
-              <Film className="w-3 h-3" />
-              VIDEO LIBRARY
-            </h3>
-            <div className="space-y-2">
-              {videos.length === 0 && (
-                <div className="text-[12px] text-muted-foreground py-4 text-center">No videos available</div>
-              )}
-              {videos.slice(0, 4).map(v => {
-                const isSelected = selectedVideo === v.filename;
-                const hasResults = gdinoData?.[v.filename] || videomaeData?.[v.filename];
-                return (
-                  <button
-                    key={v.filename}
-                    type="button"
-                    onClick={() => setSelectedVideo(isSelected ? null : v.filename)}
-                    className={`w-full text-left rounded-lg p-3 transition-all border ${
-                      isSelected
-                        ? 'bg-[#FF8000]/10 border-[#FF8000]/30'
-                        : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] hover:border-[#FF8000]/20'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                        hasResults ? 'bg-green-500/10' : 'bg-[#FF8000]/10'
-                      }`}>
-                        <Play className={`w-3.5 h-3.5 ${hasResults ? 'text-green-400' : 'text-[#FF8000]'}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] text-foreground truncate">{v.filename}</div>
-                        <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                          <span>{v.size_mb} MB</span>
-                          {hasResults && (
-                            <span className="text-green-400">analyzed</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Annotated Video Player */}
-            {selectedVideo && (() => {
-              const resultData = fusedData ?? gdinoData;
-              const frames = resultData?.[selectedVideo] ?? [];
-              const fps = videomaeData?.[selectedVideo]?.fps ?? timesformerData?.[selectedVideo]?.fps ?? 30;
-              return (
+            {/* LEFT — Video Player + Controls (col-span-8) */}
+            <div className="col-span-8 space-y-3">
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                 <AnnotatedVideoPlayer
                   key={selectedVideo}
                   videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
                   frames={frames}
                   fps={fps}
                   narrations={narrationData?.[selectedVideo] ?? undefined}
+                  confidenceThreshold={confidenceThreshold}
+                  activeCategories={activeCategories}
                 />
-              );
-            })()}
 
-            {/* AI Analysis Button */}
-            {selectedVideo && (
-              <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)]">
+                {/* Controls bar */}
+                <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.08)] flex items-center gap-4 flex-wrap">
+                  {/* Analyze button */}
+                  <button
+                    type="button"
+                    onClick={() => analyzeVideo(selectedVideo)}
+                    disabled={analyzeProgress === 'detecting' || analyzeProgress === 'analyzing'}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#FF8000]/20 text-[#FF8000] text-[12px] rounded-lg hover:bg-[#FF8000]/30 disabled:opacity-40 transition-colors"
+                  >
+                    {analyzeProgress === 'detecting' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Detecting...</>}
+                    {analyzeProgress === 'analyzing' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Analyzing...</>}
+                    {(analyzeProgress === 'idle' || analyzeProgress === 'done' || analyzeProgress === 'error') && (
+                      <><Sparkles className="w-3.5 h-3.5" /> {hasGdino ? 'Re-Analyze' : 'Analyze'}</>
+                    )}
+                  </button>
+
+                  {/* Confidence slider */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground">Confidence</span>
+                    <input
+                      type="range"
+                      min="0" max="100" step="1"
+                      title="Detection confidence threshold"
+                      value={Math.round(confidenceThreshold * 100)}
+                      onChange={e => setConfidenceThreshold(Number(e.target.value) / 100)}
+                      className="w-20 accent-[#FF8000] h-1"
+                    />
+                    <span className="text-[10px] font-mono text-[#FF8000] w-7">{Math.round(confidenceThreshold * 100)}%</span>
+                  </div>
+
+                  {/* Category toggles */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {categories.slice(0, 12).map(cat => {
+                      const active = activeCategories.has(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            setActiveCategories(prev => {
+                              const next = new Set(prev);
+                              if (next.has(cat)) next.delete(cat); else next.add(cat);
+                              return next;
+                            });
+                          }}
+                          className={`text-[9px] px-1.5 py-0.5 rounded-full border transition-all ${
+                            active
+                              ? 'border-[#FF8000]/30 bg-[#FF8000]/15 text-[#FF8000]'
+                              : 'border-[rgba(255,128,0,0.06)] text-muted-foreground/40 line-through'
+                          }`}
+                        >
+                          {(cat ?? '').split(/\s+/)[0]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {analyzeProgress === 'error' && (
+                  <div className="mt-2 text-[11px] text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+                    Analysis failed. Check that Ollama is running and the GDino script is available.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* RIGHT — AI Insights + Detection Summary (col-span-4) */}
+            <div className="col-span-4 space-y-3">
+
+              {/* AI Insights */}
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+                  <Brain className="w-3 h-3" />
+                  AI INSIGHTS
+                </h3>
+
+                {structured ? (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-[9px] text-[#FF8000] tracking-wider mb-1">SCENE</div>
+                      <p className="text-[11px] text-foreground/90 leading-relaxed">{structured.scene}</p>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-[#FF8000] tracking-wider mb-1">KEY OBJECTS</div>
+                      <div className="flex flex-wrap gap-1">
+                        {structured.key_objects?.map(obj => (
+                          <span key={obj} className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{obj}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-cyan-400 tracking-wider mb-1">CONDITIONS</div>
+                      <p className="text-[11px] text-foreground/90">{structured.track_conditions}</p>
+                    </div>
+                    <div>
+                      <div className="text-[9px] text-purple-400 tracking-wider mb-1">STRATEGY</div>
+                      <p className="text-[11px] text-foreground/90">{structured.strategic_notes}</p>
+                    </div>
+                    {structured.incidents?.length > 0 && structured.incidents[0] !== '' && (
+                      <div>
+                        <div className="text-[9px] text-red-400 tracking-wider mb-1">INCIDENTS</div>
+                        {structured.incidents.map((inc, i) => (
+                          <div key={i} className="text-[11px] text-foreground/90 flex items-start gap-1.5">
+                            <span className="text-red-400 mt-0.5">-</span>
+                            <span>{inc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : vlmAnalysis ? (
+                  <p className="text-[11px] text-foreground/90 leading-relaxed whitespace-pre-line">{vlmAnalysis.analysis}</p>
+                ) : (
+                  <div className="text-[11px] text-muted-foreground text-center py-6">
+                    Click <span className="text-[#FF8000]">Analyze</span> to generate insights
+                  </div>
+                )}
+
+                {vlmAnalysis && (
+                  <div className="mt-2 pt-2 border-t border-[rgba(255,128,0,0.08)] text-[9px] text-muted-foreground font-mono">
+                    {vlmAnalysis.model} | {vlmAnalysis.frames_analyzed}f | {vlmAnalysis.tokens} tok | {vlmAnalysis.tok_per_s} tok/s
+                  </div>
+                )}
+              </div>
+
+              {/* Detection Summary */}
+              {summary.length > 0 && (
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                  <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+                    <Scan className="w-3 h-3" />
+                    DETECTION SUMMARY
+                  </h3>
+                  <div className="space-y-2">
+                    {summary.slice(0, 10).map(s => (
+                      <div key={s.category}>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <span className="text-[10px] text-foreground">{s.category}</span>
+                          <span className="text-[9px] font-mono text-muted-foreground">
+                            {s.count}x · {Math.round(s.avgConfidence * 100)}%
+                          </span>
+                        </div>
+                        <div className="h-1 bg-[#0D1117] rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-[#FF8000] rounded-full transition-all"
+                            style={{ width: `${(s.count / maxCount) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Classification */}
+              {(vmae || tsf) && (
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                  <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+                    <Video className="w-3 h-3" />
+                    CLASSIFICATION
+                  </h3>
+                  <div className="space-y-2">
+                    {vmae && (
+                      <div>
+                        <div className="text-[9px] text-purple-400 tracking-wider mb-1">VideoMAE</div>
+                        {vmae.top_predictions.slice(0, 3).map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <div className="w-10 h-1 bg-[#222838] rounded-full overflow-hidden">
+                              <div className="h-full bg-purple-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
+                            </div>
+                            <span className="font-mono text-foreground w-8">{(p.score * 100).toFixed(0)}%</span>
+                            <span className="text-muted-foreground truncate">{p.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {tsf && (
+                      <div className={vmae ? 'mt-2' : ''}>
+                        <div className="text-[9px] text-cyan-400 tracking-wider mb-1">TimeSformer</div>
+                        {tsf.top_predictions.slice(0, 3).map((p, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <div className="w-10 h-1 bg-[#222838] rounded-full overflow-hidden">
+                              <div className="h-full bg-cyan-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
+                            </div>
+                            <span className="font-mono text-foreground w-8">{(p.score * 100).toFixed(0)}%</span>
+                            <span className="text-muted-foreground truncate">{p.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── CLIP VISUAL SEARCH (collapsible) ── */}
+      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+        <button
+          type="button"
+          onClick={() => setClipExpanded(!clipExpanded)}
+          className="w-full px-4 py-3 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <ImageIcon className="w-4 h-4 text-purple-400" />
+            <span className="text-sm text-foreground">CLIP Visual Search</span>
+            <span className="text-[11px] text-muted-foreground">ViT-B/32 · 512-dim</span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${clipExpanded ? 'rotate-180' : ''}`} />
+        </button>
+        {clipExpanded && (
+          <div className="px-4 pb-4 space-y-3">
+            {/* Search bar */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder='Search: "pit stop crew", "rain conditions", "cockpit view"...'
+                  value={clipQuery}
+                  onChange={e => setClipQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') doClipSearch(clipQuery); }}
+                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.12)] rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-purple-400/40"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => doClipSearch(clipQuery)}
+                disabled={clipSearching || !clipQuery.trim()}
+                className="px-4 py-2 bg-purple-500/20 text-purple-400 text-sm rounded-lg hover:bg-purple-500/30 disabled:opacity-30 transition-colors"
+              >
+                {clipSearching ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Search'}
+              </button>
+            </div>
+
+            {/* Tag chips */}
+            {topTags.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <Tag className="w-3 h-3 text-muted-foreground shrink-0" />
                 <button
-                  onClick={() => runVlmAnalysis(selectedVideo)}
-                  disabled={analyzing}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-500/20 text-purple-400 text-sm rounded-lg hover:bg-purple-500/30 disabled:opacity-40 transition-colors"
+                  type="button"
+                  onClick={() => { setSelectedTag(null); setClipResults(null); }}
+                  className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
+                    !selectedTag ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
+                  }`}
                 >
-                  {analyzing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Analyzing with qwen3.5:2b...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      AI Video Analysis
-                    </>
-                  )}
+                  All
                 </button>
+                {topTags.slice(0, 12).map(tag => {
+                  const shortLabel = tag.label.replace(/formula one |on a formula one car|of a formula one car/g, '').replace(/ car$/, '').trim();
+                  return (
+                    <button
+                      key={tag.label}
+                      type="button"
+                      onClick={() => { setSelectedTag(selectedTag === tag.label ? null : tag.label); setClipResults(null); }}
+                      className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
+                        selectedTag === tag.label ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
+                      }`}
+                    >
+                      {shortLabel}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
-            {/* VLM Analysis Result */}
-            {vlmAnalysis && (
-              <div className="mt-3 bg-[#0D1117] border border-purple-500/20 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <Brain className="w-3.5 h-3.5 text-purple-400" />
-                  <span className="text-[11px] text-purple-400 tracking-wider font-mono">AI VIDEO ANALYSIS</span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">
-                    {vlmAnalysis.model} · {vlmAnalysis.frames_analyzed} frames · {vlmAnalysis.tokens} tok · {vlmAnalysis.time_s}s
-                  </span>
+            {/* Search results */}
+            {clipResults && (
+              <div>
+                <div className="text-[12px] text-muted-foreground mb-2">{clipResults.length} results for &quot;{clipQuery}&quot;</div>
+                <div className="grid grid-cols-6 gap-2">
+                  {clipResults.map((r, i) => (
+                    <div key={r.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
+                      <img src={`/media/${r.path}`} alt={r.path} className="w-full h-20 object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 flex items-center justify-between">
+                        <span className="text-[10px] text-purple-400 font-mono font-bold">{(r.score * 100).toFixed(1)}%</span>
+                        <span className="text-[9px] text-muted-foreground">#{i + 1}</span>
+                      </div>
+                      <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[9px] text-white/80">{r.source_video} f{r.frame_index}</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-[12px] text-foreground/90 leading-relaxed whitespace-pre-line">{vlmAnalysis.analysis}</p>
+              </div>
+            )}
+
+            {/* Tag-filtered results */}
+            {!clipResults && filteredByTag && (
+              <div>
+                <div className="text-[12px] text-muted-foreground mb-2">{filteredByTag.length} images tagged &quot;{selectedTag}&quot;</div>
+                <div className="grid grid-cols-6 gap-2">
+                  {filteredByTag.map(img => {
+                    const tagScore = img.auto_tags.find(t => t.label === selectedTag)?.score ?? 0;
+                    return (
+                      <div key={img.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
+                        <img src={`/media/${img.path}`} alt={img.path} className="w-full h-20 object-cover" />
+                        <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-black/70">
+                          <span className="text-[10px] text-purple-400 font-mono">{(tagScore * 100).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

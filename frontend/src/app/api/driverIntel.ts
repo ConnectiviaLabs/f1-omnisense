@@ -46,10 +46,30 @@ export interface DriverKex {
   text: string;
   model_used: string;
   provider_used: string;
-  sentiment: { label: string; score: number };
-  entities: { text: string; label: string }[];
-  topics: string[];
+  scores: Record<string, number>;
+  summary: string;
   generated_at: number;
+}
+
+export interface SimilarDriver {
+  driver_code: string;
+  team: string;
+  score: number;
+}
+
+export async function getSimilarDrivers(driverCode: string, k = 5, season?: number): Promise<SimilarDriver[]> {
+  let url = `${BASE}/driver_intel/similar/${encodeURIComponent(driverCode)}?k=${k}`;
+  if (season && season >= 2025) url += `&season=${season}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function getDriverCompounds(driverId: string): Promise<any[]> {
+  const res = await fetch(`${BASE}/opponents/drivers/${encodeURIComponent(driverId)}/compounds`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.compounds || [];
 }
 
 export async function getDriverKex(driverCode: string, force = false): Promise<DriverKex> {

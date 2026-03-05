@@ -6,6 +6,7 @@ import { CarTelemetry } from './components/CarTelemetry';
 import { DriverBiometrics } from './components/DriverBiometrics';
 import { PrimeDriver } from './components/PrimeDriver';
 import { PrimeCar } from './components/PrimeCar';
+import { PrimeTeam } from './components/PrimeTeam';
 import { PrimeStrategy } from './components/PrimeStrategy';
 import { AIInsights } from './components/AIInsights';
 import { Regulations } from './components/Regulations';
@@ -26,6 +27,7 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
   'prime-driver': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
   'prime-car': { title: 'Car Intelligence', subtitle: 'Predictive maintenance, anomaly detection & fleet health monitoring' },
+  'prime-team': { title: 'Team Intelligence', subtitle: 'Constructor performance, fleet anomalies & forecasting across all 10 teams' },
   'prime-strategy': { title: 'Strategy Intelligence', subtitle: 'Race strategy, circuit analysis & season analytics' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
@@ -130,6 +132,7 @@ export default function App() {
       case 'driver': return <DriverBiometrics />;
       case 'prime-driver': return <PrimeDriver prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
       case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} activePillar={activePillar} />;
+      case 'prime-team': return <PrimeTeam prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
       case 'prime-strategy': return <PrimeStrategy activeTab={activeStrategyTab} />;
       case 'ai-insights': return <AIInsights />;
       case 'regulations': return <Regulations />;

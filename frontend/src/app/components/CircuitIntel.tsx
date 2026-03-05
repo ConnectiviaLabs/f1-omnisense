@@ -3,10 +3,11 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, BarChart, Bar, Cell,
 } from 'recharts';
-import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight, Trophy, Flag, TrendingUp, Users, Brain } from 'lucide-react';
+import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight, Trophy, Flag, TrendingUp, Users } from 'lucide-react';
 import type { CircuitIntelligence, CircuitPitLoss, RaceAirDensity } from '../types';
 import * as api from '../api/circuitIntel';
 import type { CircuitHistory, CircuitKex } from '../api/circuitIntel';
+import KexBriefingCard from './KexBriefingCard';
 import { TrackMap } from './TrackMap';
 import { CIRCUITS } from '../data/circuits';
 
@@ -402,59 +403,12 @@ export function CircuitIntel() {
 
             {/* ── WISE Circuit Intelligence Briefing ──────────────────── */}
             {selected && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-                <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
-                  <Brain className="w-4 h-4" /> WISE Circuit Briefing
-                </h3>
-
-                {kexLoading && (
-                  <div className="flex items-center justify-center gap-2 py-6">
-                    <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
-                    <span className="text-[11px] text-muted-foreground">Extracting circuit intelligence…</span>
-                  </div>
-                )}
-
-                {kex && !kexLoading && (
-                  <div className="space-y-3">
-                    {/* Meta row */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#3b82f6]/20 text-[#3b82f6]">
-                        REALTIME
-                      </span>
-                      {kex.sentiment && (
-                        <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
-                          kex.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
-                          kex.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
-                          'bg-zinc-500/15 text-zinc-400'
-                        }`}>
-                          {kex.sentiment.label === 'positive' ? '\u25B2' : kex.sentiment.label === 'negative' ? '\u25BC' : '\u25CF'} {kex.sentiment.score}
-                        </span>
-                      )}
-                      {kex.topics?.length > 0 && kex.topics.map(t => (
-                        <span key={t} className="text-[8px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Briefing text */}
-                    <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
-                      {kex.text}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,128,0,0.06)]">
-                      <span className="text-[9px] text-muted-foreground/50 font-mono">
-                        via {kex.model_used} ({kex.provider_used})
-                      </span>
-                      <span className="text-[9px] text-muted-foreground/50">
-                        {new Date(kex.generated_at * 1000).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-              </div>
+              <KexBriefingCard
+                title="WISE Circuit Briefing"
+                kex={kex}
+                loading={kexLoading}
+                loadingText="Extracting circuit intelligence\u2026"
+              />
             )}
           </>
         )}

@@ -3,6 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
+import { execFile } from 'child_process'
 
 // Plugin to serve local data files as JSON API
 function localDataPlugin() {
@@ -19,6 +20,8 @@ function localDataPlugin() {
         if (filePath.startsWith('strategy/')) { next(); return; }
         if (filePath.startsWith('mccar-summary/')) { next(); return; }
         if (filePath.startsWith('mcdriver-summary/')) { next(); return; }
+        if (filePath.startsWith('driver_intel/')) { next(); return; }
+        if (filePath.startsWith('team_intel/')) { next(); return; }
 
         // Map routes to files
         const routes: Record<string, string> = {
@@ -260,6 +263,92 @@ function localDataPlugin() {
         res.end(JSON.stringify({ error: 'Not found' }));
       });
 
+      // Run GDino detection pipeline on a single video (spawns Python process)
+      const activeGdinoJobs = new Map<string, { status: string; result?: any; error?: string }>();
+
+      server.middlewares.use('/api/run-gdino', async (req: any, res: any) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const { filename } = JSON.parse(body);
+            if (!filename) { res.statusCode = 400; res.end(JSON.stringify({ error: 'filename required' })); return; }
+
+            // Check if already running
+            const existing = activeGdinoJobs.get(filename);
+            if (existing?.status === 'running') {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ status: 'running', message: 'Already processing' }));
+              return;
+            }
+
+            const scriptPath = path.join(f1Root, 'f1data/McMedia/test_gdino_local.py');
+            activeGdinoJobs.set(filename, { status: 'running' });
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'started', filename }));
+
+            // Spawn async — result available via /api/gdino-status
+            execFile('python3', [scriptPath, filename], {
+              cwd: path.join(f1Root, 'f1data/McMedia'),
+              timeout: 600000, // 10 min max
+              env: { ...process.env, PYTORCH_CUDA_ALLOC_CONF: 'expandable_segments:True' },
+            }, (err: any, stdout: string, stderr: string) => {
+              if (err) {
+                activeGdinoJobs.set(filename, { status: 'error', error: stderr || err.message });
+              } else {
+                activeGdinoJobs.set(filename, { status: 'done', result: stdout });
+              }
+            });
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+      });
+
+      server.middlewares.use('/api/gdino-status', (req: any, res: any) => {
+        const url = new URL(req.url, 'http://localhost');
+        const filename = url.searchParams.get('filename');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        if (!filename) {
+          // Return all statuses
+          const all: Record<string, any> = {};
+          activeGdinoJobs.forEach((v, k) => { all[k] = v; });
+          res.end(JSON.stringify(all));
+        } else {
+          const job = activeGdinoJobs.get(filename);
+          res.end(JSON.stringify(job || { status: 'idle' }));
+        }
+      });
+
+      // Upload video — raw binary with X-Filename header
+      server.middlewares.use('/api/upload-video', (req: any, res: any) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        const filename = req.headers['x-filename'];
+        if (!filename) { res.statusCode = 400; res.end(JSON.stringify({ error: 'X-Filename header required' })); return; }
+        const ext = path.extname(String(filename)).toLowerCase();
+        if (!['.mp4', '.webm', '.mov'].includes(ext)) {
+          res.statusCode = 400; res.end(JSON.stringify({ error: 'Only mp4/webm/mov allowed' })); return;
+        }
+        const safeName = String(filename).replace(/[/\\]/g, '_');
+        const dest = path.join(f1Root, 'f1data/McMedia', safeName);
+        const ws = fs.createWriteStream(dest);
+        req.pipe(ws);
+        ws.on('finish', () => {
+          const stat = fs.statSync(dest);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            filename: safeName,
+            size_mb: Math.round(stat.size / 1024 / 1024 * 100) / 100,
+            added: new Date().toISOString(),
+            analyzed: false,
+          }));
+        });
+        ws.on('error', (err: any) => { res.statusCode = 500; res.end(JSON.stringify({ error: err.message })); });
+      });
+
       // VLM analysis — sends frames + model context to Ollama qwen3.5:2b
       server.middlewares.use('/api/vlm-analyze', async (req: any, res: any) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
@@ -323,12 +412,8 @@ function localDataPlugin() {
               `I'm showing you ${frameImages.length} evenly-spaced frames from this video.\n\n` +
               `OBJECT DETECTION RESULTS (GroundingDINO + SAM2):\n${detSummary || 'No objects detected.'}\n\n` +
               `ACTION CLASSIFICATION:\n${classLines.join('\n') || 'No classifications available.'}\n\n` +
-              `Based on these ${frameImages.length} frames and the model results above, provide:\n` +
-              `1. SCENE: What's happening in this video (1-2 sentences)\n` +
-              `2. OBJECTS: Key objects visible and their condition\n` +
-              `3. CONDITIONS: Track/weather conditions observed\n` +
-              `4. STRATEGIC: Any strategic implications\n\n` +
-              `Be direct. No markdown. No preamble.`;
+              `Based on these ${frameImages.length} frames and the model results, respond with ONLY a JSON object (no markdown, no code fences):\n\n` +
+              `{"scene":"1-2 sentence description","key_objects":["object1","object2"],"track_conditions":"dry/wet + observations","strategic_notes":"strategic implications","incidents":["any incidents observed"]}`;
 
             // Call Ollama
             const ollamaRes = await fetch('http://localhost:11434/api/chat', {
@@ -343,13 +428,23 @@ function localDataPlugin() {
             });
 
             const ollamaData = await ollamaRes.json();
-            const analysis = ollamaData.message?.content || '';
+            const rawAnalysis = ollamaData.message?.content || '';
             const tokens = ollamaData.eval_count || 0;
             const totalDur = (ollamaData.total_duration || 0) / 1e9;
 
+            // Attempt to parse structured JSON from VLM response
+            let structured = null;
+            try {
+              structured = JSON.parse(rawAnalysis);
+            } catch {
+              const jsonMatch = rawAnalysis.match(/\{[\s\S]*\}/);
+              if (jsonMatch) { try { structured = JSON.parse(jsonMatch[0]); } catch {} }
+            }
+
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({
-              analysis,
+              analysis: rawAnalysis,
+              structured,
               tokens,
               time_s: Math.round(totalDur * 100) / 100,
               tok_per_s: totalDur > 0 ? Math.round(tokens / totalDur * 10) / 10 : 0,
@@ -421,8 +516,11 @@ function genUIPlugin() {
     if (match) groqApiKey = match[1].trim();
   }
 
-  const DIAGNOSE_SYSTEM_PROMPT = `You are the F1 OmniSense Diagnostic AI for McLaren fleet management.
-You analyze telemetry and anomaly detection data for specific vehicle systems across a racing season.
+  const DIAGNOSE_SYSTEM_BASE = `You are the F1 OmniSense Diagnostic AI for McLaren fleet management.
+You analyze REAL telemetry and anomaly detection data for specific vehicle systems across a racing season.
+
+CRITICAL: You have access to REAL data below. Use ONLY these numbers — NEVER invent or hallucinate statistics.
+If the user asks about a driver not in the data, say you don't have data for that driver.
 
 You MUST use the provided tools to render structured diagnostic UI components. Do NOT just output plain text — call the tools to display your analysis visually.
 
@@ -432,8 +530,162 @@ Guidelines:
 - Then call text with a concise 2-3 sentence analysis
 - End with 1-2 recommendation calls for actionable maintenance items
 - Use comparison if cross-system or cross-race comparison would be insightful
-- Be specific with numbers and race names
+- Be specific with numbers and race names from the REAL DATA below
 - Think like an F1 race engineer advising the team`;
+
+  const API_BASE = 'http://127.0.0.1:8300';
+
+  // Cache grounding data (refreshed every 5 minutes)
+  let cachedSnapshot: any = null;
+  let cachedPerf: any[] = [];
+  let cachedProfiles: Record<string, any> = {};
+  let cacheTime = 0;
+  const CACHE_TTL = 5 * 60 * 1000;
+
+  async function refreshCache() {
+    if (Date.now() - cacheTime < CACHE_TTL && cachedSnapshot) return;
+    try {
+      const [snapRes, perfRes] = await Promise.all([
+        fetch(`${API_BASE}/api/local/pipeline/anomaly`),
+        fetch(`${API_BASE}/api/local/driver_intel/performance_markers`),
+      ]);
+      if (snapRes.ok) cachedSnapshot = await snapRes.json();
+      if (perfRes.ok) cachedPerf = await perfRes.json();
+      cacheTime = Date.now();
+    } catch { /* keep stale cache */ }
+  }
+
+  /** Fetch VectorProfile narrative for a driver (lazy, per-driver cache) */
+  async function getVectorNarrative(code: string): Promise<string | null> {
+    if (cachedProfiles[code]) return cachedProfiles[code];
+    try {
+      const res = await fetch(`${API_BASE}/api/local/driver_intel/vector_profile/${code}`);
+      if (!res.ok) return null;
+      const doc = await res.json();
+      cachedProfiles[code] = doc.narrative ?? null;
+      return cachedProfiles[code];
+    } catch { return null; }
+  }
+
+  /** Fetch similar drivers for a code */
+  async function getSimilarDrivers(code: string, k = 5): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/api/local/driver_intel/similar/${code}?k=${k}`);
+      if (!res.ok) return [];
+      return await res.json();
+    } catch { return []; }
+  }
+
+  /** Extract driver codes mentioned in the conversation */
+  function extractDriverCodes(messages: any[]): string[] {
+    const DRIVER_ALIASES: Record<string, string> = {
+      norris: 'NOR', lando: 'NOR', piastri: 'PIA', oscar: 'PIA',
+      verstappen: 'VER', max: 'VER', hamilton: 'HAM', lewis: 'HAM',
+      leclerc: 'LEC', charles: 'LEC', sainz: 'SAI', carlos: 'SAI',
+      russell: 'RUS', george: 'RUS', perez: 'PER', checo: 'PER',
+      alonso: 'ALO', fernando: 'ALO', stroll: 'STR', lance: 'STR',
+      gasly: 'GAS', pierre: 'GAS', ocon: 'OCO', esteban: 'OCO',
+      tsunoda: 'TSU', yuki: 'TSU', ricciardo: 'RIC', daniel: 'RIC',
+      hulkenberg: 'HUL', nico: 'HUL', magnussen: 'MAG', kevin: 'MAG',
+      albon: 'ALB', alexander: 'ALB', bottas: 'BOT', valtteri: 'BOT',
+      zhou: 'ZHO', guanyu: 'ZHO', sargeant: 'SAR', lawson: 'LAW',
+      bearman: 'BEA', colapinto: 'COL', devries: 'DEV',
+      mclaren: '__TEAM_MCL__', ferrari: '__TEAM_FER__',
+      'red bull': '__TEAM_RBR__', mercedes: '__TEAM_MER__',
+    };
+    const text = messages.map((m: any) => {
+      if (m.parts) return m.parts.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ');
+      return m.content ?? '';
+    }).join(' ').toLowerCase();
+
+    const codes = new Set<string>();
+    // Check 3-letter codes directly
+    const codeMatches = text.match(/\b[A-Z]{3}\b/gi) ?? [];
+    for (const c of codeMatches) {
+      if (cachedSnapshot?.drivers?.some((d: any) => d.code === c.toUpperCase())) {
+        codes.add(c.toUpperCase());
+      }
+    }
+    // Check aliases
+    for (const [alias, code] of Object.entries(DRIVER_ALIASES)) {
+      if (text.includes(alias)) {
+        if (code.startsWith('__TEAM_')) {
+          // Add all drivers from this team
+          const teamMap: Record<string, string> = {
+            '__TEAM_MCL__': 'McLaren', '__TEAM_FER__': 'Ferrari',
+            '__TEAM_RBR__': 'Red Bull Racing', '__TEAM_MER__': 'Mercedes',
+          };
+          const team = teamMap[code];
+          for (const d of cachedSnapshot?.drivers ?? []) {
+            if (d.team?.includes(team)) codes.add(d.code);
+          }
+        } else {
+          codes.add(code);
+        }
+      }
+    }
+    return [...codes];
+  }
+
+  /** Build grounding data for the system prompt */
+  function buildGroundingData(mentionedCodes: string[]): string {
+    const sections: string[] = [];
+    const drivers = cachedSnapshot?.drivers ?? [];
+
+    // Fleet summary — all drivers, one line each
+    sections.push('## Fleet Health Summary (all drivers)');
+    const sortedDrivers = [...drivers].sort((a: any, b: any) =>
+      (a.overallHealth ?? a.overall_health ?? 0) - (b.overallHealth ?? b.overall_health ?? 0)
+    );
+    for (const d of sortedDrivers) {
+      const health = d.overallHealth ?? d.overall_health ?? 'N/A';
+      const level = d.level ?? d.overall_level ?? '?';
+      sections.push(`- ${d.code} (${d.team ?? '?'}): ${health}/100 (${level})`);
+    }
+
+    // Detailed data for mentioned drivers only
+    if (mentionedCodes.length > 0) {
+      sections.push('\n## Detailed Driver Data');
+      for (const code of mentionedCodes) {
+        const d = drivers.find((x: any) => x.code === code);
+        if (!d) continue;
+
+        // Systems
+        const systems = d.systems ?? [];
+        const sysLines = systems.map((s: any) =>
+          `  - ${s.name}: ${s.health}/100 (${s.level})${s.maintenanceAction && s.maintenanceAction !== 'none' ? ` [ACTION: ${s.maintenanceAction}]` : ''}`
+        ).join('\n');
+
+        // Last 10 races with system breakdowns
+        const recentRaces = (d.races ?? []).slice(-10);
+        const raceLines = recentRaces.map((r: any) => {
+          const parts = Object.entries(r.systems ?? {}).map(([name, info]: [string, any]) =>
+            `${name}: ${info.health}%`
+          ).join(', ');
+          return `  - ${r.race}: ${parts}`;
+        }).join('\n');
+
+        sections.push(`### ${d.code} (${d.team ?? '?'}) — Health: ${d.overallHealth ?? d.overall_health}/100
+Last race: ${d.lastRace ?? d.last_race ?? 'N/A'}
+${sysLines ? `Systems:\n${sysLines}` : ''}
+Race-by-race (last ${recentRaces.length}):\n${raceLines}`);
+
+        // Performance markers for this driver
+        const perf = cachedPerf.find((m: any) => m.Driver === code);
+        if (perf) {
+          sections.push(`Performance metrics:
+- Tyre degradation: ${perf.degradation_slope_s_per_lap?.toFixed(3) ?? 'N/A'} s/lap
+- Late-race delta: ${perf.late_race_delta_s?.toFixed(2) ?? 'N/A'} s
+- Lap consistency (std): ${perf.lap_time_consistency_std?.toFixed(3) ?? 'N/A'}
+- Avg top speed: ${perf.avg_top_speed_kmh?.toFixed(1) ?? 'N/A'} km/h
+- Throttle smoothness: ${perf.throttle_smoothness?.toFixed(1) ?? 'N/A'}%
+- Late-race speed drop: ${perf.late_race_speed_drop_kmh?.toFixed(1) ?? 'N/A'} km/h`);
+        }
+      }
+    }
+
+    return sections.join('\n');
+  }
 
   return {
     name: 'genui-diagnose',
@@ -451,19 +703,41 @@ Guidelines:
 
         try {
           const { createGroq } = await import('@ai-sdk/groq');
-          const { streamText, tool } = await import('ai');
+          const { streamText, tool, convertToModelMessages } = await import('ai');
           const { z } = await import('zod');
 
           const groq = createGroq({ apiKey: groqApiKey });
 
+          // Fetch real data from MongoDB via Python backend
+          await refreshCache();
+          const mentionedCodes = extractDriverCodes(parsed.messages ?? []);
+          const groundingData = buildGroundingData(mentionedCodes);
+
+          // Add VectorProfile narratives for mentioned drivers
+          const narrativeSections: string[] = [];
+          for (const code of mentionedCodes) {
+            const narrative = await getVectorNarrative(code);
+            if (narrative) narrativeSections.push(`### ${code} Full Profile\n${narrative}`);
+          }
+          const narrativeBlock = narrativeSections.length > 0
+            ? `\n\n## Driver Intelligence Profiles\n${narrativeSections.join('\n\n')}`
+            : '';
+
+          const systemPrompt = `${DIAGNOSE_SYSTEM_BASE}\n\n--- REAL DATA ---\n${groundingData}${narrativeBlock}\n--- END DATA ---`;
+
+          // Convert UIMessages (parts-based) to ModelMessages for streamText
+          const modelMessages = await convertToModelMessages(
+            parsed.messages ?? [],
+          );
+
           const result = streamText({
             model: groq('llama-3.3-70b-versatile'),
-            system: DIAGNOSE_SYSTEM_PROMPT,
-            messages: parsed.messages ?? [],
+            system: systemPrompt,
+            messages: modelMessages,
             tools: {
               metric_card: tool({
                 description: 'Display a key diagnostic metric with trend indicator. Use for health %, peak values, or comparisons.',
-                parameters: z.object({
+                inputSchema: z.object({
                   title: z.string().describe('Metric name, e.g. "Current Health" or "Peak RPM"'),
                   value: z.string().describe('Display value with unit, e.g. "65%" or "12,400 RPM"'),
                   trend: z.enum(['up', 'down', 'stable']).describe('Trend direction relative to previous races'),
@@ -473,7 +747,7 @@ Guidelines:
               }),
               sparkline: tool({
                 description: 'Show a mini line chart of a metric across races. Use for health trends, RPM trends, temperature trends.',
-                parameters: z.object({
+                inputSchema: z.object({
                   title: z.string().describe('Chart title'),
                   data: z.array(z.object({ race: z.string(), value: z.number() })).describe('Data points per race'),
                   unit: z.string().describe('Value unit, e.g. "%" or "RPM"'),
@@ -485,7 +759,7 @@ Guidelines:
               }),
               comparison: tool({
                 description: 'Show side-by-side bar comparison of values. Use for comparing metrics across races or systems.',
-                parameters: z.object({
+                inputSchema: z.object({
                   title: z.string(),
                   items: z.array(z.object({
                     label: z.string(),
@@ -496,7 +770,7 @@ Guidelines:
               }),
               recommendation: tool({
                 description: 'Display an actionable maintenance recommendation with severity.',
-                parameters: z.object({
+                inputSchema: z.object({
                   title: z.string().describe('Short recommendation title'),
                   description: z.string().describe('Detailed explanation'),
                   severity: z.enum(['info', 'warning', 'critical']),
@@ -505,16 +779,27 @@ Guidelines:
               }),
               text: tool({
                 description: 'Display a paragraph of analysis text. Use for connecting the data points and providing engineering insight.',
-                parameters: z.object({
+                inputSchema: z.object({
                   content: z.string().describe('Analysis text (1-3 sentences)'),
                 }),
+              }),
+              similar_drivers: tool({
+                description: 'Find and display drivers with similar performance profiles. Use when asked "who drives like X?" or "find comparable drivers". Shows similarity scores and team.',
+                inputSchema: z.object({
+                  driver_code: z.string().describe('3-letter driver code to find similar drivers for, e.g. "NOR"'),
+                  count: z.number().optional().describe('Number of similar drivers to show (default 5)'),
+                }),
+                execute: async ({ driver_code, count }) => {
+                  const results = await getSimilarDrivers(driver_code.toUpperCase(), count ?? 5);
+                  return { driver_code: driver_code.toUpperCase(), similar: results };
+                },
               }),
             },
             temperature: 0.4,
             maxOutputTokens: 2048,
           });
 
-          result.pipeTextStreamToResponse(res);
+          result.pipeUIMessageStreamToResponse(res);
         } catch (err: any) {
           console.error('GenUI diagnose error:', err);
           res.statusCode = 500;
@@ -692,6 +977,9 @@ export default defineConfig({
       '/api/local/mccar-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/mcdriver-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/strategy': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/team_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/constructor_profiles': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/jolpica': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/openf1': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/opponents': { target: 'http://127.0.0.1:8300', changeOrigin: true },

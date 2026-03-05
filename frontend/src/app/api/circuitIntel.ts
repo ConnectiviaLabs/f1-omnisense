@@ -59,9 +59,8 @@ export interface CircuitKex {
   text: string;
   model_used: string;
   provider_used: string;
-  sentiment: { label: string; score: number };
-  entities: { text: string; label: string }[];
-  topics: string[];
+  scores: Record<string, number>;
+  summary: string;
   generated_at: number;
 }
 

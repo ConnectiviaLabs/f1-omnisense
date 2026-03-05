@@ -16,6 +16,10 @@ f1data/
 /output/
 omnisuitef1/Data/
 *.zip
+backups/
+f1-live-data/
+Documentation/
+colabModels/
 
 # ─── Build output ────────────────────────────────────
 frontend/dist/
