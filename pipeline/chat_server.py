@@ -550,16 +550,28 @@ def get_data_db():
     return _data_db
 
 import base64 as _b64
-from fastapi.responses import Response as _Response
+from fastapi.responses import Response as _Response, FileResponse as _FileResponse
+from pathlib import Path as _Path
 
-@app.get("/media/{folder}/{filename}")
-async def serve_media_frame(folder: str, filename: str):
-    """Serve detection frame images from MongoDB media_frames collection."""
-    path = f"{folder}/{filename}"
-    db = get_data_db()
-    doc = db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1})
-    if doc:
-        return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
+_MEDIA_DIR = _Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
+
+@app.get("/media/{filename:path}")
+async def serve_media(filename: str):
+    """Serve media files: videos from disk, images from MongoDB."""
+    # If path has a slash, it's a subfolder image (e.g., gdino_results/img.jpg)
+    if "/" in filename:
+        db = get_data_db()
+        doc = db["media_frames"].find_one({"path": filename}, {"data_b64": 1, "content_type": 1})
+        if doc:
+            return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
+        return _Response(status_code=404, content=b"Not found")
+    # Single filename — serve video/file from disk
+    fpath = _MEDIA_DIR / filename
+    if fpath.is_file():
+        suffix = fpath.suffix.lower()
+        mime = {".mp4": "video/mp4", ".webm": "video/webm", ".avi": "video/x-msvideo",
+                ".mov": "video/quicktime", ".mkv": "video/x-matroska"}.get(suffix, "application/octet-stream")
+        return _FileResponse(fpath, media_type=mime)
     return _Response(status_code=404, content=b"Not found")
 
 @app.get("/api/local/jolpica/race_results")
