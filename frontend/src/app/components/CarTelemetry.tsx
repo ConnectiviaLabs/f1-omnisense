@@ -221,7 +221,7 @@ export function CarTelemetry() {
     setLoading(true);
     setError(null);
     Promise.allSettled([
-      fetch(`/api/local/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).then(d => setRawData(d)),
+      fetch(`/api/local/mccar-race-telemetry/${year}/${race}`).then(r => r.json()).then(d => setRawData(Array.isArray(d) ? d : [])),
       fetch(`/api/local/mccar-race-stints/${year}/${race}`).then(r => r.json()).then(d => setStintsData(d)),
     ]).then(results => {
       if (results[0].status === 'rejected') { setError('Race data not available'); setRawData([]); }
@@ -345,6 +345,19 @@ export function CarTelemetry() {
       .sort((a, b) => a.stint - b.stint);
   }, [stintsData, race, year, driver]);
 
+  const topSpeedPerLap = useMemo(() => {
+    if (!driverData.length) return [];
+    const lapMax = new Map<number, number>();
+    for (const r of driverData) {
+      const lap = Number(r.LapNumber);
+      const spd = Number(r.Speed);
+      if (!lap || !spd) continue;
+      const prev = lapMax.get(lap) ?? 0;
+      if (spd > prev) lapMax.set(lap, spd);
+    }
+    return Array.from(lapMax.entries()).map(([lap, speed]) => ({ lap, speed })).sort((a, b) => a.lap - b.lap);
+  }, [driverData]);
+
   const highlightRace = race;
 
   return (
@@ -445,7 +458,7 @@ export function CarTelemetry() {
 
       {tab === 'detail' && (
         <RaceDetailView kpis={kpis} speedTrace={speedTrace} lapTimes={lapTimes}
-          drsPerLap={drsPerLap} raceStints={raceStints} race={race} year={year} loading={loading} />
+          drsPerLap={drsPerLap} raceStints={raceStints} topSpeedPerLap={topSpeedPerLap} race={race} year={year} loading={loading} />
       )}
       {tab === 'season' && (
         <SeasonCompareView seasonSummary={seasonSummary} loading={summaryLoading}
@@ -467,12 +480,13 @@ export function CarTelemetry() {
 
 /* ─── Race Detail View ─── */
 
-function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, race, year, loading }: {
+function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, topSpeedPerLap, race, year, loading }: {
   kpis: { topSpeed: string; avgRPM: string; drsActivations: number; compounds: string[] } | null;
   speedTrace: { dist: string; speed: number; rpm: number; gear: number; throttle: number; brake: number }[];
   lapTimes: { lap: number; time: number; compound: string }[];
   drsPerLap: { lap: number; drs: number }[];
   raceStints: { stint: number; compound: string; lapStart: number; lapEnd: number; stintLaps: number; tyreAge: number }[];
+  topSpeedPerLap: { lap: number; speed: number }[];
   race: string;
   year: number;
   loading: boolean;
@@ -629,6 +643,25 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, rac
           </div>
         )}
       </div>
+
+      {/* Speed Trap — top speed per lap */}
+      {topSpeedPerLap.length > 0 && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <h3 className="text-sm text-foreground mb-1">Speed Trap</h3>
+          <p className="text-[12px] text-muted-foreground mb-3">Max speed recorded per lap (km/h)</p>
+          <div className="h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topSpeedPerLap}>
+                <CartesianGrid stroke="rgba(255,128,0,0.12)" />
+                <XAxis dataKey="lap" tick={{ fill: '#8888a0', fontSize: 9 }} tickFormatter={(v) => `L${v}`} />
+                <YAxis tick={{ fill: '#8888a0', fontSize: 9 }} domain={['dataMin - 10', 'dataMax + 5']} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="speed" fill="#FF8000" name="Top Speed" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid,
+  CartesianGrid, BarChart, Bar, Cell,
 } from 'recharts';
-import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight } from 'lucide-react';
+import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight, Trophy, Flag, TrendingUp, Users, Brain } from 'lucide-react';
 import type { CircuitIntelligence, CircuitPitLoss, RaceAirDensity } from '../types';
 import * as api from '../api/circuitIntel';
+import type { CircuitHistory, CircuitKex } from '../api/circuitIntel';
 import { TrackMap } from './TrackMap';
 import { CIRCUITS } from '../data/circuits';
 
@@ -65,6 +66,10 @@ export function CircuitIntel() {
   const [airDensity, setAirDensity] = useState<RaceAirDensity[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<CircuitHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [kex, setKex] = useState<CircuitKex | null>(null);
+  const [kexLoading, setKexLoading] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -95,6 +100,27 @@ export function CircuitIntel() {
       .sort((a, b) => a.year - b.year),
     [airDensity, selected]
   );
+
+  // Auto-generate KeX when circuit changes (backend auto-regenerates if data changed)
+  useEffect(() => {
+    setKex(null);
+    if (!selected) return;
+    setKexLoading(true);
+    api.getCircuitKex(selected)
+      .then(setKex)
+      .catch(() => setKex(null))
+      .finally(() => setKexLoading(false));
+  }, [selected]);
+
+  // Fetch history when circuit changes
+  useEffect(() => {
+    if (!selected) { setHistory(null); return; }
+    setHistoryLoading(true);
+    api.getCircuitHistory(selected)
+      .then(h => setHistory(h.seasons?.length ? h : null))
+      .catch(() => setHistory(null))
+      .finally(() => setHistoryLoading(false));
+  }, [selected]);
 
   // Pit loss ranking sorted by estimated pit lane loss
   const pitLossRanking = useMemo(() =>
@@ -269,6 +295,167 @@ export function CircuitIntel() {
                 </div>
               );
             })()}
+
+            {/* ── Historical Race Performance ─────────────────────────── */}
+            {historyLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" />
+                <span className="text-muted-foreground text-sm ml-2">Loading race history…</span>
+              </div>
+            )}
+
+            {history && (
+              <>
+                {/* KPI row */}
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                  <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                    <Trophy className="w-4 h-4" /> Race History Overview
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <PitCard label="Races in DB" value={history.total_races} unit="" precision={0} />
+                    <PitCard label="Pole → Win" value={history.pole_stats.rate * 100} unit="%" precision={0} />
+                    <PitCard label="Avg Pos. Gained" value={history.positions_gained.avg} unit="pos" />
+                    <PitCard label="DNF Rate" value={history.dnf_rate * 100} unit="%" precision={1} />
+                  </div>
+                </div>
+
+                {/* Winners Table */}
+                {history.winners.length > 0 && (
+                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <Flag className="w-4 h-4" /> Race Winners
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-muted-foreground text-[11px] border-b border-[rgba(255,128,0,0.08)]">
+                            <th className="text-left py-2 px-2">Season</th>
+                            <th className="text-left py-2 px-2">Winner</th>
+                            <th className="text-left py-2 px-2">Constructor</th>
+                            <th className="text-right py-2 px-2">Grid</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...history.winners].reverse().map(w => (
+                            <tr key={w.season} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[#222838]/50">
+                              <td className="py-2 px-2 font-mono text-muted-foreground">{w.season}</td>
+                              <td className="py-2 px-2 text-foreground font-semibold">{w.driver_code}</td>
+                              <td className="py-2 px-2 text-muted-foreground">{w.constructor}</td>
+                              <td className="py-2 px-2 text-right font-mono">
+                                <span className={w.grid === 1 ? 'text-[#FF8000]' : 'text-foreground'}>
+                                  P{w.grid}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Constructor Dominance */}
+                {history.top_constructors.length > 0 && (
+                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Constructor Points at This Circuit
+                    </h3>
+                    <ResponsiveContainer width="100%" height={Math.max(200, history.top_constructors.length * 32)}>
+                      <BarChart data={history.top_constructors} layout="vertical" margin={{ left: 80, right: 20 }}>
+                        <CartesianGrid stroke="rgba(255,128,0,0.06)" horizontal={false} />
+                        <XAxis type="number" tick={{ fill: '#888', fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" tick={{ fill: '#ccc', fontSize: 11 }} width={75} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="points" name="Points" radius={[0, 4, 4, 0]}>
+                          {history.top_constructors.map((c, i) => (
+                            <Cell key={c.id} fill={i === 0 ? '#FF8000' : i < 3 ? '#FF8000aa' : '#FF800055'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Podium Kings */}
+                {history.top_podiums.length > 0 && (
+                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" /> Most Podiums at This Circuit
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {history.top_podiums.map((p, i) => (
+                        <div
+                          key={p.driver}
+                          className="flex items-center gap-2 bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg px-3 py-2"
+                        >
+                          <span className={`font-mono text-sm font-bold ${i === 0 ? 'text-[#FFD700]' : i === 1 ? 'text-[#C0C0C0]' : i === 2 ? 'text-[#CD7F32]' : 'text-muted-foreground'}`}>
+                            {p.count}
+                          </span>
+                          <span className="text-foreground text-sm">{p.driver}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── WISE Circuit Intelligence Briefing ──────────────────── */}
+            {selected && (
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
+                  <Brain className="w-4 h-4" /> WISE Circuit Briefing
+                </h3>
+
+                {kexLoading && (
+                  <div className="flex items-center justify-center gap-2 py-6">
+                    <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+                    <span className="text-[11px] text-muted-foreground">Extracting circuit intelligence…</span>
+                  </div>
+                )}
+
+                {kex && !kexLoading && (
+                  <div className="space-y-3">
+                    {/* Meta row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#3b82f6]/20 text-[#3b82f6]">
+                        REALTIME
+                      </span>
+                      {kex.sentiment && (
+                        <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
+                          kex.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
+                          kex.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
+                          'bg-zinc-500/15 text-zinc-400'
+                        }`}>
+                          {kex.sentiment.label === 'positive' ? '\u25B2' : kex.sentiment.label === 'negative' ? '\u25BC' : '\u25CF'} {kex.sentiment.score}
+                        </span>
+                      )}
+                      {kex.topics?.length > 0 && kex.topics.map(t => (
+                        <span key={t} className="text-[8px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Briefing text */}
+                    <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
+                      {kex.text}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,128,0,0.06)]">
+                      <span className="text-[9px] text-muted-foreground/50 font-mono">
+                        via {kex.model_used} ({kex.provider_used})
+                      </span>
+                      <span className="text-[9px] text-muted-foreground/50">
+                        {new Date(kex.generated_at * 1000).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
           </>
         )}
       </div>

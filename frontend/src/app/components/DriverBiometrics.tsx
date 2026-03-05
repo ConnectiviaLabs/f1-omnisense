@@ -9,6 +9,13 @@ import {
   ArrowUp, ArrowDown, ShieldAlert, Eye, FileText, Bell, CheckCircle2, Activity,
 } from 'lucide-react';
 import { fetchCSV, parseCSV } from '../api/local';
+import { HealthGauge } from './HealthGauge';
+import { StatusBadge } from './StatusBadge';
+import {
+  parseAnomalyDrivers, levelColor, levelBg,
+  MAINTENANCE_LABELS, SEVERITY_COLORS,
+  type VehicleData,
+} from './anomalyHelpers';
 
 const RACES_2023 = [
   'Bahrain', 'Saudi Arabian', 'Australian', 'Miami', 'Monaco', 'Spanish',
@@ -352,6 +359,32 @@ export function DriverBiometrics() {
   const [seasonSummary, setSeasonSummary] = useState<RaceSummary[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // Anomaly / vehicle health state
+  const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
+
+  useEffect(() => {
+    fetch('/api/pipeline/anomaly')
+      .then(r => r.json())
+      .then(data => setAnomalyVehicles(parseAnomalyDrivers(data)))
+      .catch(() => {});
+  }, []);
+
+  const selectedVehicle = useMemo(
+    () => anomalyVehicles.find(v => v.code === driver) ?? null,
+    [anomalyVehicles, driver],
+  );
+
+  const healthTrendData = useMemo(() => {
+    if (!selectedVehicle) return [];
+    return selectedVehicle.races.map(r => {
+      const row: Record<string, any> = { race: r.race };
+      for (const [sysName, sys] of Object.entries(r.systems)) {
+        row[sysName] = sys.health;
+      }
+      return row;
+    });
+  }, [selectedVehicle]);
+
   // H2H state
   const [h2hMode, setH2hMode] = useState<'race' | 'season'>('race');
   const [h2hLoading, setH2hLoading] = useState(false);
@@ -582,6 +615,120 @@ export function DriverBiometrics() {
         <RaceDetailView career={career} kpis={kpis} hrTrace={hrTrace} tempTrace={tempTrace}
           battlePerLap={battlePerLap} hrPerLap={hrPerLap} race={race} year={year} loading={loading} driver={driver} />
       )}
+
+      {/* Vehicle Health — from anomaly pipeline (shown on all tabs) */}
+      {selectedVehicle && (
+        <>
+          <div className="flex items-center gap-2 mt-2">
+            <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
+            <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">VEHICLE HEALTH — {driver}</span>
+            <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
+          </div>
+
+          <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-3 bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4 flex flex-col items-center justify-center gap-3">
+              <HealthGauge value={selectedVehicle.overallHealth} size={100} label="Overall" />
+              <StatusBadge status={selectedVehicle.level} />
+              <div className="w-full space-y-2 mt-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">DNF Risk</span>
+                  <span className="font-mono" style={{ color: selectedVehicle.overallHealth >= 80 ? '#22c55e' : selectedVehicle.overallHealth >= 60 ? '#FF8000' : '#ef4444' }}>
+                    {Math.max(0, 100 - selectedVehicle.overallHealth).toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">Systems</span>
+                  <span className="font-mono text-foreground">{selectedVehicle.systems.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground">Last Race</span>
+                  <span className="font-mono text-foreground text-[10px]">{selectedVehicle.lastRace}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-span-9 grid grid-cols-3 gap-3">
+              {selectedVehicle.systems.map((sys) => {
+                const Icon = sys.icon;
+                const maint = sys.maintenanceAction ? MAINTENANCE_LABELS[sys.maintenanceAction] ?? MAINTENANCE_LABELS.none : null;
+                return (
+                  <div key={sys.name} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: levelBg(sys.level) }}>
+                        <Icon className="w-4 h-4" style={{ color: levelColor(sys.level) }} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[11px] text-muted-foreground">{sys.name}</div>
+                        <div className="text-sm font-mono" style={{ color: levelColor(sys.level) }}>{sys.health.toFixed(0)}%</div>
+                      </div>
+                      <StatusBadge status={sys.level} size="sm" />
+                    </div>
+                    <div className="w-full h-1.5 bg-[#222838] rounded-full overflow-hidden mb-3">
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
+                    </div>
+                    {sys.severityProbabilities && (
+                      <div className="space-y-1 mb-3">
+                        <div className="text-[9px] text-muted-foreground tracking-wider">SEVERITY DISTRIBUTION</div>
+                        <div className="flex h-2 rounded-full overflow-hidden">
+                          {Object.entries(sys.severityProbabilities)
+                            .sort(([,a], [,b]) => (b as number) - (a as number))
+                            .map(([level, prob]) => (
+                              <div key={level} style={{ width: `${(prob as number) * 100}%`, backgroundColor: SEVERITY_COLORS[level] ?? '#6b7280' }} title={`${level}: ${((prob as number) * 100).toFixed(0)}%`} />
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-2">
+                      <span>Models: {sys.voteCount}/{sys.totalModels}</span>
+                    </div>
+                    {maint && (
+                      <div className="flex items-center gap-1.5 text-[10px] px-2 py-1 rounded-md" style={{ backgroundColor: maint.color + '15', color: maint.color }}>
+                        <maint.icon className="w-3 h-3" />
+                        <span>{maint.label}</span>
+                      </div>
+                    )}
+                    {sys.metrics.length > 0 && (
+                      <div className="mt-2 space-y-0.5">
+                        <div className="text-[9px] text-muted-foreground tracking-wider">TOP FEATURES</div>
+                        {sys.metrics.slice(0, 3).map((m: { label: string; value: string }) => (
+                          <div key={m.label} className="flex items-center justify-between text-[10px]">
+                            <span className="text-muted-foreground truncate mr-2">{m.label}</span>
+                            <span className="font-mono text-foreground">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {healthTrendData.length > 1 && (
+            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
+              <h3 className="text-sm text-foreground tracking-widest mb-3 font-medium">HEALTH TREND</h3>
+              <div className="h-[160px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={healthTrendData}>
+                    <XAxis dataKey="race" tick={{ fontSize: 9, fill: '#666' }} interval="preserveStartEnd" />
+                    <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#666' }} width={30} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area type="monotone" dataKey="Speed" stroke="#FF8000" fill="#FF8000" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                    <Area type="monotone" dataKey="Lap Pace" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                    <Area type="monotone" dataKey="Tyre Management" stroke="#22c55e" fill="#22c55e" fillOpacity={0.08} strokeWidth={1.5} dot={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex items-center gap-4 mt-2 justify-center">
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#FF8000]" /> Speed</div>
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#00d4ff]" /> Lap Pace</div>
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#22c55e]" /> Tyre Management</div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
       {tab === 'season' && (
         <SeasonCompareView seasonSummary={seasonSummary} loading={summaryLoading}
           year={year} driver={driver} highlightRace={highlightRace} />

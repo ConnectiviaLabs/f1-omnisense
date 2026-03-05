@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Play, Film,
 } from 'lucide-react';
@@ -8,6 +8,14 @@ interface GDinoFrame {
   frame_index: number;
   detections: { category: string; score: number; bbox: number[] }[];
   output_image: string;
+}
+
+interface NarrationFrame {
+  frame_index: number;
+  narration: string;
+  tokens: number;
+  time_s: number;
+  tok_per_s: number;
 }
 
 interface VideoModelResult {
@@ -39,6 +47,211 @@ interface MediaVideo {
   analyzed: boolean;
 }
 
+/** Video player with bbox overlay drawn on canvas, synced to detection frames */
+function AnnotatedVideoPlayer({
+  videoSrc, frames, fps, narrations,
+}: {
+  videoSrc: string;
+  frames: GDinoFrame[];
+  fps: number;
+  narrations?: NarrationFrame[];
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [activeFrameIdx, setActiveFrameIdx] = useState(0);
+  const hasFrames = frames.length > 0;
+
+  const frameTimes = frames.map(f => f.frame_index / fps);
+
+  // Colors for different categories
+  const catColors: Record<string, string> = {};
+  const palette = ['#FF8000', '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#eab308', '#06b6d4'];
+  let colorIdx = 0;
+  const getColor = (cat: string) => {
+    if (!catColors[cat]) { catColors[cat] = palette[colorIdx % palette.length]; colorIdx++; }
+    return catColors[cat];
+  };
+
+  const drawBoxes = useCallback((frameIdx: number) => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Match canvas to displayed video size
+    const rect = video.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const frame = frames[frameIdx];
+    if (!frame?.detections?.length) return;
+
+    // Scale from original video resolution to displayed size
+    const scaleX = rect.width / (video.videoWidth || 1);
+    const scaleY = rect.height / (video.videoHeight || 1);
+
+    for (const det of frame.detections) {
+      if (!det.bbox || det.bbox.length < 4) continue;
+      const [x1, y1, x2, y2] = det.bbox;
+      const sx1 = x1 * scaleX, sy1 = y1 * scaleY;
+      const sw = (x2 - x1) * scaleX, sh = (y2 - y1) * scaleY;
+      const color = getColor(det.category);
+
+      // Draw box
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sx1, sy1, sw, sh);
+
+      // Draw label background
+      const label = `${det.category} ${((det.score ?? 0) * 100).toFixed(0)}%`;
+      ctx.font = 'bold 11px monospace';
+      const textW = ctx.measureText(label).width;
+      ctx.fillStyle = color;
+      ctx.fillRect(sx1, sy1 - 16, textW + 8, 16);
+
+      // Draw label text
+      ctx.fillStyle = '#000';
+      ctx.fillText(label, sx1 + 4, sy1 - 4);
+    }
+  }, [frames]);
+
+  const onTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !hasFrames) return;
+    const t = video.currentTime;
+    let best = 0;
+    let bestDist = Math.abs(t - frameTimes[0]);
+    for (let i = 1; i < frameTimes.length; i++) {
+      const dist = Math.abs(t - frameTimes[i]);
+      if (dist < bestDist) { best = i; bestDist = dist; }
+    }
+    if (best !== activeFrameIdx) {
+      setActiveFrameIdx(best);
+      drawBoxes(best);
+    }
+  }, [frameTimes, hasFrames, activeFrameIdx, drawBoxes]);
+
+  const seekToFrame = (idx: number) => {
+    setActiveFrameIdx(idx);
+    drawBoxes(idx);
+    if (videoRef.current) videoRef.current.currentTime = frameTimes[idx];
+  };
+
+
+  // Redraw on resize
+  useEffect(() => {
+    const handleResize = () => drawBoxes(activeFrameIdx);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeFrameIdx, drawBoxes]);
+
+  const activeFrame = frames[activeFrameIdx];
+
+  // Find narration matching the active frame (by frame_index)
+  const activeNarration = narrations?.find(n => {
+    if (!activeFrame) return false;
+    // Match by frame_index, or by 1-based index (frame_index in narrations is 1-based)
+    return n.frame_index === activeFrame.frame_index
+      || n.frame_index === activeFrameIdx + 1;
+  });
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)] space-y-3">
+      {/* Video with canvas overlay for bounding boxes */}
+      <div ref={containerRef} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
+        <video
+          ref={videoRef}
+          controls
+          onTimeUpdate={onTimeUpdate}
+          onPlay={() => drawBoxes(activeFrameIdx)}
+          onSeeked={() => drawBoxes(activeFrameIdx)}
+          className="w-full block"
+          src={videoSrc}
+        />
+        <canvas
+          ref={canvasRef}
+          className="absolute top-0 left-0 w-full h-full pointer-events-none"
+          style={{ height: 'calc(100% - 36px)' }}  /* avoid covering video controls */
+        />
+        {/* Frame info badge */}
+        {hasFrames && activeFrame && (
+          <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none">
+            <span className="text-[10px] font-mono bg-black/70 text-[#FF8000] px-2 py-0.5 rounded">
+              Frame {activeFrame.frame_index} — {frameTimes[activeFrameIdx].toFixed(1)}s
+            </span>
+            <span className="text-[10px] font-mono bg-black/70 text-green-400 px-2 py-0.5 rounded">
+              {activeFrame.detections?.length ?? 0} detections
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* AI Insight — narration for active frame */}
+      {activeNarration && (
+        <div className="bg-[#0D1117] border border-purple-500/20 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Brain className="w-3.5 h-3.5 text-purple-400" />
+            <span className="text-[11px] text-purple-400 tracking-wider font-mono">AI INSIGHT</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">{activeNarration.tokens} tok · {activeNarration.time_s}s</span>
+          </div>
+          <p className="text-[12px] text-foreground/90 leading-relaxed">{activeNarration.narration}</p>
+        </div>
+      )}
+
+      {hasFrames && (
+        <>
+          {/* Detection list for active frame */}
+          {activeFrame?.detections?.length > 0 && (
+            <div className="bg-[#0D1117] rounded-lg p-2 space-y-0.5">
+              {activeFrame.detections.map((det, i) => (
+                <div key={i} className="flex items-center gap-3 text-[11px]">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: getColor(det.category) }} />
+                  <span className="text-[#FF8000] font-mono w-10">{((det.score ?? 0) * 100).toFixed(0)}%</span>
+                  <span className="text-foreground">{det.category}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Frame timeline — click to seek */}
+          <div className="flex gap-1 overflow-x-auto pb-1">
+            {frames.map((f, i) => {
+              const detCount = f.detections?.length ?? 0;
+              const hasNarr = narrations?.some(n => n.frame_index === f.frame_index || n.frame_index === i + 1);
+              return (
+                <button
+                  key={f.frame_index}
+                  type="button"
+                  onClick={() => seekToFrame(i)}
+                  className={`shrink-0 rounded-md px-2.5 py-1.5 text-center transition-all border ${
+                    i === activeFrameIdx
+                      ? 'bg-[#FF8000]/15 border-[#FF8000] text-[#FF8000]'
+                      : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] text-muted-foreground hover:border-[#FF8000]/30'
+                  }`}
+                >
+                  <div className="text-[10px] font-mono">{frameTimes[i].toFixed(1)}s</div>
+                  <div className="text-[9px]">
+                    {detCount} det{hasNarr ? ' ✦' : ''}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {!hasFrames && (
+        <div className="text-[12px] text-muted-foreground text-center py-2">
+          No detection frames — click <span className="text-[#FF8000]">Analyze Video</span> to run the pipeline
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MediaIntelligence() {
   const [gdinoData, setGdinoData] = useState<Record<string, GDinoFrame[]> | null>(null);
   const [fusedData, setFusedData] = useState<Record<string, GDinoFrame[]> | null>(null);
@@ -52,6 +265,7 @@ export function MediaIntelligence() {
   const [allTags, setAllTags] = useState<VisualTagImage[] | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [topTags, setTopTags] = useState<{ label: string; max_score: number }[]>([]);
+  const [narrationData, setNarrationData] = useState<Record<string, NarrationFrame[]> | null>(null);
 
   // Video picker state
   const [videos, setVideos] = useState<MediaVideo[]>([]);
@@ -86,6 +300,7 @@ export function MediaIntelligence() {
         }
       }),
       pipeline.videos().then(d => setVideos(d?.videos ?? [])),
+      pipeline.minicpm().then(d => setNarrationData(d ?? null)),
     ]).finally(() => setLoading(false));
 
     fetch('/api/visual-tags')
@@ -484,6 +699,22 @@ export function MediaIntelligence() {
                 );
               })}
             </div>
+
+            {/* Annotated Video Player */}
+            {selectedVideo && (() => {
+              const resultData = fusedData ?? gdinoData;
+              const frames = resultData?.[selectedVideo] ?? [];
+              const fps = videomaeData?.[selectedVideo]?.fps ?? timesformerData?.[selectedVideo]?.fps ?? 30;
+              return (
+                <AnnotatedVideoPlayer
+                  key={selectedVideo}
+                  videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
+                  frames={frames}
+                  fps={fps}
+                  narrations={narrationData?.[selectedVideo] ?? undefined}
+                />
+              );
+            })()}
 
             {/* Analyze Button */}
             {selectedVideo && (

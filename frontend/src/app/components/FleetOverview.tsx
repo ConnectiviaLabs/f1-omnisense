@@ -95,13 +95,36 @@ interface FleetOverviewProps {
   prefetchedVehicles: VehicleData[];
   prefetchedForecasts: Record<string, FeatureForecast[]>;
   prefetchLoading: boolean;
+  /** Which pillar tab is active (used by PrimeCar). Phase 2 will filter sections. */
+  defaultSection?: 'telemetry' | 'anomaly' | 'forecast';
 }
 
-export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetchLoading }: FleetOverviewProps) {
+interface AnomalyKex {
+  driver_code: string;
+  text: string;
+  model_used: string;
+  provider_used: string;
+  sentiment: { label: string; score: number };
+  entities: { text: string; label: string }[];
+  topics: string[];
+  generated_at: number;
+}
+
+async function getAnomalyKex(driverCode: string): Promise<AnomalyKex> {
+  const res = await fetch(`/api/anomaly/kex/${encodeURIComponent(driverCode)}`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Anomaly KeX failed: ${res.status}`);
+  return res.json();
+}
+
+export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetchLoading, defaultSection: _defaultSection }: FleetOverviewProps) {
   const [vehicles, setVehicles] = useState<VehicleData[]>([]);
   const [selectedCar, setSelectedCar] = useState<VehicleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [liveSource, setLiveSource] = useState<'cached' | 'live' | null>(null);
+
+  // KeX state
+  const [kex, setKex] = useState<AnomalyKex | null>(null);
+  const [kexLoading, setKexLoading] = useState(false);
 
   // Registration state
   const [showRegister, setShowRegister] = useState(false);
@@ -361,6 +384,17 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     };
     fetchLive();
   }, [vehicles.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-generate KeX when selected car changes (backend auto-regenerates if data changed)
+  useEffect(() => {
+    setKex(null);
+    if (!selectedCar) return;
+    setKexLoading(true);
+    getAnomalyKex(selectedCar.code)
+      .then(setKex)
+      .catch(() => setKex(null))
+      .finally(() => setKexLoading(false));
+  }, [selectedCar?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-by-race trend from anomaly data
   // Extract available years from the selected car's race history
@@ -817,6 +851,43 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             </div>
           </div>
 
+          {/* ── WISE Anomaly Briefing ── */}
+          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4" /> WISE Anomaly Briefing
+            </h3>
+            {kexLoading && (
+              <div className="flex items-center justify-center gap-2 py-6">
+                <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+                <span className="text-[11px] text-muted-foreground">Extracting anomaly intelligence…</span>
+              </div>
+            )}
+            {kex && !kexLoading && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#3b82f6]/20 text-[#3b82f6]">REALTIME</span>
+                  {kex.sentiment && (
+                    <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
+                      kex.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
+                      kex.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
+                      'bg-zinc-500/15 text-zinc-400'
+                    }`}>
+                      {kex.sentiment.label === 'positive' ? '\u25B2' : kex.sentiment.label === 'negative' ? '\u25BC' : '\u25CF'} {kex.sentiment.score}
+                    </span>
+                  )}
+                  {kex.topics?.length > 0 && kex.topics.map(t => (
+                    <span key={t} className="text-[8px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{t}</span>
+                  ))}
+                </div>
+                <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">{kex.text}</div>
+                <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,128,0,0.06)]">
+                  <span className="text-[9px] text-muted-foreground/50 font-mono">via {kex.model_used} ({kex.provider_used})</span>
+                  <span className="text-[9px] text-muted-foreground/50">{new Date(kex.generated_at * 1000).toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* ── Season Health Trend ── */}
           {trendData.length > 0 && (
             <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
@@ -827,7 +898,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                 </h3>
                 {trendYears.length > 1 && (
                   <div className="flex items-center gap-1">
-                    {trendYears.map(y => (
+                    {trendYears.slice(0, 3).map(y => (
                       <button
                         key={y}
                         onClick={() => setTrendYear(y)}
@@ -840,6 +911,28 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                         {y}
                       </button>
                     ))}
+                    {trendYears.length > 3 && (
+                      <details className="relative">
+                        <summary className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#0D1117] text-muted-foreground hover:text-foreground border border-[rgba(255,128,0,0.12)] cursor-pointer list-none">
+                          +{trendYears.length - 3}
+                        </summary>
+                        <div className="absolute right-0 top-full mt-1 z-10 bg-[#1A1F2E] border border-[rgba(255,128,0,0.2)] rounded-lg p-1 flex flex-col gap-0.5">
+                          {trendYears.slice(3).map(y => (
+                            <button
+                              key={y}
+                              onClick={() => setTrendYear(y)}
+                              className={`px-3 py-1 rounded text-[10px] font-mono transition-colors text-left ${
+                                trendYear === y
+                                  ? 'bg-[#FF8000] text-black font-medium'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,128,0,0.1)]'
+                              }`}
+                            >
+                              {y}
+                            </button>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                   </div>
                 )}
               </div>
@@ -858,7 +951,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                     </tr>
                   </thead>
                   <tbody>
-                    {trendData.map((d, i) => (
+                    {trendData.slice(-10).map((d, i) => (
                       <tr key={i} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[rgba(255,128,0,0.02)]">
                         <td className="py-0.5 text-foreground">{d.race}</td>
                         <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.speedHealth) }}>{d.speedHealth}%</td>
@@ -976,6 +1069,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
               </div>
             </div>
           )}
+
 
         </div>
         );

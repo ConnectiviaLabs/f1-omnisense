@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "omnisuitef1"))
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 from groq import Groq
 from pipeline.vectorstore import get_vector_store
@@ -690,6 +690,296 @@ async def driver_intel_telemetry_profiles(driver: str | None = None):
         filt["driver_code"] = driver.upper()
     return list(db["driver_telemetry_profiles"].find(filt, {"_id": 0}))
 
+@app.post("/api/local/driver_intel/kex/{driver_code}")
+async def driver_intel_kex(driver_code: str, force: bool = False):
+    """Generate WISE knowledge extraction briefing for a driver.
+
+    Uses on-screen data (performance markers, overtake profile, telemetry style,
+    system health) to create a natural language intelligence briefing.
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_driver_briefings"]
+
+    # ── Gather on-screen data ─────────────────────────────────────────
+    perf = db["driver_performance_markers"].find_one({"Driver": code}, {"_id": 0})
+    overtake = db["driver_overtake_profiles"].find_one({"driver_code": code}, {"_id": 0})
+    telem = db["driver_telemetry_profiles"].find_one({"driver_code": code}, {"_id": 0})
+
+    # Anomaly / health data
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_health = None
+    if "drivers" in snapshot:
+        for d in snapshot.get("drivers", []):
+            if d.get("code") == code or d.get("name_acronym") == code:
+                driver_health = d
+                break
+
+    if not perf and not overtake and not telem:
+        raise HTTPException(404, f"No intelligence data for driver {code}")
+
+    # ── Compute data hash to detect changes ───────────────────────────
+    hash_payload = _json.dumps(
+        {"perf": perf, "overtake": overtake, "telem": telem, "health": driver_health},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches (data unchanged)
+    if not force:
+        existing = coll.find_one({"driver_code": code})
+        if existing and existing.get("data_hash") == data_hash:
+            existing.pop("_id", None)
+            return existing
+
+    # ── Build WISE prompt ─────────────────────────────────────────────
+    data_profile = f"## Driver: {code}\n\n"
+
+    if perf:
+        data_profile += """### Performance Markers
+- Degradation slope: {deg} s/lap
+- Late race delta: {lrd} s
+- Lap time consistency (std): {std} s
+- Sector CV: S1={s1}, S2={s2}, S3={s3}
+- Heat lap delta: {heat} s
+- Humidity lap delta: {humid} s
+- Throttle smoothness: {throttle}
+- Brake overlap rate: {brake}
+- Avg top speed: {speed} km/h
+- Late race speed drop: {drop} km/h
+- Avg stint length: {stint} laps
+""".format(
+            deg=perf.get("degradation_slope_s_per_lap", "N/A"),
+            lrd=perf.get("late_race_delta_s", "N/A"),
+            std=perf.get("lap_time_consistency_std", "N/A"),
+            s1=perf.get("sector1_cv", "N/A"),
+            s2=perf.get("sector2_cv", "N/A"),
+            s3=perf.get("sector3_cv", "N/A"),
+            heat=perf.get("heat_lap_delta_s", "N/A"),
+            humid=perf.get("humidity_lap_delta_s", "N/A"),
+            throttle=perf.get("throttle_smoothness", "N/A"),
+            brake=perf.get("brake_overlap_rate", "N/A"),
+            speed=perf.get("avg_top_speed_kmh", "N/A"),
+            drop=perf.get("late_race_speed_drop_kmh", "N/A"),
+            stint=perf.get("avg_stint_length", "N/A"),
+        )
+
+    if overtake:
+        data_profile += f"""### Overtaking Profile
+- Total overtakes made: {overtake.get('total_overtakes_made', 'N/A')}
+- Total times overtaken: {overtake.get('total_times_overtaken', 'N/A')}
+- Overtake ratio: {overtake.get('overtake_ratio', 'N/A')}
+- Overtakes per race: {overtake.get('overtakes_per_race', 'N/A')}
+- Times overtaken per race: {overtake.get('times_overtaken_per_race', 'N/A')}
+- Net overtake balance: {overtake.get('overtake_net', 'N/A')}
+- Races analysed: {overtake.get('races_analysed', 'N/A')}
+"""
+
+    if telem:
+        data_profile += f"""### Telemetry Style
+- Avg race speed: {telem.get('avg_race_speed_kmh', 'N/A')} km/h
+- Avg throttle: {telem.get('avg_throttle_pct', 'N/A')}%
+- Avg braking G: {telem.get('avg_braking_g', 'N/A')} G
+- Max braking G: {telem.get('max_braking_g', 'N/A')} G
+- Braking consistency: {telem.get('braking_consistency', 'N/A')}
+- Full throttle ratio: {telem.get('full_throttle_ratio', 'N/A')}
+- DRS usage ratio: {telem.get('drs_usage_ratio', 'N/A')}
+- DRS speed gain: {telem.get('drs_speed_gain_kmh', 'N/A')} km/h
+- Brake→throttle transition: {telem.get('brake_to_throttle_avg_s', 'N/A')} s
+- Late race speed drop: {telem.get('late_race_speed_drop_kmh', 'N/A')} km/h
+- Late race braking delta: {telem.get('late_race_braking_delta', 'N/A')}
+"""
+
+    if driver_health:
+        systems = driver_health.get("systems", [])
+        health_lines = [f"- Overall health: {driver_health.get('overallHealth', 'N/A')}/100"]
+        for s in systems:
+            health_lines.append(f"- {s.get('name','?')}: {s.get('health', '?')}/100 ({s.get('level','?')})")
+        data_profile += "\n### System Health\n" + "\n".join(health_lines) + "\n"
+
+    prompt = f"""[WISE KNOWLEDGE EXTRACTION — Driver Intelligence Briefing]
+
+You are an F1 performance analyst preparing a driver intelligence briefing for the race engineering team.
+Using ONLY the data below, provide actionable insights about this driver.
+
+{data_profile}
+
+## Analysis Required:
+1. **Driving Style**: What defines this driver's approach? Aggressive braker, smooth throttle, late braker?
+2. **Strengths**: Where does this driver excel based on the numbers?
+3. **Weaknesses**: What areas need improvement? Tire management, consistency, racecraft?
+4. **Race Strategy Implications**: How should strategy adapt to this driver's profile?
+5. **Competitor Context**: Based on overtaking data, how aggressive/defensive is this driver?
+
+Be concise and data-driven. Reference specific numbers from the data. Do NOT fabricate statistics.
+Format with clear section headers using ##.
+"""
+
+    try:
+        from omnikex.llm import generate
+        from omnikex._types import KexLLMConfig, LLMProvider
+
+        llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="ministral-3:8b", task_type="realtime", temperature=0.15)
+        text, model_used, provider_used = generate(prompt, config=llm_cfg)
+    except Exception as e:
+        logger.exception("Driver KeX LLM generation failed for %s", code)
+        raise HTTPException(500, f"LLM generation failed: {e}")
+
+    try:
+        from pipeline.omni_kex_router import _enrich_nlp
+        nlp_meta = _enrich_nlp(text)
+    except Exception:
+        nlp_meta = {"sentiment": {"label": "neutral", "score": 0}, "entities": [], "topics": []}
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "sentiment": nlp_meta.get("sentiment", {}),
+        "entities": nlp_meta.get("entities", []),
+        "topics": nlp_meta.get("topics", []),
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/anomaly/kex/{driver_code}")
+async def anomaly_kex(driver_code: str):
+    """Generate WISE knowledge extraction briefing for a driver's anomaly/health data.
+
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_anomaly_briefings"]
+
+    # ── Gather anomaly data ───────────────────────────────────────────
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_data = None
+    if "drivers" in snapshot:
+        for d in snapshot.get("drivers", []):
+            if d.get("code") == code or d.get("name_acronym") == code:
+                driver_data = d
+                break
+
+    if not driver_data:
+        raise HTTPException(404, f"No anomaly data for driver {code}")
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = _json.dumps(driver_data, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches
+    existing = coll.find_one({"driver_code": code})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    # ── Build WISE prompt ─────────────────────────────────────────────
+    systems = driver_data.get("systems", [])
+    overall = driver_data.get("overallHealth", "N/A")
+    level = driver_data.get("level", "N/A")
+    last_race = driver_data.get("lastRace", "N/A")
+
+    system_lines = []
+    for s in systems:
+        line = f"- {s.get('name','?')}: {s.get('health','?')}/100 ({s.get('level','?')})"
+        if s.get("maintenanceAction") and s["maintenanceAction"] != "none":
+            line += f" — action: {s['maintenanceAction']}"
+        if s.get("details"):
+            line += f" | {s['details']}"
+        top_feats = s.get("metrics", [])
+        if top_feats:
+            feat_str = ", ".join(f"{m.get('label','')}: {m.get('value','')}" for m in top_feats[:5])
+            line += f" | top features: {feat_str}"
+        system_lines.append(line)
+
+    # Race-by-race trend
+    races = driver_data.get("races", [])
+    trend_lines = []
+    for r in races[-5:]:
+        rsys = r.get("systems", {})
+        parts = [f"{name}: {info.get('health','?')}%" for name, info in rsys.items()]
+        trend_lines.append(f"- {r.get('race','?')}: {', '.join(parts)}")
+
+    data_profile = f"""## Anomaly Detection Report: {code}
+
+### Overall Status
+- Health: {overall}/100 ({level})
+- Last race: {last_race}
+
+### System Health
+{chr(10).join(system_lines)}
+
+### Recent Race Trend (last {len(trend_lines)})
+{chr(10).join(trend_lines) if trend_lines else 'No race history available'}
+"""
+
+    prompt = f"""[WISE KNOWLEDGE EXTRACTION — Anomaly Detection Briefing]
+
+You are an F1 reliability engineer preparing an anomaly detection briefing for the race engineering team.
+Using ONLY the data below, provide actionable insights about this driver's car health and reliability.
+
+{data_profile}
+
+## Analysis Required:
+1. **Overall Assessment**: Summarize the car's health status and any immediate concerns.
+2. **System-by-System**: Which systems are degrading? Which are healthy? What do the top features indicate?
+3. **Trend Analysis**: Is the car's health improving or deteriorating race-over-race?
+4. **Risk Factors**: What are the highest risks for DNF or performance loss?
+5. **Recommended Actions**: What maintenance or setup changes should the team prioritize?
+
+Be concise and data-driven. Reference specific numbers from the data. Do NOT fabricate statistics.
+Format with clear section headers using ##.
+"""
+
+    try:
+        from omnikex.llm import generate
+        from omnikex._types import KexLLMConfig, LLMProvider
+
+        llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="ministral-3:8b", task_type="realtime", temperature=0.15)
+        text, model_used, provider_used = generate(prompt, config=llm_cfg)
+    except Exception as e:
+        logger.exception("Anomaly KeX LLM generation failed for %s", code)
+        raise HTTPException(500, f"LLM generation failed: {e}")
+
+    try:
+        from pipeline.omni_kex_router import _enrich_nlp
+        nlp_meta = _enrich_nlp(text)
+    except Exception:
+        nlp_meta = {"sentiment": {"label": "neutral", "score": 0}, "entities": [], "topics": []}
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "sentiment": nlp_meta.get("sentiment", {}),
+        "entities": nlp_meta.get("entities", []),
+        "topics": nlp_meta.get("topics", []),
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 # ── Circuit Intelligence endpoints ────────────────────────────────────
 
 @app.get("/api/local/circuit_intel/circuits")
@@ -722,6 +1012,279 @@ async def circuit_intel_air_density(circuit: str | None = None, year: int | None
     if year:
         filt["year"] = year
     return list(db["race_air_density"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/circuit_intel/history/{circuit_id}")
+async def circuit_intel_history(circuit_id: str):
+    """Historical race performance at a given circuit from jolpica_race_results."""
+    from collections import defaultdict
+    db = get_data_db()
+    results = list(db["jolpica_race_results"].find(
+        {"circuit_id": circuit_id},
+        {"_id": 0, "season": 1, "round": 1, "race_name": 1,
+         "driver_code": 1, "driver_id": 1,
+         "constructor_id": 1, "constructor_name": 1,
+         "grid": 1, "position": 1, "points": 1,
+         "status": 1, "laps": 1}
+    ).sort([("season", 1), ("position", 1)]))
+
+    if not results:
+        return {"circuit_id": circuit_id, "seasons": [], "winners": [],
+                "pole_stats": {}, "positions_gained": {},
+                "top_constructors": [], "top_podiums": []}
+
+    race_name = results[0].get("race_name", circuit_id)
+    seasons = sorted(set(r["season"] for r in results))
+
+    # ── Winners per season ────────────────────────────────────────────
+    winners = []
+    for s in seasons:
+        w = next((r for r in results if r["season"] == s and r.get("position") == 1), None)
+        if w:
+            winners.append({"season": s, "driver_code": w.get("driver_code", ""),
+                            "constructor": w.get("constructor_name", ""),
+                            "grid": w.get("grid")})
+
+    # ── Pole → win conversion ────────────────────────────────────────
+    pole_races = [r for r in results if r.get("grid") == 1]
+    pole_wins = sum(1 for r in pole_races if r.get("position") == 1)
+
+    # ── Avg positions gained / lost ──────────────────────────────────
+    valid = [r for r in results
+             if r.get("grid") and r.get("position")
+             and r["grid"] > 0 and r["position"] > 0]
+    gains = [r["grid"] - r["position"] for r in valid]
+
+    # ── Constructor dominance ────────────────────────────────────────
+    cpt: dict[str, dict] = defaultdict(lambda: {"points": 0.0, "name": ""})
+    cseas: dict[str, set] = defaultdict(set)
+    for r in results:
+        cid = r.get("constructor_id", "")
+        cpt[cid]["points"] += r.get("points", 0)
+        cpt[cid]["name"] = r.get("constructor_name", cid)
+        cseas[cid].add(r.get("season"))
+    top_constructors = sorted(
+        [{"id": k, "name": v["name"], "points": v["points"],
+          "seasons": len(cseas[k])} for k, v in cpt.items()],
+        key=lambda x: -x["points"],
+    )[:10]
+
+    # ── Podium kings ─────────────────────────────────────────────────
+    pod: dict[str, int] = defaultdict(int)
+    for r in results:
+        if r.get("position") and r["position"] <= 3:
+            pod[r.get("driver_code", "")] += 1
+    top_podiums = sorted(
+        [{"driver": k, "count": v} for k, v in pod.items()],
+        key=lambda x: -x["count"],
+    )[:10]
+
+    # ── DNF rate ─────────────────────────────────────────────────────
+    total_entries = len(results)
+    dnfs = sum(1 for r in results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+    dnf_rate = round(dnfs / total_entries, 3) if total_entries else 0
+
+    return {
+        "circuit_id": circuit_id,
+        "race_name": race_name,
+        "seasons": seasons,
+        "winners": winners,
+        "pole_stats": {
+            "total": len(pole_races),
+            "wins": pole_wins,
+            "rate": round(pole_wins / len(pole_races), 3) if pole_races else 0,
+        },
+        "positions_gained": {
+            "avg": round(sum(gains) / len(gains), 2) if gains else 0,
+            "median": sorted(gains)[len(gains) // 2] if gains else 0,
+        },
+        "top_constructors": top_constructors,
+        "top_podiums": top_podiums,
+        "dnf_rate": dnf_rate,
+        "total_races": len(seasons),
+    }
+
+@app.post("/api/local/circuit_intel/kex/{circuit_id}")
+async def circuit_intel_kex(circuit_id: str, force: bool = False):
+    """Generate WISE knowledge extraction briefing for a circuit.
+
+    Uses on-screen data (metadata, pit loss, air density, historical performance)
+    to create a natural language intelligence briefing via OmniKeX LLM routing.
+    Results are cached in MongoDB per circuit.
+    """
+    import time as _time
+    import hashlib, json as _json
+    from collections import defaultdict
+
+    db = get_data_db()
+    coll = db["kex_circuit_briefings"]
+
+    # ── Gather all on-screen data ─────────────────────────────────────
+    circuit_meta = db["circuit_intelligence"].find_one(
+        {"circuit_slug": circuit_id},
+        {"_id": 0, "coordinates": 0, "bbox": 0},
+    )
+    pit_loss = db["circuit_pit_loss_times"].find_one(
+        {"circuit": circuit_id}, {"_id": 0},
+    )
+    air_data = list(db["race_air_density"].find(
+        {"circuit_slug": circuit_id}, {"_id": 0},
+    ).sort("year", 1))
+
+    # Historical performance (reuse same logic as history endpoint)
+    results = list(db["jolpica_race_results"].find(
+        {"circuit_id": circuit_id},
+        {"_id": 0, "season": 1, "race_name": 1,
+         "driver_code": 1, "constructor_id": 1, "constructor_name": 1,
+         "grid": 1, "position": 1, "points": 1, "status": 1},
+    ).sort([("season", 1), ("position", 1)]))
+
+    if not circuit_meta and not results:
+        raise HTTPException(404, f"No data for circuit {circuit_id}")
+
+    # ── Compute data hash to detect changes ───────────────────────────
+    hash_payload = _json.dumps(
+        {"meta": circuit_meta, "pit": pit_loss, "air": air_data, "results_count": len(results),
+         "latest_season": results[-1].get("season") if results else None},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches (data unchanged)
+    if not force:
+        existing = coll.find_one({"circuit_id": circuit_id})
+        if existing and existing.get("data_hash") == data_hash:
+            existing.pop("_id", None)
+            return existing
+
+    # Aggregate history
+    seasons = sorted(set(r["season"] for r in results)) if results else []
+    winners = []
+    for s in seasons:
+        w = next((r for r in results if r["season"] == s and r.get("position") == 1), None)
+        if w:
+            winners.append(f"{s}: {w.get('driver_code','')} ({w.get('constructor_name','')}), started P{w.get('grid','?')}")
+
+    pole_races = [r for r in results if r.get("grid") == 1]
+    pole_wins = sum(1 for r in pole_races if r.get("position") == 1)
+    pole_rate = round(pole_wins / len(pole_races) * 100, 1) if pole_races else 0
+
+    valid = [r for r in results if r.get("grid") and r.get("position") and r["grid"] > 0 and r["position"] > 0]
+    gains = [r["grid"] - r["position"] for r in valid]
+    avg_gain = round(sum(gains) / len(gains), 2) if gains else 0
+
+    cpt: dict[str, float] = defaultdict(float)
+    for r in results:
+        cpt[r.get("constructor_name", r.get("constructor_id", ""))] += r.get("points", 0)
+    top_teams = sorted(cpt.items(), key=lambda x: -x[1])[:5]
+
+    dnfs = sum(1 for r in results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+    dnf_rate = round(dnfs / len(results) * 100, 1) if results else 0
+
+    # ── Build WISE prompt from on-screen data ─────────────────────────
+    circuit_name = circuit_meta.get("circuit_name", circuit_id) if circuit_meta else circuit_id
+    race_name = results[0].get("race_name", circuit_name) if results else circuit_name
+
+    data_profile = f"""## Circuit: {circuit_name} ({race_name})
+
+### Physical Characteristics
+- Length: {circuit_meta.get('computed_length_m', 0) / 1000:.2f} km
+- Estimated corners: {circuit_meta.get('estimated_corners', '?')}
+- DRS zones: {circuit_meta.get('drs_zones', '?')}
+- Elevation gain: {circuit_meta.get('elevation_gain_m', 'N/A')}m
+- Sectors: {circuit_meta.get('sectors', 3)}
+""" if circuit_meta else ""
+
+    if pit_loss:
+        data_profile += f"""
+### Pit Stop Data
+- Estimated pit lane loss: {pit_loss.get('est_pit_lane_loss_s', '?')}s
+- Average total pit duration: {pit_loss.get('avg_total_pit_s', '?')}s
+- Median total pit duration: {pit_loss.get('median_total_pit_s', '?')}s
+- Sample count: {pit_loss.get('sample_count', '?')}
+"""
+
+    if air_data:
+        latest = air_data[-1]
+        data_profile += f"""
+### Environmental Conditions (latest: {latest.get('year', '?')})
+- Air density: {latest.get('air_density_kg_m3', '?')} kg/m³
+- Avg temperature: {latest.get('avg_temp_c', '?')}°C
+- Avg humidity: {latest.get('avg_humidity_pct', '?')}%
+- Elevation: {latest.get('elevation_m', '?')}m
+- Downforce loss: {latest.get('downforce_loss_pct', '?')}%
+- Historical temp range: {min(a.get('avg_temp_c', 99) for a in air_data):.1f}–{max(a.get('avg_temp_c', 0) for a in air_data):.1f}°C across {len(air_data)} seasons
+"""
+
+    if seasons:
+        data_profile += f"""
+### Historical Race Performance ({len(seasons)} seasons: {seasons[0]}–{seasons[-1]})
+- Pole → win conversion: {pole_rate}% ({pole_wins}/{len(pole_races)})
+- Avg positions gained per driver: {avg_gain}
+- DNF rate: {dnf_rate}%
+- Top constructors by points: {', '.join(f'{name} ({pts:.0f}pts)' for name, pts in top_teams)}
+
+### Race Winners
+{chr(10).join(winners) if winners else 'No winner data'}
+"""
+
+    prompt = f"""[WISE KNOWLEDGE EXTRACTION — Circuit Intelligence Briefing]
+
+You are an F1 strategy analyst preparing a circuit intelligence briefing for the race engineering team.
+Using ONLY the data below, provide actionable insights about this circuit.
+
+{data_profile}
+
+## Analysis Required:
+1. **Circuit Character**: What type of circuit is this (power, downforce, street)? How do its physical characteristics affect racing?
+2. **Strategic Implications**: What does the pit loss data tell us about strategy? Is this a 1-stop or 2-stop circuit?
+3. **Overtaking Potential**: Based on positions gained data and DRS zones, how easy is it to overtake here?
+4. **Historical Patterns**: Who dominates? Is pole position critical? Any constructor or driver trends?
+5. **Environmental Factors**: How do temperature and air density affect car setup and performance?
+
+Be concise and data-driven. Reference specific numbers from the data. Do NOT fabricate statistics.
+Format with clear section headers using ##.
+"""
+
+    # ── Call LLM via OmniKeX routing ──────────────────────────────────
+    try:
+        from omnikex.llm import generate
+        from omnikex._types import KexLLMConfig, LLMProvider
+
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.OLLAMA,
+            model="ministral-3:8b",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        text, model_used, provider_used = generate(prompt, config=llm_cfg)
+    except Exception as e:
+        logger.exception("Circuit KeX LLM generation failed for %s", circuit_id)
+        raise HTTPException(500, f"LLM generation failed: {e}")
+
+    # ── NLP enrichment ────────────────────────────────────────────────
+    try:
+        from pipeline.omni_kex_router import _enrich_nlp
+        nlp_meta = _enrich_nlp(text)
+    except Exception:
+        nlp_meta = {"sentiment": {"label": "neutral", "score": 0}, "entities": [], "topics": []}
+
+    now = _time.time()
+    result = {
+        "circuit_id": circuit_id,
+        "circuit_name": circuit_name,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "sentiment": nlp_meta.get("sentiment", {}),
+        "entities": nlp_meta.get("entities", []),
+        "topics": nlp_meta.get("topics", []),
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"circuit_id": circuit_id}, result, upsert=True)
+    result.pop("_id", None)
+    return result
 
 @app.get("/api/local/pipeline/anomaly")
 async def pipeline_anomaly():

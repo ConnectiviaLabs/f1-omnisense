@@ -3,9 +3,10 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Users, Search, Loader2, Target, Zap, Shield, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Users, Search, Loader2, Target, Zap, Shield, ChevronRight, AlertTriangle, X, Brain } from 'lucide-react';
 import type { DriverPerformanceMarker, DriverOvertakeProfile, DriverTelemetryProfile } from '../types';
 import * as api from '../api/driverIntel';
+import type { DriverKex } from '../api/driverIntel';
 import { HealthGauge } from './HealthGauge';
 import { StatusBadge } from './StatusBadge';
 import {
@@ -51,7 +52,12 @@ function normalize(val: number | null, min: number, max: number, invert = false)
   return invert ? 100 - norm : norm;
 }
 
-export function DriverIntel() {
+interface DriverIntelProps {
+  /** Hide the internal tab bar (used when pillar tabs are shown by PrimeDriver) */
+  showTabBar?: boolean;
+}
+
+export function DriverIntel({ showTabBar = true }: DriverIntelProps) {
   const [tab, setTab] = useState<Tab>('overview');
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
@@ -65,27 +71,29 @@ export function DriverIntel() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)] w-fit">
-        {([
-          { id: 'overview' as Tab, label: 'Driver Grid', icon: Users },
-          { id: 'performance' as Tab, label: 'Performance Profile', icon: Target },
-          { id: 'compare' as Tab, label: 'Compare Drivers', icon: Zap },
-        ]).map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`text-sm px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${
-              tab === t.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <t.icon className="w-3.5 h-3.5" />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {showTabBar && (
+        <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)] w-fit">
+          {([
+            { id: 'overview' as Tab, label: 'Driver Grid', icon: Users },
+            { id: 'performance' as Tab, label: 'Performance Profile', icon: Target },
+            { id: 'compare' as Tab, label: 'Compare Drivers', icon: Zap },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`text-sm px-4 py-1.5 rounded-md transition-all flex items-center gap-2 ${
+                tab === t.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <t.icon className="w-3.5 h-3.5" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'overview' && <DriverGrid onSelect={(d) => { setSelectedDriver(d); setTab('performance'); }} anomalyVehicles={anomalyVehicles} />}
-      {tab === 'performance' && <PerformanceProfile driverCode={selectedDriver} onSelect={setSelectedDriver} anomalyVehicles={anomalyVehicles} />}
+      {tab === 'performance' && <PerformanceProfile driverCode={selectedDriver} onSelect={setSelectedDriver} anomalyVehicles={anomalyVehicles} onCompare={() => setTab('compare')} />}
       {tab === 'compare' && <CompareDrivers />}
     </div>
   );
@@ -198,7 +206,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
 
 /* ─── Performance Profile ─── */
 
-function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverCode: string | null; onSelect: (code: string) => void; anomalyVehicles: VehicleData[] }) {
+function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare }: { driverCode: string | null; onSelect: (code: string) => void; anomalyVehicles: VehicleData[]; onCompare?: () => void }) {
   const [markers, setMarkers] = useState<DriverPerformanceMarker[]>([]);
   const [overtakes, setOvertakes] = useState<DriverOvertakeProfile[]>([]);
   const [telemetry, setTelemetry] = useState<DriverTelemetryProfile[]>([]);
@@ -206,6 +214,21 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
   const [allOvertakes, setAllOvertakes] = useState<DriverOvertakeProfile[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [kex, setKex] = useState<DriverKex | null>(null);
+  const [kexLoading, setKexLoading] = useState(false);
+
+  // Auto-generate KeX when driver changes (backend auto-regenerates if data changed)
+  useEffect(() => {
+    setKex(null);
+    if (!driverCode) return;
+    const driver = drivers.find((d: any) => d.driver_id === driverCode);
+    const code = driver?.driver_code || driver?.code || driverCode.slice(0, 3).toUpperCase();
+    setKexLoading(true);
+    api.getDriverKex(code)
+      .then(setKex)
+      .catch(() => setKex(null))
+      .finally(() => setKexLoading(false));
+  }, [driverCode, drivers]);
 
   // Load all data on mount
   useEffect(() => {
@@ -280,7 +303,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
 
   const healthTrendData = useMemo(() => {
     if (!selectedVehicle) return [];
-    return selectedVehicle.races.map(r => {
+    return selectedVehicle.races.slice(-10).map(r => {
       const row: Record<string, any> = { race: r.race };
       for (const [sysName, sys] of Object.entries(r.systems)) {
         row[sysName] = sys.health;
@@ -328,16 +351,28 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Radar Chart */}
         <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Target className="w-4 h-4" /> Performance Radar</h3>
+          <h3 className="text-sm text-muted-foreground mb-1 flex items-center gap-2"><Target className="w-4 h-4" /> Performance Radar</h3>
+          <p className="text-[10px] text-muted-foreground/60 mb-2">Normalized 0–100 across 6 dimensions</p>
           {radarData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="rgba(255,128,0,0.15)" />
-                <PolarAngleAxis dataKey="metric" tick={{ fill: '#888', fontSize: 11 }} />
-                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                <Radar name={driverName} dataKey="value" stroke="#FF8000" fill="#FF8000" fillOpacity={0.25} />
-              </RadarChart>
-            </ResponsiveContainer>
+            <>
+              <ResponsiveContainer width="100%" height={280}>
+                <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="75%">
+                  <PolarGrid stroke="rgba(255,128,0,0.12)" gridType="polygon" />
+                  <PolarAngleAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 500 }} />
+                  <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                  <Radar name={driverName} dataKey="value" stroke="#FF8000" strokeWidth={2} fill="#FF8000" fillOpacity={0.2} dot={{ r: 3, fill: '#FF8000', strokeWidth: 0 }} />
+                </RadarChart>
+              </ResponsiveContainer>
+              {/* Score summary */}
+              <div className="flex items-center justify-center gap-4 mt-1">
+                {radarData.map(d => (
+                  <div key={d.metric} className="text-center">
+                    <div className="text-[10px] text-muted-foreground">{d.metric}</div>
+                    <div className="text-[12px] font-mono font-medium text-foreground">{d.value.toFixed(0)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">No data available</div>
           )}
@@ -387,6 +422,20 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
+
+      {/* Compare CTA */}
+      {onCompare && (
+        <button
+          onClick={onCompare}
+          className="w-full bg-[#1A1F2E] border border-dashed border-[rgba(255,128,0,0.25)] rounded-xl p-4 flex items-center justify-center gap-3 hover:border-[#FF8000]/50 hover:bg-[#FF8000]/5 transition-all group"
+        >
+          <Zap className="w-4 h-4 text-[#FF8000]/60 group-hover:text-[#FF8000]" />
+          <span className="text-sm text-muted-foreground group-hover:text-foreground">
+            Compare <span className="text-[#FF8000]">{driverName}</span> against other drivers
+          </span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-[#FF8000]" />
+        </button>
       )}
 
       {/* ── System Health ── */}
@@ -518,7 +567,47 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles }: { driverC
               </div>
             </div>
           )}
+
         </>
+      )}
+
+      {/* ── WISE Driver Briefing ── */}
+      {driverCode && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
+            <Brain className="w-4 h-4" /> WISE Driver Briefing
+          </h3>
+          {kexLoading && (
+            <div className="flex items-center justify-center gap-2 py-6">
+              <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+              <span className="text-[11px] text-muted-foreground">Extracting driver intelligence…</span>
+            </div>
+          )}
+          {kex && !kexLoading && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-[#3b82f6]/20 text-[#3b82f6]">REALTIME</span>
+                {kex.sentiment && (
+                  <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
+                    kex.sentiment.label === 'positive' ? 'bg-green-500/15 text-green-400' :
+                    kex.sentiment.label === 'negative' ? 'bg-red-500/15 text-red-400' :
+                    'bg-zinc-500/15 text-zinc-400'
+                  }`}>
+                    {kex.sentiment.label === 'positive' ? '\u25B2' : kex.sentiment.label === 'negative' ? '\u25BC' : '\u25CF'} {kex.sentiment.score}
+                  </span>
+                )}
+                {kex.topics?.length > 0 && kex.topics.map(t => (
+                  <span key={t} className="text-[8px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{t}</span>
+                ))}
+              </div>
+              <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">{kex.text}</div>
+              <div className="flex items-center justify-between pt-2 border-t border-[rgba(255,128,0,0.06)]">
+                <span className="text-[9px] text-muted-foreground/50 font-mono">via {kex.model_used} ({kex.provider_used})</span>
+                <span className="text-[9px] text-muted-foreground/50">{new Date(kex.generated_at * 1000).toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -532,6 +621,7 @@ function CompareDrivers() {
   const [allTelemetry, setAllTelemetry] = useState<DriverTelemetryProfile[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
 
   const COMPARE_COLORS = ['#FF8000', '#3671C6', '#E8002D', '#27F4D2'];
@@ -559,18 +649,26 @@ function CompareDrivers() {
     });
   }, []);
 
+  const getDriverCode = useCallback((driverId: string) => {
+    const driver = drivers.find((d: any) => d.driver_id === driverId);
+    return driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
+  }, [drivers]);
+
+  const getDriverData = useCallback((code: string) => {
+    const m = allMarkers.find(x => x.Driver === code);
+    const o = allOvertakes.find(x => x.driver_code === code);
+    const t = allTelemetry.find(x => x.driver_code === code);
+    return { m, o, t };
+  }, [allMarkers, allOvertakes, allTelemetry]);
+
   const compareRadarData = useMemo(() => {
     if (selected.length < 2) return [];
     const metrics = ['Consistency', 'Tyre Mgmt', 'Overtaking', 'Late Race', 'Top Speed', 'Braking'];
     return metrics.map(metric => {
       const row: any = { metric };
       selected.forEach(driverId => {
-        const driver = drivers.find((d: any) => d.driver_id === driverId);
-        const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
-        const m = allMarkers.find(x => x.Driver === code);
-        const o = allOvertakes.find(x => x.driver_code === code);
-        const t = allTelemetry.find(x => x.driver_code === code);
-
+        const code = getDriverCode(driverId);
+        const { m, o, t } = getDriverData(code);
         let val = 0;
         switch (metric) {
           case 'Consistency': val = normalize(m?.lap_time_consistency_std ?? null, 0, 30, true); break;
@@ -584,86 +682,197 @@ function CompareDrivers() {
       });
       return row;
     });
-  }, [selected, drivers, allMarkers, allOvertakes, allTelemetry]);
+  }, [selected, getDriverCode, getDriverData]);
+
+  // Stat comparison rows
+  const comparisonStats = useMemo(() => {
+    if (selected.length < 2) return [];
+    const codes = selected.map(getDriverCode);
+    const dataMap = Object.fromEntries(codes.map(c => [c, getDriverData(c)]));
+
+    const fmt = (v: number | null | undefined, p = 2) => v != null ? v.toFixed(p) : '—';
+    const rows: { label: string; unit: string; values: Record<string, string>; bestDir?: 'low' | 'high' }[] = [
+      { label: 'Avg Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_race_speed_kmh, 1)])) },
+      { label: 'Top Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_race_speed_kmh, 1)])) },
+      { label: 'Braking G', unit: 'G', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_braking_g)])) },
+      { label: 'Full Throttle', unit: '%', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t ? dataMap[c].t!.full_throttle_ratio * 100 : null, 1)])) },
+      { label: 'DRS Gain', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.drs_speed_gain_kmh, 1)])) },
+      { label: 'Tyre Degradation', unit: 's/lap', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.degradation_slope_s_per_lap, 3)])) },
+      { label: 'Lap Consistency', unit: 'std', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.lap_time_consistency_std)])) },
+      { label: 'Late Race Delta', unit: 's', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.late_race_delta_s)])) },
+      { label: 'OT Made/Race', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtakes_per_race, 1)])) },
+      { label: 'OT Ratio', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtake_ratio)])) },
+    ];
+    return rows;
+  }, [selected, getDriverCode, getDriverData]);
+
+  const filteredDrivers = drivers.filter((d: any) => {
+    if (!search) return true;
+    const s = search.toLowerCase();
+    const code = (d.driver_code || d.code || '').toLowerCase();
+    const name = (d.driver_id || '').toLowerCase();
+    const team = (d.team || d.constructor || '').toLowerCase();
+    return code.includes(s) || name.includes(s) || team.includes(s);
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
   }
 
+  const selectedCodes = selected.map(getDriverCode);
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Select 2-4 drivers to compare. ({selected.length}/4 selected)</p>
-
-      {/* Driver picker chips */}
-      <div className="flex flex-wrap gap-2">
-        {drivers.map((d: any) => {
-          const isSelected = selected.includes(d.driver_id);
-          const idx = selected.indexOf(d.driver_id);
-          return (
-            <button
-              key={d.driver_id}
-              onClick={() => toggleDriver(d.driver_id)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                isSelected
-                  ? 'border-[#FF8000] text-[#FF8000] bg-[#FF8000]/10'
-                  : 'border-[rgba(255,128,0,0.12)] text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.3)]'
-              }`}
-              disabled={!isSelected && selected.length >= 4}
-            >
-              {isSelected && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: COMPARE_COLORS[idx] }} />}
-              {d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase()}
-            </button>
-          );
-        })}
+      {/* Selected drivers bar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {selected.length === 0 ? (
+          <span className="text-sm text-muted-foreground">Pick 2–4 drivers from below to compare</span>
+        ) : (
+          selected.map((driverId, i) => {
+            const code = getDriverCode(driverId);
+            const name = driverId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            return (
+              <button
+                key={driverId}
+                onClick={() => toggleDriver(driverId)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-all hover:bg-[rgba(255,128,0,0.05)]"
+                style={{ borderColor: COMPARE_COLORS[i], color: COMPARE_COLORS[i] }}
+              >
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COMPARE_COLORS[i] }} />
+                <span className="font-medium">{code}</span>
+                <span className="text-muted-foreground text-xs">{name}</span>
+                <X className="w-3 h-3 opacity-50 hover:opacity-100" />
+              </button>
+            );
+          })
+        )}
+        <span className="text-[10px] text-muted-foreground ml-auto">{selected.length}/4</span>
       </div>
 
-      {/* Overlaid Radar */}
-      {compareRadarData.length > 0 && (
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
-          <h3 className="text-sm text-muted-foreground mb-3">Performance Comparison</h3>
-          <ResponsiveContainer width="100%" height={400}>
-            <RadarChart data={compareRadarData}>
-              <PolarGrid stroke="rgba(255,128,0,0.15)" />
-              <PolarAngleAxis dataKey="metric" tick={{ fill: '#888', fontSize: 11 }} />
-              <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-              {selected.map((driverId, i) => {
-                const driver = drivers.find((d: any) => d.driver_id === driverId);
-                const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
-                return (
-                  <Radar
-                    key={driverId}
-                    name={code}
-                    dataKey={code}
-                    stroke={COMPARE_COLORS[i]}
-                    fill={COMPARE_COLORS[i]}
-                    fillOpacity={0.1}
-                  />
-                );
-              })}
-            </RadarChart>
-          </ResponsiveContainer>
-
-          {/* Legend */}
-          <div className="flex items-center justify-center gap-6 mt-2">
-            {selected.map((driverId, i) => {
-              const driver = drivers.find((d: any) => d.driver_id === driverId);
-              const code = driver?.driver_code || driver?.code || driverId.slice(0, 3).toUpperCase();
-              const name = driverId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      <div className="flex gap-4">
+        {/* Driver picker — scrollable list */}
+        <div className="w-[200px] shrink-0 space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search..."
+              className="w-full bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[#FF8000]/30"
+            />
+          </div>
+          <div className="space-y-0.5 max-h-[55vh] overflow-y-auto">
+            {filteredDrivers.map((d: any) => {
+              const isSelected = selected.includes(d.driver_id);
+              const idx = selected.indexOf(d.driver_id);
+              const code = d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase();
               return (
-                <div key={driverId} className="flex items-center gap-2 text-xs">
-                  <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COMPARE_COLORS[i] }} />
-                  <span className="text-foreground">{code}</span>
-                  <span className="text-muted-foreground">{name}</span>
-                </div>
+                <button
+                  key={d.driver_id}
+                  onClick={() => toggleDriver(d.driver_id)}
+                  disabled={!isSelected && selected.length >= 4}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-[12px] transition-all ${
+                    isSelected
+                      ? 'bg-[rgba(255,128,0,0.08)]'
+                      : 'hover:bg-[#222838] disabled:opacity-30'
+                  }`}
+                >
+                  {isSelected ? (
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COMPARE_COLORS[idx] }} />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full shrink-0 border border-[rgba(255,128,0,0.2)]" />
+                  )}
+                  <span className={`font-medium ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>{code}</span>
+                  <span className="text-muted-foreground text-[10px] truncate">{d.team || ''}</span>
+                </button>
               );
             })}
           </div>
         </div>
-      )}
 
-      {selected.length < 2 && (
-        <div className="text-center py-10 text-muted-foreground text-sm">Select at least 2 drivers to see the comparison radar.</div>
-      )}
+        {/* Main comparison area */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {selected.length < 2 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Users className="w-8 h-8 mb-3 opacity-40" />
+              <p className="text-sm">Select at least 2 drivers to compare</p>
+              <p className="text-[11px] mt-1 opacity-60">Performance radar + head-to-head stats</p>
+            </div>
+          ) : (
+            <>
+              {/* Radar */}
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <h3 className="text-[12px] font-medium text-foreground mb-1">Performance Comparison</h3>
+                <p className="text-[10px] text-muted-foreground/60 mb-2">Normalized 0–100 across 6 dimensions</p>
+                <ResponsiveContainer width="100%" height={320}>
+                  <RadarChart data={compareRadarData} cx="50%" cy="50%" outerRadius="75%">
+                    <PolarGrid stroke="rgba(255,128,0,0.12)" gridType="polygon" />
+                    <PolarAngleAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 11, fontWeight: 500 }} />
+                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                    {selected.map((driverId, i) => {
+                      const code = getDriverCode(driverId);
+                      return (
+                        <Radar
+                          key={driverId}
+                          name={code}
+                          dataKey={code}
+                          stroke={COMPARE_COLORS[i]}
+                          strokeWidth={2}
+                          fill={COMPARE_COLORS[i]}
+                          fillOpacity={0.08}
+                          dot={{ r: 3, fill: COMPARE_COLORS[i], strokeWidth: 0 }}
+                        />
+                      );
+                    })}
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Stats Table */}
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <h3 className="text-[12px] font-medium text-foreground mb-3">Head-to-Head Stats</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="border-b border-[rgba(255,128,0,0.1)]">
+                        <th className="text-left py-2 pr-4 text-muted-foreground font-medium">Metric</th>
+                        {selectedCodes.map((code, i) => (
+                          <th key={code} className="text-center px-3 py-2 font-semibold" style={{ color: COMPARE_COLORS[i] }}>{code}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparisonStats.map(row => {
+                        // Find best value
+                        const numVals = selectedCodes.map(c => parseFloat(row.values[c])).filter(v => !isNaN(v));
+                        const best = row.bestDir === 'high' ? Math.max(...numVals) : Math.min(...numVals);
+                        return (
+                          <tr key={row.label} className="border-b border-[rgba(255,128,0,0.04)]">
+                            <td className="py-2 pr-4 text-muted-foreground">
+                              {row.label}
+                              {row.unit && <span className="text-[9px] ml-1 opacity-50">{row.unit}</span>}
+                            </td>
+                            {selectedCodes.map((code) => {
+                              const val = row.values[code];
+                              const num = parseFloat(val);
+                              const isBest = !isNaN(num) && num === best && numVals.length > 1;
+                              return (
+                                <td key={code} className="text-center px-3 py-2 font-mono">
+                                  <span className={isBest ? 'text-[#FF8000] font-semibold' : 'text-foreground'}>{val}</span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

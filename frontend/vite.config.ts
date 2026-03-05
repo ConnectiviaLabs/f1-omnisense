@@ -260,20 +260,46 @@ function localDataPlugin() {
         res.end(JSON.stringify({ error: 'Not found' }));
       });
 
-      // Serve annotated images from McMedia results
+      // Serve media files (images + videos) from McMedia results
       server.middlewares.use('/media', (req: any, res: any, next: any) => {
-        const filePath = path.join(f1Root, 'f1data/McMedia', req.url.replace(/^\//, ''));
-        if (fs.existsSync(filePath)) {
-          const ext = path.extname(filePath).toLowerCase();
-          const mimeTypes: Record<string, string> = {
-            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-          };
-          res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-          res.end(fs.readFileSync(filePath));
+        const filePath = path.join(f1Root, 'f1data/McMedia', decodeURIComponent(req.url.replace(/^\//, '')));
+        if (!fs.existsSync(filePath)) { res.statusCode = 404; res.end('Not found'); return; }
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+          '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+        };
+        const mime = mimeTypes[ext] || 'application/octet-stream';
+        const stat = fs.statSync(filePath);
+
+        // Stream videos with Range support for seeking
+        if (ext === '.mp4' || ext === '.webm' || ext === '.mov') {
+          const range = req.headers.range;
+          if (range) {
+            const parts = range.replace(/bytes=/, '').split('-');
+            const start = parseInt(parts[0], 10);
+            const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+            res.writeHead(206, {
+              'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+              'Accept-Ranges': 'bytes',
+              'Content-Length': end - start + 1,
+              'Content-Type': mime,
+            });
+            fs.createReadStream(filePath, { start, end }).pipe(res);
+          } else {
+            res.writeHead(200, {
+              'Content-Length': stat.size,
+              'Content-Type': mime,
+              'Accept-Ranges': 'bytes',
+            });
+            fs.createReadStream(filePath).pipe(res);
+          }
           return;
         }
-        res.statusCode = 404;
-        res.end('Not found');
+
+        // Images: read into memory (small files)
+        res.setHeader('Content-Type', mime);
+        res.end(fs.readFileSync(filePath));
       });
     },
   };
@@ -567,6 +593,7 @@ export default defineConfig({
       '/api/opponents': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/circuit_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
+      '/api/anomaly': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/pipeline': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/f1data': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/mccar': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },

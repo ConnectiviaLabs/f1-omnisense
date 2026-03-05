@@ -40,3 +40,23 @@ export async function getLeaderboard(metric: string, topN = 10): Promise<any> {
   const res = await fetch(`${BASE}/opponents/leaderboard/${metric}?top_n=${topN}`);
   return res.json();
 }
+
+export interface DriverKex {
+  driver_code: string;
+  text: string;
+  model_used: string;
+  provider_used: string;
+  sentiment: { label: string; score: number };
+  entities: { text: string; label: string }[];
+  topics: string[];
+  generated_at: number;
+}
+
+export async function getDriverKex(driverCode: string, force = false): Promise<DriverKex> {
+  const qs = force ? '?force=true' : '';
+  const res = await fetch(`${BASE}/driver_intel/kex/${encodeURIComponent(driverCode)}${qs}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`KeX generation failed: ${res.status}`);
+  return res.json();
+}

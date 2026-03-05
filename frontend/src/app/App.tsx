@@ -1,42 +1,57 @@
 import { useState, useEffect, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
+import { Home } from './components/Home';
 import { LiveDashboard } from './components/LiveDashboard';
-import { McLarenAnalytics } from './components/McLarenAnalytics';
 import { CarTelemetry } from './components/CarTelemetry';
 import { DriverBiometrics } from './components/DriverBiometrics';
+import { PrimeDriver } from './components/PrimeDriver';
+import { PrimeCar } from './components/PrimeCar';
+import { PrimeStrategy } from './components/PrimeStrategy';
 import { AIInsights } from './components/AIInsights';
 import { Regulations } from './components/Regulations';
 import { MediaIntelligence } from './components/MediaIntelligence';
 import { Chatbot } from './components/Chatbot';
-import { FleetOverview } from './components/FleetOverview';
-import { DriverIntel } from './components/DriverIntel';
-import { CircuitIntel } from './components/CircuitIntel';
-import { RaceStrategy } from './components/RaceStrategy';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
+import type { Pillar, StrategyTab } from './components/Sidebar';
 import { parseAnomalyDrivers } from './components/anomalyHelpers';
 import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
 
+const RACE_DAY_VIEWS = new Set<ViewType>(['dashboard', 'car', 'driver']);
+
 const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
+  home: { title: 'Home', subtitle: '' },
   dashboard: { title: 'Live Race Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
-  'mclaren-analytics': { title: 'McLaren Analytics', subtitle: 'Season standings, race strategy, tire stints & pit stops' },
-  'driver-intel': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
-  'circuit-intel': { title: 'Circuit Intelligence', subtitle: 'Track layouts, pit loss times, air density & environmental conditions' },
   car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data across all drivers' },
   driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
+  'prime-driver': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
+  'prime-car': { title: 'Car Intelligence', subtitle: 'Predictive maintenance, anomaly detection & fleet health monitoring' },
+  'prime-strategy': { title: 'Strategy Intelligence', subtitle: 'Race strategy, circuit analysis & season analytics' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
   chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
-  'fleet-overview': { title: 'Fleet Overview', subtitle: 'McLaren predictive maintenance & vehicle health monitoring' },
-  'race-strategy': { title: 'Race Strategy', subtitle: 'Tyre degradation, pit windows, optimal strategies & SC probability' },
-  'anomaly-detection': { title: 'Anomaly Detection', subtitle: 'Ensemble anomaly scoring across all driver telemetry' },
-  forecasting: { title: 'Forecasting', subtitle: 'Time series predictions for key performance metrics' },
 };
 
 export default function App() {
-  const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const [activeView, setActiveView] = useState<ViewType>('home');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [lastPlatform, setLastPlatform] = useState<'race-day' | 'prime'>('race-day');
+  const [activePillar, setActivePillar] = useState<Pillar>('telemetry');
+  const [activeStrategyTab, setActiveStrategyTab] = useState<StrategyTab>('race-strategy');
+
+  // Track which platform we're in based on view changes
+  const platform: 'race-day' | 'prime' = RACE_DAY_VIEWS.has(activeView) ? 'race-day' : 'prime';
+
+  // Remember last platform for Knowledge views (so sidebar stays correct)
+  useEffect(() => {
+    if (RACE_DAY_VIEWS.has(activeView)) setLastPlatform('race-day');
+    else if (activeView.startsWith('prime-')) setLastPlatform('prime');
+  }, [activeView]);
+
+  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-')
+    ? platform
+    : lastPlatform;
 
   // ── Pre-fetch fleet anomaly + forecasts on app startup ──────────
   const [fleetVehicles, setFleetVehicles] = useState<VehicleData[]>([]);
@@ -44,7 +59,6 @@ export default function App() {
   const [fleetLoading, setFleetLoading] = useState(true);
   const forecastsFetched = useRef(false);
 
-  // 1. Fetch anomaly data immediately
   useEffect(() => {
     fetch('/api/pipeline/anomaly')
       .then(r => r.json())
@@ -53,7 +67,6 @@ export default function App() {
       .finally(() => setFleetLoading(false));
   }, []);
 
-  // 2. Once vehicles are loaded, pre-fetch forecasts for McLaren drivers
   const MCLAREN_CODES = new Set(['NOR', 'PIA']);
   useEffect(() => {
     if (fleetVehicles.length === 0 || forecastsFetched.current) return;
@@ -64,7 +77,6 @@ export default function App() {
       const critSystems = v.systems.filter(s => s.level === 'critical' || s.level === 'warning');
       const rawFeatures = [...new Set(critSystems.flatMap(s => s.metrics.slice(0, 2).map(m => m.label)))];
       if (rawFeatures.length === 0) return { code: v.code, forecasts: [] as FeatureForecast[] };
-      // SHAP labels are base names (e.g. SpeedI1); MongoDB columns use _mean suffix
       const features = rawFeatures.map(f => f.includes('_') ? f : `${f}_mean`);
 
       const results = await Promise.all(
@@ -114,32 +126,49 @@ export default function App() {
   const renderView = () => {
     switch (activeView) {
       case 'dashboard': return <LiveDashboard />;
-      case 'mclaren-analytics': return <McLarenAnalytics />;
-      case 'driver-intel': return <DriverIntel />;
-      case 'circuit-intel': return <CircuitIntel />;
       case 'car': return <CarTelemetry />;
       case 'driver': return <DriverBiometrics />;
+      case 'prime-driver': return <PrimeDriver prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
+      case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} activePillar={activePillar} />;
+      case 'prime-strategy': return <PrimeStrategy activeTab={activeStrategyTab} />;
       case 'ai-insights': return <AIInsights />;
       case 'regulations': return <Regulations />;
       case 'media': return <MediaIntelligence />;
       case 'chat': return <Chatbot />;
-      case 'fleet-overview': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
-      case 'race-strategy': return <RaceStrategy />;
-      case 'anomaly-detection': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
-      case 'forecasting': return <FleetOverview prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} />;
       default: return <LiveDashboard />;
     }
   };
 
+  // Home — full-width, no sidebar
+  if (activeView === 'home') {
+    return (
+      <div className="h-full bg-[#0D1117] font-['Inter',sans-serif]">
+        <Home onSelectPlatform={setActiveView} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex bg-[#0D1117] font-['Inter',sans-serif] overflow-hidden">
-      <Sidebar activeView={activeView} onViewChange={setActiveView} anomalyCount={fleetVehicles.filter(v => v.systems.some(s => s.level === 'critical')).length || undefined} />
+      <Sidebar
+        activeView={activeView}
+        onViewChange={setActiveView}
+        onGoHome={() => setActiveView('home')}
+        platform={effectivePlatform}
+        anomalyCount={fleetVehicles.filter(v => v.systems.some(s => s.level === 'critical')).length || undefined}
+        activePillar={activePillar}
+        onPillarChange={setActivePillar}
+        activeStrategyTab={activeStrategyTab}
+        onStrategyTabChange={setActiveStrategyTab}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
         <header className="h-12 border-b border-[rgba(255,128,0,0.12)] bg-[#0D1117] flex items-center justify-between px-4 shrink-0">
           <nav className="flex items-center gap-1.5 text-[11px] tracking-wide leading-none">
             <span className="text-muted-foreground">F1 OmniSense</span>
+            <ChevronRight className="w-3 h-3 text-[rgba(255,128,0,0.3)] shrink-0" />
+            <span className="text-muted-foreground">{effectivePlatform === 'race-day' ? 'Race Day' : 'Prime'}</span>
             <ChevronRight className="w-3 h-3 text-[rgba(255,128,0,0.3)] shrink-0" />
             <span className="text-foreground">{viewTitles[activeView].title}</span>
           </nav>
