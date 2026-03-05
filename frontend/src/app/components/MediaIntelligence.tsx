@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Play, Film,
+  Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Play, Film, Sparkles,
 } from 'lucide-react';
 import { pipeline } from '../api/local';
 
@@ -271,7 +271,7 @@ export function MediaIntelligence() {
   const [videos, setVideos] = useState<MediaVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analyzeResult, setAnalyzeResult] = useState<any>(null);
+  const [vlmAnalysis, setVlmAnalysis] = useState<{ analysis: string; tokens: number; time_s: number; tok_per_s: number; frames_analyzed: number; model: string } | null>(null);
 
   useEffect(() => {
     Promise.allSettled([
@@ -327,30 +327,24 @@ export function MediaIntelligence() {
     finally { setClipSearching(false); }
   };
 
-  const analyzeVideo = async (filename: string) => {
+  const runVlmAnalysis = async (filename: string) => {
     setAnalyzing(true);
-    setAnalyzeResult(null);
+    setVlmAnalysis(null);
     try {
-      const res = await fetch(`/api/omni/vis/analyze-video-by-name`, {
+      const res = await fetch('/api/vlm-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, tasks: 'detect,classify' }),
+        body: JSON.stringify({ filename }),
       });
       if (res.ok) {
         const data = await res.json();
-        setAnalyzeResult(data);
-        // Refresh pipeline data after analysis
-        pipeline.gdino().then(d => setGdinoData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d));
-        pipeline.videomae().then(d => {
-          if (d?.results) {
-            const mapped: Record<string, VideoModelResult> = {};
-            for (const r of d.results) mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
-            setVideomaeData(mapped);
-          }
-        });
+        setVlmAnalysis(data);
+      } else {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }));
+        setVlmAnalysis({ analysis: err.error || 'Analysis failed', tokens: 0, time_s: 0, tok_per_s: 0, frames_analyzed: 0, model: 'qwen3.5:2b' });
       }
     } catch (e) {
-      setAnalyzeResult({ error: String(e) });
+      setVlmAnalysis({ analysis: String(e), tokens: 0, time_s: 0, tok_per_s: 0, frames_analyzed: 0, model: 'qwen3.5:2b' });
     } finally {
       setAnalyzing(false);
     }
@@ -716,71 +710,40 @@ export function MediaIntelligence() {
               );
             })()}
 
-            {/* Analyze Button */}
+            {/* AI Analysis Button */}
             {selectedVideo && (
               <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)]">
-                <div className="text-[12px] text-muted-foreground mb-2">
-                  Selected: <span className="text-[#FF8000] font-mono">{selectedVideo}</span>
-                </div>
                 <button
-                  onClick={() => analyzeVideo(selectedVideo)}
+                  onClick={() => runVlmAnalysis(selectedVideo)}
                   disabled={analyzing}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#FF8000]/20 text-[#FF8000] text-sm rounded-lg hover:bg-[#FF8000]/30 disabled:opacity-40 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-500/20 text-purple-400 text-sm rounded-lg hover:bg-purple-500/30 disabled:opacity-40 transition-colors"
                 >
                   {analyzing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Analyzing on GPU...
+                      Analyzing with qwen3.5:2b...
                     </>
                   ) : (
                     <>
-                      <Scan className="w-4 h-4" />
-                      Analyze Video
+                      <Sparkles className="w-4 h-4" />
+                      AI Video Analysis
                     </>
                   )}
                 </button>
               </div>
             )}
 
-            {/* Analysis Result */}
-            {analyzeResult && (
-              <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.12)]">
-                {analyzeResult.error ? (
-                  <div className="text-[12px] text-red-400">{analyzeResult.error}</div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="text-[11px] text-muted-foreground tracking-wider">ANALYSIS COMPLETE</div>
-                    <div className="grid grid-cols-2 gap-2 text-[12px]">
-                      <div className="bg-[#0D1117] rounded-lg p-2">
-                        <div className="text-muted-foreground">Frames</div>
-                        <div className="text-foreground font-mono">{analyzeResult.sampled_frames ?? '—'} / {analyzeResult.total_frames ?? '—'}</div>
-                      </div>
-                      <div className="bg-[#0D1117] rounded-lg p-2">
-                        <div className="text-muted-foreground">FPS</div>
-                        <div className="text-foreground font-mono">{analyzeResult.fps ?? '—'}</div>
-                      </div>
-                    </div>
-                    {analyzeResult.classification && (
-                      <div>
-                        <div className="text-[11px] text-purple-400 tracking-wider mb-1">Classifications</div>
-                        {analyzeResult.classification.slice(0, 3).map((c: any, i: number) => (
-                          <div key={i} className="flex items-center gap-2 text-[12px]">
-                            <div className="w-16 h-1 bg-[#222838] rounded-full overflow-hidden">
-                              <div className="h-full bg-purple-400 rounded-full" style={{ width: `${(c.score ?? 0) * 100}%` }} />
-                            </div>
-                            <span className="font-mono text-foreground">{((c.score ?? 0) * 100).toFixed(1)}%</span>
-                            <span className="text-muted-foreground truncate">{c.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {analyzeResult.gdino && (
-                      <div className="text-[12px] text-muted-foreground">
-                        {analyzeResult.gdino.length} frames with detections
-                      </div>
-                    )}
-                  </div>
-                )}
+            {/* VLM Analysis Result */}
+            {vlmAnalysis && (
+              <div className="mt-3 bg-[#0D1117] border border-purple-500/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Brain className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-[11px] text-purple-400 tracking-wider font-mono">AI VIDEO ANALYSIS</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    {vlmAnalysis.model} · {vlmAnalysis.frames_analyzed} frames · {vlmAnalysis.tokens} tok · {vlmAnalysis.time_s}s
+                  </span>
+                </div>
+                <p className="text-[12px] text-foreground/90 leading-relaxed whitespace-pre-line">{vlmAnalysis.analysis}</p>
               </div>
             )}
           </div>

@@ -260,6 +260,110 @@ function localDataPlugin() {
         res.end(JSON.stringify({ error: 'Not found' }));
       });
 
+      // VLM analysis — sends frames + model context to Ollama qwen3.5:2b
+      server.middlewares.use('/api/vlm-analyze', async (req: any, res: any) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { filename } = JSON.parse(body);
+            const mcMediaDir = path.join(f1Root, 'f1data/McMedia');
+
+            // Load model results
+            const loadJson = (p: string) => { try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; } };
+            const gdino = loadJson(path.join(mcMediaDir, 'gdino_results/gdino_results.json'));
+            const fused = loadJson(path.join(mcMediaDir, 'fused_results/fused_results.json'));
+            const videomae = loadJson(path.join(mcMediaDir, 'videomae_results/videomae_results.json'));
+            const timesformer = loadJson(path.join(mcMediaDir, 'timesformer_results/timesformer_results.json'));
+
+            // Get detection frames for this video
+            const gdinoFrames = gdino[filename] || [];
+            const fusedFrames = Array.isArray(fused[filename]) ? fused[filename] : [];
+
+            // Pick up to 8 evenly spaced frame images
+            const frameImages: string[] = [];
+            const frameDir = path.join(mcMediaDir, 'gdino_results');
+            const availableFrames = gdinoFrames.filter((f: any) => f.output_image && fs.existsSync(path.join(frameDir, f.output_image)));
+            const step = Math.max(1, Math.floor(availableFrames.length / 8));
+            const selected = availableFrames.filter((_: any, i: number) => i % step === 0).slice(0, 8);
+
+            for (const frame of selected) {
+              const imgPath = path.join(frameDir, frame.output_image);
+              const imgBuf = fs.readFileSync(imgPath);
+              frameImages.push(imgBuf.toString('base64'));
+            }
+
+            // Summarize detections across all frames
+            const allDets: Record<string, number[]> = {};
+            for (const src of [gdinoFrames, fusedFrames]) {
+              for (const frame of src) {
+                for (const det of (frame.detections || [])) {
+                  if (!allDets[det.category]) allDets[det.category] = [];
+                  allDets[det.category].push(det.score || 0);
+                }
+              }
+            }
+            const detSummary = Object.entries(allDets)
+              .sort((a, b) => Math.max(...b[1]) - Math.max(...a[1]))
+              .slice(0, 15)
+              .map(([cat, scores]) => `  - ${cat}: seen ${scores.length}x, best ${Math.round(Math.max(...scores) * 100)}%, avg ${Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100)}%`)
+              .join('\n');
+
+            // Summarize classifications
+            const classLines: string[] = [];
+            for (const [name, data] of [['VideoMAE', videomae[filename]], ['TimeSformer', timesformer[filename]]] as const) {
+              const preds = (data as any)?.top_predictions?.slice(0, 3) || [];
+              if (preds.length) {
+                classLines.push(`  ${name}: ${preds.map((p: any) => `${p.label} (${Math.round(p.score * 100)}%)`).join(', ')}`);
+              }
+            }
+
+            const prompt = `You are an F1 race strategy engineer at McLaren analyzing video: ${filename}\n\n` +
+              `I'm showing you ${frameImages.length} evenly-spaced frames from this video.\n\n` +
+              `OBJECT DETECTION RESULTS (GroundingDINO + SAM2):\n${detSummary || 'No objects detected.'}\n\n` +
+              `ACTION CLASSIFICATION:\n${classLines.join('\n') || 'No classifications available.'}\n\n` +
+              `Based on these ${frameImages.length} frames and the model results above, provide:\n` +
+              `1. SCENE: What's happening in this video (1-2 sentences)\n` +
+              `2. OBJECTS: Key objects visible and their condition\n` +
+              `3. CONDITIONS: Track/weather conditions observed\n` +
+              `4. STRATEGIC: Any strategic implications\n\n` +
+              `Be direct. No markdown. No preamble.`;
+
+            // Call Ollama
+            const ollamaRes = await fetch('http://localhost:11434/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'qwen3.5:2b',
+                messages: [{ role: 'user', content: prompt, images: frameImages }],
+                stream: false,
+                options: { temperature: 0.3, num_predict: 512 },
+              }),
+            });
+
+            const ollamaData = await ollamaRes.json();
+            const analysis = ollamaData.message?.content || '';
+            const tokens = ollamaData.eval_count || 0;
+            const totalDur = (ollamaData.total_duration || 0) / 1e9;
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              analysis,
+              tokens,
+              time_s: Math.round(totalDur * 100) / 100,
+              tok_per_s: totalDur > 0 ? Math.round(tokens / totalDur * 10) / 10 : 0,
+              frames_analyzed: frameImages.length,
+              model: 'qwen3.5:2b',
+            }));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+      });
+
       // Serve media files (images + videos) from McMedia results
       server.middlewares.use('/media', (req: any, res: any, next: any) => {
         const filePath = path.join(f1Root, 'f1data/McMedia', decodeURIComponent(req.url.replace(/^\//, '')));
