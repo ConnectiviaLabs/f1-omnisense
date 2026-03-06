@@ -1,6 +1,6 @@
 // Shared anomaly/health types and helpers — used by FleetOverview & LiveDashboard
 import {
-  Gauge, Activity, Disc, Cpu,
+  Gauge, Activity, Disc, Cpu, Zap, Thermometer, CircuitBoard,
   ShieldAlert, Bell, Eye, FileText, CheckCircle2,
 } from 'lucide-react';
 
@@ -53,8 +53,12 @@ export interface VehicleData {
 
 // ─── Constants ─────────────────────────────────────────────────────
 export const SYSTEM_ICONS: Record<string, React.ElementType> = {
-  'Speed': Gauge,
-  'Lap Pace': Activity,
+  'Power Unit': Zap,
+  'Brakes': Gauge,
+  'Drivetrain': Activity,
+  'Suspension': Cpu,
+  'Thermal': Thermometer,
+  'Electronics': CircuitBoard,
   'Tyre Management': Disc,
 };
 

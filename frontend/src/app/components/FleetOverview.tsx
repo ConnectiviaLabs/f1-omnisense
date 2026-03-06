@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertTriangle, CheckCircle2, XCircle, Activity,
   CircleDot, Shield, TrendingUp, TrendingDown, Minus, Cpu,
@@ -8,6 +9,7 @@ import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ReferenceLine,
 } from 'recharts';
 import KexBriefingCard from './KexBriefingCard';
+import { getCarTelemetryKex, getForecastKex, getAnomalyKex, type CarTelemetryKex, type ForecastKex } from '../api/driverIntel';
 import * as model3dApi from '../api/model3d';
 import type { Job } from '../api/model3d';
 import {
@@ -100,31 +102,31 @@ interface FleetOverviewProps {
   defaultSection?: 'telemetry' | 'anomaly' | 'forecast';
 }
 
-interface AnomalyKex {
-  driver_code: string;
-  text: string;
-  model_used: string;
-  provider_used: string;
-  scores: Record<string, number>;
-  summary: string;
-  generated_at: number;
-}
+type FleetTab = 'telemetry' | 'anomaly' | 'forecast';
 
-async function getAnomalyKex(driverCode: string): Promise<AnomalyKex> {
-  const res = await fetch(`/api/anomaly/kex/${encodeURIComponent(driverCode)}`, { method: 'POST' });
-  if (!res.ok) throw new Error(`Anomaly KeX failed: ${res.status}`);
-  return res.json();
-}
+const TAB_CONFIG: { id: FleetTab; label: string; icon: React.ElementType }[] = [
+  { id: 'telemetry', label: 'Telemetry', icon: Gauge },
+  { id: 'anomaly', label: 'Anomaly Detection', icon: AlertTriangle },
+  { id: 'forecast', label: 'Forecasting', icon: TrendingUp },
+];
 
-export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetchLoading, defaultSection: _defaultSection }: FleetOverviewProps) {
+export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetchLoading, defaultSection }: FleetOverviewProps) {
   const [vehicles, setVehicles] = useState<VehicleData[]>([]);
   const [selectedCar, setSelectedCar] = useState<VehicleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [liveSource, setLiveSource] = useState<'cached' | 'live' | null>(null);
 
-  // KeX state
-  const [kex, setKex] = useState<AnomalyKex | null>(null);
-  const [kexLoading, setKexLoading] = useState(false);
+  // Tab state — syncs with sidebar pillar selection
+  const [activeTab, setActiveTab] = useState<FleetTab>(defaultSection ?? 'telemetry');
+  useEffect(() => { if (defaultSection) setActiveTab(defaultSection as FleetTab); }, [defaultSection]);
+
+  // Per-tab KeX state (lazy-loaded)
+  const [anomalyKex, setAnomalyKex] = useState<any>(null);
+  const [anomalyKexLoading, setAnomalyKexLoading] = useState(false);
+  const [telemetryKex, setTelemetryKex] = useState<CarTelemetryKex | null>(null);
+  const [telemetryKexLoading, setTelemetryKexLoading] = useState(false);
+  const [forecastKex, setForecastKex] = useState<ForecastKex | null>(null);
+  const [forecastKexLoading, setForecastKexLoading] = useState(false);
 
   // Registration state
   const [showRegister, setShowRegister] = useState(false);
@@ -385,16 +387,36 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     fetchLive();
   }, [vehicles.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-generate KeX when selected car changes (backend auto-regenerates if data changed)
+  // Lazy-load KeX per active tab + selected driver
   useEffect(() => {
-    setKex(null);
-    if (!selectedCar) return;
-    setKexLoading(true);
+    setAnomalyKex(null);
+    if (!selectedCar || activeTab !== 'anomaly') return;
+    setAnomalyKexLoading(true);
     getAnomalyKex(selectedCar.code)
-      .then(setKex)
-      .catch(() => setKex(null))
-      .finally(() => setKexLoading(false));
-  }, [selectedCar?.code]); // eslint-disable-line react-hooks/exhaustive-deps
+      .then(setAnomalyKex)
+      .catch(() => setAnomalyKex(null))
+      .finally(() => setAnomalyKexLoading(false));
+  }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setTelemetryKex(null);
+    if (!selectedCar || activeTab !== 'telemetry') return;
+    setTelemetryKexLoading(true);
+    getCarTelemetryKex(selectedCar.code, 2024)
+      .then(setTelemetryKex)
+      .catch(() => setTelemetryKex(null))
+      .finally(() => setTelemetryKexLoading(false));
+  }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setForecastKex(null);
+    if (!selectedCar || activeTab !== 'forecast') return;
+    setForecastKexLoading(true);
+    getForecastKex(selectedCar.code)
+      .then(setForecastKex)
+      .catch(() => setForecastKex(null))
+      .finally(() => setForecastKexLoading(false));
+  }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Race-by-race trend from anomaly data
   // Extract available years from the selected car's race history
@@ -703,7 +725,36 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             )}
           </div>
 
-          {/* ── 3D Car + Driver Stats ── */}
+          {/* ── Tab Navigation ── */}
+          <div className="flex items-center gap-1 bg-[#0D1117]/60 p-1 rounded-xl w-fit border border-[rgba(255,128,0,0.06)]">
+            {TAB_CONFIG.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`relative text-[13px] px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-medium ${
+                  activeTab === t.id
+                    ? 'bg-[#FF8000]/10 text-[#FF8000]'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[#1A1F2E]/60'
+                }`}
+              >
+                <t.icon className="w-3.5 h-3.5" />
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-4"
+            >
+
+          {/* ════════════ TELEMETRY TAB ════════════ */}
+          {activeTab === 'telemetry' && (<>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* 3D Car Viewer — 2/3 */}
             <div className="lg:col-span-2 bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
@@ -851,16 +902,17 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             </div>
           </div>
 
-          {/* ── WISE Anomaly Briefing ── */}
           <KexBriefingCard
-            title="WISE Anomaly Briefing"
-            icon="sparkles"
-            kex={kex}
-            loading={kexLoading}
-            loadingText="Extracting anomaly intelligence\u2026"
+            title="WISE Telemetry Briefing"
+            icon="brain"
+            kex={telemetryKex}
+            loading={telemetryKexLoading}
+            loadingText="Analyzing car telemetry data\u2026"
           />
+          </>)}
 
-          {/* ── Season Health Trend ── */}
+          {/* ════════════ ANOMALY TAB ════════════ */}
+          {activeTab === 'anomaly' && (<>
           {trendData.length > 0 && (
             <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
               <div className="flex items-center justify-between mb-2">
@@ -943,7 +995,17 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             </div>
           )}
 
-          {/* ── Feature Forecasts ── */}
+          <KexBriefingCard
+            title="WISE Anomaly Briefing"
+            icon="sparkles"
+            kex={anomalyKex}
+            loading={anomalyKexLoading}
+            loadingText="Extracting anomaly intelligence\u2026"
+          />
+          </>)}
+
+          {/* ════════════ FORECAST TAB ════════════ */}
+          {activeTab === 'forecast' && (<>
           {forecastLoading && (
             <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF8000]" />
@@ -1041,6 +1103,18 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
               </div>
             </div>
           )}
+
+          <KexBriefingCard
+            title="WISE Forecast Briefing"
+            icon="sparkles"
+            kex={forecastKex}
+            loading={forecastKexLoading}
+            loadingText="Generating predictive maintenance forecast\u2026"
+          />
+          </>)}
+
+            </motion.div>
+          </AnimatePresence>
 
 
         </div>

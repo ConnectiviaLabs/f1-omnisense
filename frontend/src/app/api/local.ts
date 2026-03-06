@@ -69,6 +69,17 @@ export const strategy = {
     return fetchLocal<any>(`local/strategy/elt${qs ? '?' + qs : ''}`);
   },
   scProbability: () => fetchLocal<any>('local/strategy/sc-probability'),
+  xgboost: () => fetchLocal<any>('local/strategy/xgboost'),
+  bilstm: () => fetchLocal<any>('local/strategy/bilstm'),
+  predictLap: (params: {
+    circuit: string; driver_code: string; compound: string;
+    lap_start?: number; lap_end?: number; tyre_life_start?: number;
+    position?: number; stint?: number; baseline_pace_s?: number | null;
+  }) => fetch(`/api/local/strategy/predict-lap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`predict-lap: ${r.status}`); return r.json(); }),
   battleIntel: (sessionKey?: number) => {
     const p = sessionKey ? `?session_key=${sessionKey}` : '';
     return fetchLocal<any>(`local/strategy/battle-intel${p}`);

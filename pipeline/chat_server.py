@@ -1111,6 +1111,168 @@ async def driver_intel_kex(driver_code: str, force: bool = False):
     return result
 
 
+@app.post("/api/local/mccar-telemetry/kex/{driver_code}")
+async def car_telemetry_kex(driver_code: str, body: dict = {}):
+    """Generate WISE knowledge extraction briefing for car telemetry data.
+
+    If body contains 'race', generates a race-level briefing.
+    Otherwise generates a season-level briefing for the given year.
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    code = driver_code.upper()
+    year = body.get("year")
+    race = body.get("race")
+    db = get_data_db()
+    coll = db["kex_car_telemetry_briefings"]
+
+    if not year:
+        raise HTTPException(400, "year is required in request body")
+
+    # ── Gather telemetry data ─────────────────────────────────────────
+    if race:
+        # Race-level: summary + per-lap data
+        summary_doc = db["telemetry_race_summary"].find_one(
+            {"Driver": code, "Year": int(year), "Race": race},
+            {"_id": 0, "compounds": 0},
+        )
+        lap_docs = list(db["telemetry_lap_summary"].find(
+            {"driver_acronym": code, "year": int(year), "meeting_name": {"$regex": race}},
+            {"_id": 0},
+        ))
+        if not summary_doc and not lap_docs:
+            raise HTTPException(404, f"No telemetry for {code} at {race} {year}")
+
+        # Build DataFrame: one row from summary, plus per-lap progression
+        rows = []
+        if summary_doc:
+            rows.append(summary_doc)
+        if lap_docs:
+            # Add per-lap stats as additional rows for richer fingerprinting
+            for ld in lap_docs:
+                rows.append(ld)
+
+        cache_key = f"{code}:{year}:{race}"
+        briefing_type = "race"
+    else:
+        # Season-level: all race summaries for this driver+year
+        telem_docs = list(db["telemetry_race_summary"].find(
+            {"Driver": code, "Year": int(year)},
+            {"_id": 0, "compounds": 0},
+        ))
+        if not telem_docs:
+            raise HTTPException(404, f"No telemetry for {code} in {year}")
+        rows = telem_docs
+        cache_key = f"{code}:{year}:season"
+        briefing_type = "season"
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = f"v1:{cache_key}:{len(rows)}"
+    if rows:
+        last = {k: v for k, v in rows[-1].items() if k not in ("_id",)}
+        hash_payload += ":" + _json.dumps(last, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(rows)
+    # Drop non-numeric metadata
+    drop_cols = [c for c in ["Driver", "driver_acronym", "meeting_name",
+                              "session_name", "session_type", "compound",
+                              "_id"] if c in df.columns]
+    df = df.drop(columns=drop_cols, errors="ignore")
+
+    # ── WISE extraction via OmniKeX ───────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    if briefing_type == "race":
+        persona = (
+            f"You are an F1 telemetry engineer analyzing {code}'s car performance at {race} {year}. "
+            "Focus on speed characteristics, braking behavior, DRS usage patterns, "
+            "tyre degradation across stints, and lap time consistency. "
+            "Identify standout metrics and areas for improvement. "
+            "IMPORTANT: Write a concise flowing analysis in 3-4 paragraphs. "
+            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+            "Do NOT include markdown tables. Just write clear engineering prose."
+        )
+        query = f"Analyze {code}'s car telemetry at {race} {year} — speed, braking, DRS, tyre life, and lap consistency."
+    else:
+        persona = (
+            f"You are an F1 telemetry engineer analyzing {code}'s {year} season car performance. "
+            "Focus on performance trends across races, consistency of speed and braking, "
+            "circuits where the car excelled or struggled, and overall progression through the season. "
+            "IMPORTANT: Write a concise flowing analysis in 3-4 paragraphs. "
+            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+            "Do NOT include markdown tables. Just write clear engineering prose."
+        )
+        query = f"Analyze {code}'s car telemetry across the {year} season — performance trends, consistency, and notable outliers."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Car telemetry KeX Groq failed for %s, falling back to edge: %s", code, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Car telemetry KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "cache_key": cache_key,
+        "driver_code": code,
+        "year": int(year),
+        "race": race,
+        "type": briefing_type,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 @app.post("/api/local/anomaly/kex/{driver_code}")
 async def anomaly_kex(driver_code: str):
     """Generate WISE knowledge extraction briefing for a driver's anomaly/health data.
@@ -1242,6 +1404,128 @@ async def anomaly_kex(driver_code: str):
             grounding_score = None
         except Exception as e2:
             logger.exception("Anomaly KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/forecast/kex/{driver_code}")
+async def forecast_kex(driver_code: str):
+    """Generate WISE predictive maintenance forecast for a driver.
+
+    Uses race-by-race anomaly trends to forecast reliability risks
+    and maintenance priorities.  Auto-regenerates when source data changes.
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_forecast_briefings"]
+
+    # ── Gather anomaly data ───────────────────────────────────────────
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_data = None
+    if "drivers" in snapshot:
+        for d in snapshot.get("drivers", []):
+            if d.get("code") == code or d.get("name_acronym") == code:
+                driver_data = d
+                break
+
+    if not driver_data:
+        raise HTTPException(404, f"No anomaly data for driver {code}")
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = "v1:forecast:" + _json.dumps(driver_data, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"driver_code": code})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    # ── Build DataFrame from ALL race trends ──────────────────────────
+    import pandas as pd
+
+    races = driver_data.get("races", [])
+    trend_rows = []
+    for r in races:                       # ALL races, not just last 10
+        row = {"race": r.get("race", "")}
+        for sname, sinfo in r.get("systems", {}).items():
+            row[f"{sname}_health"] = sinfo.get("health")
+            if sinfo.get("maintenance_action") and sinfo["maintenance_action"] != "none":
+                row[f"{sname}_action"] = sinfo["maintenance_action"]
+        trend_rows.append(row)
+
+    if not trend_rows:
+        raise HTTPException(404, f"No race trend data for {code}")
+
+    df = pd.DataFrame(trend_rows)
+
+    # ── WISE extraction ───────────────────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    persona = (
+        f"You are an F1 predictive maintenance engineer analyzing race-by-race reliability trends for driver {code}. "
+        "Focus on: deterioration patterns across systems, which systems are trending toward failure, "
+        "risk projections for upcoming races, and maintenance scheduling recommendations. "
+        "Consider rate of degradation, seasonality effects, and cumulative wear patterns. "
+        "IMPORTANT: Write a concise flowing forecast in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Forecast reliability trends for {code} — which systems are deteriorating, risk projections, and maintenance scheduling priorities."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="forecast",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Forecast KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="forecast",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Forecast KeX edge fallback also failed for %s", code)
             raise HTTPException(500, f"WISE extraction failed: {e2}")
 
     scores = _scores_from_fingerprint(insight)
@@ -2070,6 +2354,256 @@ async def strategy_sc_probability():
         "metadata": metadata,
         "feature_importances": feat_imp.get("features", {}) if feat_imp else {},
         "circuit_sc_rates": metadata.get("circuit_sc_rates", {}) if metadata else {},
+    }
+
+
+@app.get("/api/local/strategy/xgboost")
+async def strategy_xgboost():
+    """XGBoost lap time prediction model metadata, feature importances & circuit accuracy."""
+    db = get_data_db()
+    metadata = db["xgboost_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+    feat_imp = db["xgboost_lap_predictions"].find_one({"type": "feature_importance"}, {"_id": 0})
+    circuit_acc = db["xgboost_lap_predictions"].find_one({"type": "circuit_accuracy"}, {"_id": 0})
+
+    return {
+        "metadata": metadata,
+        "feature_importances": feat_imp.get("features", {}) if feat_imp else {},
+        "circuit_accuracy": circuit_acc.get("circuits", {}) if circuit_acc else {},
+    }
+
+
+@app.get("/api/local/strategy/bilstm")
+async def strategy_bilstm():
+    """BiLSTM lap time prediction model metadata."""
+    db = get_data_db()
+    metadata = db["bilstm_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+
+    return {
+        "metadata": metadata,
+    }
+
+
+# ── XGBoost Lap Time Inference ──────────────────────────────────────
+
+_xgb_model = None  # lazy-loaded
+
+
+def _load_xgb_model():
+    global _xgb_model
+    if _xgb_model is not None:
+        return _xgb_model
+    import xgboost as xgb
+    pkl_path = Path(__file__).parent.parent / "colabModels" / "xgboost_predictor" / "output" / "xgboost_lap_predictor.pkl"
+    if not pkl_path.exists():
+        raise HTTPException(404, "XGBoost model weights not found on disk")
+    import pickle
+    with open(pkl_path, "rb") as f:
+        _xgb_model = pickle.load(f)
+    logger.info(f"XGBoost model loaded from {pkl_path}")
+    return _xgb_model
+
+
+class LapPredictionRequest(BaseModel):
+    circuit: str  # e.g. "Bahrain Grand Prix"
+    driver_code: str  # e.g. "NOR"
+    compound: str  # SOFT, MEDIUM, HARD
+    lap_start: int = 1
+    lap_end: int = 20
+    tyre_life_start: int = 1
+    position: int = 10
+    stint: int = 1
+    baseline_pace_s: float | None = None  # if None, looked up from data
+
+
+@app.post("/api/local/strategy/predict-lap")
+async def strategy_predict_lap(req: LapPredictionRequest):
+    """Predict lap times using XGBoost model with auto-filled features from MongoDB."""
+    model = _load_xgb_model()
+    db = get_data_db()
+
+    # Load encodings from metadata
+    meta = db["xgboost_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+    if not meta:
+        raise HTTPException(500, "XGBoost metadata not found in MongoDB")
+
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+
+    # Validate inputs
+    compound_code = compound_map.get(req.compound.upper())
+    if compound_code is None:
+        raise HTTPException(400, f"Unknown compound: {req.compound}. Use SOFT/MEDIUM/HARD")
+    circuit_code = circuit_rank.get(req.circuit)
+    if circuit_code is None:
+        raise HTTPException(400, f"Unknown circuit: {req.circuit}. Known: {list(circuit_rank.keys())[:5]}...")
+    driver_code_enc = driver_rank.get(req.driver_code.upper())
+    if driver_code_enc is None:
+        raise HTTPException(400, f"Unknown driver: {req.driver_code}. Known: {list(driver_rank.keys())[:10]}...")
+
+    # Look up team for driver
+    standing = db["jolpica_driver_standings"].find_one(
+        {"driver_code": req.driver_code.upper()},
+        {"_id": 0, "constructor_name": 1},
+        sort=[("season", -1)],
+    )
+    team_name = standing["constructor_name"] if standing else "McLaren"
+    team_code = team_rank.get(team_name, team_rank.get("McLaren", 3))
+
+    # Get total laps for circuit (from most recent race)
+    race_doc = db["jolpica_race_results"].find_one(
+        {"race_name": req.circuit, "position": 1},
+        {"_id": 0, "laps": 1},
+        sort=[("season", -1)],
+    )
+    total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
+
+    # Weather: most recent air density for this circuit
+    air_doc = db["race_air_density"].find_one(
+        {"race": req.circuit},
+        {"_id": 0},
+        sort=[("year", -1)],
+    )
+    air_temp = air_doc["avg_temp_c"] if air_doc else 28.0
+    humidity = air_doc["avg_humidity_pct"] if air_doc else 40.0
+    air_density = air_doc["air_density_kg_m3"] if air_doc else 1.18
+    track_temp = air_temp + 15  # rough approximation
+
+    # Speed: from telemetry_race_summary for this driver at this circuit
+    telem_doc = db["telemetry_race_summary"].find_one(
+        {"Driver": req.driver_code.upper(), "Race": req.circuit},
+        {"_id": 0, "avg_speed": 1, "top_speed": 1},
+        sort=[("Year", -1)],
+    )
+    if not telem_doc:
+        # Fallback: any driver at this circuit
+        telem_doc = db["telemetry_race_summary"].find_one(
+            {"Race": req.circuit},
+            {"_id": 0, "avg_speed": 1, "top_speed": 1},
+            sort=[("Year", -1)],
+        )
+    avg_speed = telem_doc["avg_speed"] if telem_doc else 200.0
+    top_speed = telem_doc["top_speed"] if telem_doc else 310.0
+
+    # Degradation curve for expected delta
+    deg_doc = db["tyre_degradation_curves"].find_one(
+        {"circuit": req.circuit, "compound": req.compound.upper(), "temp_band": "all"},
+        {"_id": 0, "coefficients": 1, "intercept": 1, "degree": 1},
+    )
+    if not deg_doc:
+        deg_doc = db["tyre_degradation_curves"].find_one(
+            {"circuit": req.circuit, "compound": req.compound.upper()},
+            {"_id": 0, "coefficients": 1, "intercept": 1, "degree": 1},
+        )
+
+    def calc_deg_delta(tyre_life: int) -> float:
+        if not deg_doc or not deg_doc.get("coefficients"):
+            return 0.0
+        coeffs = deg_doc["coefficients"]
+        intercept = deg_doc.get("intercept", 0)
+        val = intercept
+        for i, c in enumerate(coeffs):
+            val += c * (tyre_life ** (i + 1))
+        return val
+
+    # Baseline pace: look up or use provided
+    if req.baseline_pace_s:
+        baseline = req.baseline_pace_s
+    else:
+        # Use fastf1_laps average for driver at circuit (MongoDB 6.x compat)
+        pipeline = [
+            {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                        "LapTime": {"$gt": 50, "$lt": 200}}},
+            {"$group": {"_id": None, "avg": {"$avg": "$LapTime"}}},
+        ]
+        agg = list(db["fastf1_laps"].aggregate(pipeline))
+        if agg and agg[0].get("avg"):
+            baseline = agg[0]["avg"]
+        else:
+            # Fallback: any driver at this circuit
+            pipeline[0]["$match"] = {"Race": req.circuit, "LapTime": {"$gt": 50, "$lt": 200}}
+            agg = list(db["fastf1_laps"].aggregate(pipeline))
+            baseline = agg[0]["avg"] if agg and agg[0].get("avg") else 90.0
+
+    # Build feature vectors for each lap
+    features_order = meta["features"]
+    predictions = []
+    prev_laps = [baseline, baseline, baseline]  # lag1, lag2, lag3
+
+    for lap_num in range(req.lap_start, req.lap_end + 1):
+        tyre_life = req.tyre_life_start + (lap_num - req.lap_start)
+        race_progress = lap_num / total_laps
+        fuel_load = 1.0 - race_progress
+        fresh_tyre = 1 if tyre_life == 1 else 0
+        deg_delta = calc_deg_delta(tyre_life)
+
+        sector_est = baseline / 3  # rough sector split
+
+        feature_dict = {
+            "TyreLife": tyre_life,
+            "CompoundCode": compound_code,
+            "LapNumber": lap_num,
+            "Position": req.position,
+            "Stint": req.stint,
+            "FreshTyre": fresh_tyre,
+            "RaceProgress": race_progress,
+            "FuelLoad": fuel_load,
+            "TotalLaps": total_laps,
+            "SpeedI1": avg_speed * 0.95,
+            "SpeedI2": avg_speed,
+            "SpeedFL": avg_speed * 1.05,
+            "SpeedST": top_speed * 0.95,
+            "LapTime_lag1": prev_laps[0],
+            "LapTime_lag2": prev_laps[1],
+            "LapTime_lag3": prev_laps[2],
+            "LapTime_roll3": sum(prev_laps) / 3,
+            "Sector1Time_lag1": sector_est,
+            "Sector2Time_lag1": sector_est,
+            "Sector3Time_lag1": sector_est,
+            "ExpectedDegDelta": deg_delta,
+            "TrackTemp": track_temp,
+            "AirTemp": air_temp,
+            "Humidity": humidity,
+            "Rainfall": 0,
+            "AirDensity": air_density,
+            "avg_speed": avg_speed,
+            "top_speed": top_speed,
+            "CircuitCode": circuit_code,
+            "DriverCode": driver_code_enc,
+            "TeamCode": team_code,
+            "TyreAgeAtStart": 0 if req.stint == 1 else tyre_life,
+            "StintNumber_of1": req.stint,
+            "IsUsedTyre": 0 if req.stint == 1 else 1,
+        }
+
+        # Build ordered feature vector
+        row = [feature_dict.get(f, 0) for f in features_order]
+        pred = float(model.predict(np.array([row]))[0])
+        predictions.append({
+            "lap": lap_num,
+            "tyre_life": tyre_life,
+            "predicted_s": round(pred, 3),
+            "deg_delta": round(deg_delta, 3),
+        })
+
+        # Update lag features with prediction for next lap
+        prev_laps = [pred, prev_laps[0], prev_laps[1]]
+
+    return {
+        "circuit": req.circuit,
+        "driver": req.driver_code.upper(),
+        "compound": req.compound.upper(),
+        "total_laps": total_laps,
+        "baseline_pace_s": round(baseline, 3),
+        "weather": {
+            "air_temp_c": air_temp,
+            "track_temp_c": track_temp,
+            "humidity_pct": humidity,
+            "air_density": air_density,
+        },
+        "predictions": predictions,
     }
 
 

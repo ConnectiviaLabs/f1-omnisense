@@ -32,6 +32,7 @@ from pipeline.anomaly.ensemble import (
 from pipeline.anomaly.classifier import ClassifierPipeline
 from pipeline.anomaly.mongo_loader import (
     load_driver_race_telemetry,
+    load_race_summary_features,
     get_grid_drivers,
 )
 
@@ -41,17 +42,37 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]  # f1/
 OUTPUT = ROOT / "pipeline" / "output" / "anomaly_scores.json"
 
-# System groupings — map fastf1_laps aggregated columns to vehicle systems
+# System groupings — map aggregated columns to real F1 car systems
+# Sources: fastf1_laps (speed traps, sectors, tyre) + telemetry_race_summary (RPM, throttle, brake, DRS)
 SYSTEM_FEATURES = {
-    "Speed": ["SpeedI1", "SpeedI2", "SpeedFL", "SpeedST"],
-    "Lap Pace": ["LapTime", "Sector1Time", "Sector2Time", "Sector3Time"],
-    "Tyre Management": ["TyreLife"],
+    "Power Unit":       ["avg_rpm", "max_rpm", "avg_throttle"],
+    "Brakes":           ["brake_pct", "Sector1Time", "Sector2Time"],
+    "Drivetrain":       ["SpeedI1", "SpeedI2"],
+    "Suspension":       ["SpeedFL", "Sector3Time"],
+    "Thermal":          ["LapTime", "avg_speed", "top_speed"],
+    "Electronics":      ["drs_pct", "SpeedST"],
+    "Tyre Management":  ["TyreLife"],
 }
 
 
 def load_car_race_data(driver_code: str) -> pd.DataFrame:
-    """Load per-race telemetry for any driver from MongoDB."""
-    return load_driver_race_telemetry(driver_code)
+    """Load per-race telemetry for any driver from MongoDB.
+
+    Merges fastf1_laps aggregates (speed traps, sectors, tyre) with
+    telemetry_race_summary (RPM, throttle, brake, DRS) on (Year, Race).
+    """
+    laps_df = load_driver_race_telemetry(driver_code)
+    summary_df = load_race_summary_features(driver_code)
+
+    if laps_df.empty:
+        return laps_df
+
+    if summary_df.empty:
+        return laps_df
+
+    # Merge on (Year, Race) — left join keeps all races from fastf1_laps
+    merged = laps_df.merge(summary_df, on=["Year", "Race"], how="left")
+    return merged
 
 
 def run_ensemble_per_system(merged_df: pd.DataFrame) -> tuple:

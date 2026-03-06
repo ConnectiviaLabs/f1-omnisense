@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Loader2, Flag, Timer, Users, TrendingUp, AlertTriangle, Disc, Gauge, Zap,
-  ChevronDown, ChevronUp, Shield, Activity,
+  ChevronDown, ChevronUp, Shield, Activity, Brain, Cpu,
 } from 'lucide-react';
 import { strategy } from '../api/local';
 import { getOpponentDrivers } from '../api/driverIntel';
@@ -76,7 +76,18 @@ export function RaceStrategy() {
   const [battleData, setBattleData] = useState<any>(null);
   const [opponentData, setOpponentData] = useState<any>(null);
   const [modelHealth, setModelHealth] = useState<any>(null);
+  const [xgbData, setXgbData] = useState<any>(null);
+  const [bilstmData, setBilstmData] = useState<any>(null);
   const [expandedDriver, setExpandedDriver] = useState<string | null>(null);
+
+  // Lap prediction form
+  const [predCircuit, setPredCircuit] = useState('Bahrain Grand Prix');
+  const [predDriver, setPredDriver] = useState('NOR');
+  const [predCompound, setPredCompound] = useState('MEDIUM');
+  const [predLapStart, setPredLapStart] = useState(1);
+  const [predLapEnd, setPredLapEnd] = useState(25);
+  const [predResult, setPredResult] = useState<any>(null);
+  const [predLoading, setPredLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -89,7 +100,9 @@ export function RaceStrategy() {
       strategy.battleIntel().catch(() => null),
       getOpponentDrivers().catch(() => null),
       fetch('/api/omni/dapt/health').then(r => r.json()).catch(() => null),
-    ]).then(([tracker, sims, deg, elt, sc, battle, opponents, health]) => {
+      strategy.xgboost().catch(() => null),
+      strategy.bilstm().catch(() => null),
+    ]).then(([tracker, sims, deg, elt, sc, battle, opponents, health, xgb, bilstm]) => {
       setTrackerData(tracker);
       setSimData(sims);
       setDegData(deg);
@@ -98,6 +111,8 @@ export function RaceStrategy() {
       setBattleData(battle);
       setOpponentData(opponents);
       setModelHealth(health);
+      setXgbData(xgb);
+      setBilstmData(bilstm);
       setLoading(false);
     });
   }, []);
@@ -154,6 +169,29 @@ export function RaceStrategy() {
       .sort((a, b) => b.importance - a.importance)
       .slice(0, 10);
   }, [scData]);
+
+  // XGBoost feature importances
+  const xgbFeatureData = useMemo(() => {
+    if (!xgbData?.feature_importances) return [];
+    return Object.entries(xgbData.feature_importances)
+      .map(([feature, importance]) => ({ feature, importance: importance as number }))
+      .filter(f => f.importance > 0.001)
+      .sort((a, b) => b.importance - a.importance)
+      .slice(0, 12);
+  }, [xgbData]);
+
+  // XGBoost circuit accuracy sorted by MAE
+  const xgbCircuitData = useMemo(() => {
+    if (!xgbData?.circuit_accuracy) return [];
+    return Object.entries(xgbData.circuit_accuracy)
+      .map(([circuit, stats]: [string, any]) => ({
+        circuit: circuit.replace(' Grand Prix', ''),
+        mae: stats.mae,
+        median_ae: stats.median_ae,
+        n_laps: stats.n_laps,
+      }))
+      .sort((a, b) => a.mae - b.mae);
+  }, [xgbData]);
 
   // Driver deltas for chart
   const driverDeltaData = useMemo(() => {
@@ -704,6 +742,265 @@ export function RaceStrategy() {
           </div>
         )}
       </div>
+
+      {/* ── Lap Prediction Models ── */}
+      {(xgbData?.metadata || bilstmData?.metadata) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* XGBoost Lap Predictor */}
+          {xgbData?.metadata && (
+            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Brain className="w-4 h-4 text-[#FF8000]" />
+                <h3 className="text-foreground font-semibold text-sm">XGBoost Lap Predictor</h3>
+                <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                  v{xgbData.metadata.model_version} &middot; {xgbData.metadata.n_estimators} trees
+                </span>
+              </div>
+
+              {/* Validation metrics */}
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { label: 'R\u00B2', value: xgbData.metadata.validation?.r2?.toFixed(4) },
+                  { label: 'MAE', value: `${xgbData.metadata.validation?.mae?.toFixed(3)}s` },
+                  { label: 'RMSE', value: `${xgbData.metadata.validation?.rmse?.toFixed(3)}s` },
+                  { label: 'Test', value: `${(xgbData.metadata.validation?.n_test / 1000).toFixed(1)}K laps` },
+                ].map(m => (
+                  <div key={m.label} className="bg-[#0D1117] rounded-lg p-2 text-center">
+                    <div className="text-[10px] text-muted-foreground">{m.label}</div>
+                    <div className="text-sm font-mono text-foreground">{m.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Feature importances */}
+              {xgbFeatureData.length > 0 && (
+                <>
+                  <div className="text-[11px] text-muted-foreground mb-2">Top Feature Importances</div>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={xgbFeatureData} layout="vertical" margin={{ left: 10, right: 10 }}>
+                      <XAxis type="number" tick={{ fill: '#8b949e', fontSize: 10 }} />
+                      <YAxis type="category" dataKey="feature" tick={{ fill: '#8b949e', fontSize: 10 }} width={120} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="importance" name="Importance" fill="#FF8000" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* BiLSTM Lap Predictor */}
+          {bilstmData?.metadata && (
+            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Cpu className="w-4 h-4 text-purple-400" />
+                <h3 className="text-foreground font-semibold text-sm">BiLSTM Temporal Predictor</h3>
+                <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                  v{bilstmData.metadata.model_version} &middot; {(bilstmData.metadata.architecture?.total_params / 1000).toFixed(0)}K params
+                </span>
+              </div>
+
+              {/* Architecture */}
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { label: 'R\u00B2', value: bilstmData.metadata.validation?.r2?.toFixed(4) },
+                  { label: 'MAE', value: `${bilstmData.metadata.validation?.mae?.toFixed(3)}s` },
+                  { label: 'RMSE', value: `${bilstmData.metadata.validation?.rmse?.toFixed(3)}s` },
+                  { label: 'Test', value: `${(bilstmData.metadata.validation?.n_test / 1000).toFixed(1)}K laps` },
+                ].map(m => (
+                  <div key={m.label} className="bg-[#0D1117] rounded-lg p-2 text-center">
+                    <div className="text-[10px] text-muted-foreground">{m.label}</div>
+                    <div className="text-sm font-mono text-foreground">{m.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Architecture details */}
+              <div className="text-[11px] text-muted-foreground mb-2">Architecture</div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { label: 'Type', value: bilstmData.metadata.architecture?.type },
+                  { label: 'Hidden', value: bilstmData.metadata.architecture?.hidden_size },
+                  { label: 'Layers', value: bilstmData.metadata.architecture?.num_layers },
+                  { label: 'Window', value: `${bilstmData.metadata.architecture?.window_size} laps` },
+                  { label: 'Dropout', value: bilstmData.metadata.architecture?.dropout },
+                  { label: 'Optimizer', value: bilstmData.metadata.training?.optimizer },
+                ].map(m => (
+                  <div key={m.label} className="flex items-center justify-between bg-[#0D1117] rounded-lg px-3 py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{m.label}</span>
+                    <span className="text-[11px] font-mono text-foreground">{m.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Model comparison */}
+              <div className="text-[11px] text-muted-foreground mb-2">vs XGBoost</div>
+              <div className="flex items-center gap-3">
+                {xgbData?.metadata?.validation && bilstmData.metadata.validation && (() => {
+                  const xgbMae = xgbData.metadata.validation.mae;
+                  const bilstmMae = bilstmData.metadata.validation.mae;
+                  const diff = bilstmMae - xgbMae;
+                  const pct = ((diff / xgbMae) * 100).toFixed(1);
+                  return (
+                    <>
+                      <div className={`text-[11px] px-2 py-0.5 rounded-full border ${diff > 0
+                        ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20'
+                        : 'text-green-400 bg-green-400/10 border-green-400/20'}`}>
+                        MAE {diff > 0 ? '+' : ''}{diff.toFixed(3)}s ({diff > 0 ? '+' : ''}{pct}%)
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">
+                        XGBoost wins on accuracy, BiLSTM captures temporal patterns
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Lap Time Predictor ── */}
+      {xgbData?.metadata && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Brain className="w-4 h-4 text-[#FF8000]" />
+            <h3 className="text-foreground font-semibold text-sm">Lap Time Predictor</h3>
+            <span className="ml-auto text-[10px] text-muted-foreground">XGBoost inference &middot; MAE {xgbData.metadata.validation?.mae?.toFixed(2)}s</span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Circuit</label>
+              <select value={predCircuit} onChange={e => setPredCircuit(e.target.value)} title="Circuit"
+                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                {Object.keys(xgbData.metadata.encodings?.circuit_rank || {}).sort().map(c => (
+                  <option key={c} value={c}>{c.replace(' Grand Prix', '')}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Driver</label>
+              <select value={predDriver} onChange={e => setPredDriver(e.target.value)} title="Driver"
+                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                {Object.keys(xgbData.metadata.encodings?.driver_rank || {}).sort().map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Compound</label>
+              <select value={predCompound} onChange={e => setPredCompound(e.target.value)} title="Compound"
+                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                {['SOFT', 'MEDIUM', 'HARD'].map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[10px] text-muted-foreground block mb-1">Lap Start</label>
+                <input type="number" value={predLapStart} onChange={e => setPredLapStart(+e.target.value)} min={1} max={80} title="Lap Start"
+                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-muted-foreground block mb-1">Lap End</label>
+                <input type="number" value={predLapEnd} onChange={e => setPredLapEnd(+e.target.value)} min={1} max={80} title="Lap End"
+                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
+              </div>
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setPredLoading(true);
+                  strategy.predictLap({
+                    circuit: predCircuit, driver_code: predDriver, compound: predCompound,
+                    lap_start: predLapStart, lap_end: predLapEnd,
+                  }).then(setPredResult).catch(() => setPredResult(null)).finally(() => setPredLoading(false));
+                }}
+                disabled={predLoading}
+                className="w-full bg-[#FF8000] hover:bg-[#FF8000]/80 text-black font-semibold text-[12px] rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+              >
+                {predLoading ? 'Predicting...' : 'Predict'}
+              </button>
+            </div>
+          </div>
+
+          {/* Prediction results */}
+          {predResult?.predictions && (
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {predResult.driver} at {predResult.circuit.replace(' Grand Prix', '')} &middot; {predResult.compound} &middot; Baseline: {predResult.baseline_pace_s}s
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Weather: {predResult.weather?.air_temp_c}°C air / {predResult.weather?.track_temp_c}°C track / {predResult.weather?.humidity_pct}% hum
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={predResult.predictions} margin={{ left: 5, right: 10, top: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <XAxis dataKey="lap" tick={{ fill: '#8b949e', fontSize: 11 }} label={{ value: 'Lap', position: 'insideBottom', offset: -2, fill: '#8b949e', fontSize: 10 }} />
+                  <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} domain={['auto', 'auto']} label={{ value: 'Lap Time (s)', angle: -90, position: 'insideLeft', fill: '#8b949e', fontSize: 10 }} />
+                  <Tooltip content={({ active, payload }: any) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0]?.payload;
+                    return (
+                      <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+                        <div className="text-foreground font-semibold">Lap {d?.lap}</div>
+                        <div className="text-muted-foreground">Predicted: <span className="text-foreground font-mono">{d?.predicted_s?.toFixed(3)}s</span></div>
+                        <div className="text-muted-foreground">Tyre Life: <span className="text-foreground font-mono">{d?.tyre_life}</span></div>
+                        <div className="text-muted-foreground">Deg Delta: <span className="text-foreground font-mono">{d?.deg_delta?.toFixed(3)}s</span></div>
+                      </div>
+                    );
+                  }} />
+                  <ReferenceLine y={predResult.baseline_pace_s} stroke="#8b949e" strokeDasharray="3 3" label={{ value: 'Baseline', fill: '#8b949e', fontSize: 10 }} />
+                  <Line type="monotone" dataKey="predicted_s" stroke="#FF8000" strokeWidth={2} dot={false} name="Predicted" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* XGBoost Circuit Accuracy */}
+      {xgbCircuitData.length > 0 && (
+        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Flag className="w-4 h-4 text-[#FF8000]" />
+            <h3 className="text-foreground font-semibold text-sm">XGBoost Accuracy by Circuit</h3>
+            <span className="ml-auto text-[11px] text-muted-foreground">
+              MAE in seconds &middot; lower is better
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={xgbCircuitData} layout="vertical" margin={{ left: 10, right: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" horizontal={false} />
+              <XAxis type="number" tick={{ fill: '#8b949e', fontSize: 10 }} domain={[0, 'auto']} />
+              <YAxis type="category" dataKey="circuit" tick={{ fill: '#8b949e', fontSize: 10 }} width={120} />
+              <Tooltip content={({ active, payload, label }: any) => {
+                if (!active || !payload?.length) return null;
+                const d = payload[0]?.payload;
+                return (
+                  <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+                    <div className="text-foreground font-semibold mb-1">{label}</div>
+                    <div className="text-muted-foreground">MAE: <span className="text-foreground font-mono">{d?.mae?.toFixed(3)}s</span></div>
+                    <div className="text-muted-foreground">Median AE: <span className="text-foreground font-mono">{d?.median_ae?.toFixed(3)}s</span></div>
+                    <div className="text-muted-foreground">Sample: <span className="text-foreground font-mono">{d?.n_laps?.toLocaleString()} laps</span></div>
+                  </div>
+                );
+              }} />
+              <Bar dataKey="mae" name="MAE (s)" radius={[0, 4, 4, 0]}>
+                {xgbCircuitData.map((d, i) => (
+                  <Cell key={i} fill={d.mae < 0.3 ? '#22c55e' : d.mae < 0.4 ? '#FF8000' : d.mae < 0.5 ? '#eab308' : '#ef4444'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {/* Model Confidence */}
       {modelHealth && (

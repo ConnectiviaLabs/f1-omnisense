@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MARIP F1 — Data Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #080B12;
+    --bg-card: #111827;
+    --bg-surface: #1A2233;
+    --accent: #FF8000;
+    --accent-dim: rgba(255,128,0,0.12);
+    --accent-glow: rgba(255,128,0,0.06);
+    --text: #E5E7EB;
+    --text-dim: #6B7280;
+    --text-muted: #4B5563;
+    --green: #22C55E;
+    --yellow: #EAB308;
+    --red: #EF4444;
+    --blue: #3B82F6;
+    --cyan: #06B6D4;
+    --purple: #A855F7;
+    --border: rgba(255,255,255,0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ── Header ── */
+  .header {
+    padding: 32px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,128,0,0.03) 0%, transparent 100%);
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+  .header h1 span { color: var(--accent); }
+  .header .subtitle {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin-top: 4px;
+  }
+
+  /* ── Summary Strip ── */
+  .summary-strip {
+    display: flex;
+    gap: 1px;
+    background: var(--border);
+    margin: 0 40px;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 20px;
+  }
+  .summary-cell {
+    flex: 1;
+    background: var(--bg-card);
+    padding: 16px 20px;
+    text-align: center;
+  }
+  .summary-cell:first-child { border-radius: 12px 0 0 12px; }
+  .summary-cell:last-child { border-radius: 0 12px 12px 0; }
+  .summary-cell .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 24px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .summary-cell .label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 2px;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .search-box {
+    position: relative;
+    flex: 0 0 280px;
+  }
+  .search-box input {
+    width: 100%;
+    padding: 8px 12px 8px 36px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+  }
+
+  .filter-pills {
+    display: flex;
+    gap: 6px;
+  }
+  .pill {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--text); }
+  .pill.active {
+    background: var(--accent);
+    color: #000;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+
+  .view-toggle {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 3px;
+    border: 1px solid var(--border);
+  }
+  .view-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .view-btn.active { background: var(--accent); color: #000; font-weight: 600; }
+
+  /* ── Table ── */
+  .table-wrap {
+    padding: 0 40px 40px;
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    background: var(--bg-deep);
+    z-index: 10;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th .sort-arrow { margin-left: 4px; opacity: 0.5; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: var(--accent-glow); }
+  td {
+    padding: 10px 14px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .coll-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 12.5px;
+    color: #fff;
+  }
+
+  /* ── Badges ── */
+  .category-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .cat-raw { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .cat-derived { background: rgba(168,85,247,0.15); color: var(--purple); }
+  .cat-intel { background: rgba(6,182,212,0.15); color: var(--cyan); }
+  .cat-model { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .cat-media { background: rgba(239,68,68,0.15); color: var(--red); }
+  .cat-kex { background: rgba(255,128,0,0.15); color: var(--accent); }
+  .cat-system { background: rgba(107,114,128,0.15); color: var(--text-dim); }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .status-active { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+  .status-partial { background: var(--yellow); box-shadow: 0 0 6px rgba(234,179,8,0.4); }
+  .status-unused { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,0.3); }
+  .status-meta { background: var(--text-muted); }
+
+  .size-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .size-bar-track {
+    width: 60px;
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .size-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
+
+  .writers, .readers, .frontend {
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 220px;
+    white-space: normal;
+    line-height: 1.6;
+  }
+  .writers code, .readers code, .frontend code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    background: rgba(255,255,255,0.04);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text);
+  }
+
+  /* ── Card View ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+    padding: 0 40px 40px;
+  }
+  .data-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    transition: border-color 0.2s;
+  }
+  .data-card:hover { border-color: rgba(255,128,0,0.2); }
+  .data-card .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .data-card .card-header .coll-name { font-size: 13px; }
+  .data-card .card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .data-card .stat-item {
+    text-align: center;
+    padding: 6px;
+    background: var(--bg-surface);
+    border-radius: 6px;
+  }
+  .data-card .stat-item .stat-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+  }
+  .data-card .stat-item .stat-lbl {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+  .data-card .card-pipes {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .data-card .card-pipes strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ── Hidden class ── */
+  .hidden { display: none !important; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .header, .controls, .table-wrap, .card-grid { padding-left: 16px; padding-right: 16px; }
+    .summary-strip { margin: 20px 16px 0; flex-wrap: wrap; }
+    .search-box { flex: 1 1 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>MARIP <span>F1</span> — Data Inventory</h1>
+  <p class="subtitle">Production MongoDB: <code class="mono" style="color:var(--accent);font-size:12px">marip_f1</code> &nbsp;|&nbsp; Docker: <code class="mono" style="font-size:12px">omnisense_mongodb</code> &nbsp;|&nbsp; Last updated: <span id="lastUpdated" class="mono" style="font-size:12px"></span></p>
+</div>
+
+<div class="summary-strip" id="summaryStrip"></div>
+
+<div class="controls">
+  <div class="search-box">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" id="searchInput" placeholder="Search collections..." />
+  </div>
+  <div class="filter-pills" id="filterPills"></div>
+  <div class="view-toggle">
+    <button class="view-btn active" data-view="table">Table</button>
+    <button class="view-btn" data-view="cards">Cards</button>
+  </div>
+</div>
+
+<div class="table-wrap" id="tableView">
+  <table>
+    <thead>
+      <tr>
+        <th data-sort="status">Status <span class="sort-arrow">↕</span></th>
+        <th data-sort="name" class="sorted">Collection <span class="sort-arrow">↓</span></th>
+        <th data-sort="category">Category <span class="sort-arrow">↕</span></th>
+        <th data-sort="docs">Docs <span class="sort-arrow">↕</span></th>
+        <th data-sort="size">Size <span class="sort-arrow">↕</span></th>
+        <th data-sort="indexes">Idx <span class="sort-arrow">↕</span></th>
+        <th>Writers</th>
+        <th>Readers / API</th>
+        <th>Frontend</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<div class="card-grid hidden" id="cardView"></div>
+
+<script>
+const DATA = [
+  // ── Raw Data: OpenF1 ──
+  { name: "openf1_car_data", docs: 50669094, sizeMB: 10065.6, idxCount: 4, category: "raw", status: "partial",
+    writers: ["backfill_gaps.py"], readers: ["(backfill in progress — 80/119 sessions)"], frontend: ["—"],
+    notes: "Sub-second car telemetry (speed, RPM, throttle, brake, DRS, gear). 80 sessions done, stalled on OpenF1 API lockdown during AUS GP." },
+  { name: "openf1_location", docs: 364605, sizeMB: 67.3, idxCount: 3, category: "raw", status: "partial",
+    writers: ["backfill_gaps.py"], readers: ["(pending backfill)"], frontend: ["—"],
+    notes: "GPS position data (x, y, z). Only 2 sessions done, backfill queued after car_data." },
+  { name: "openf1_drivers", docs: 7288, sizeMB: 3.4, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["/api openf1 proxy"], frontend: ["—"] },
+  { name: "openf1_team_radio", docs: 0, sizeMB: 0.0, idxCount: 1, category: "raw", status: "partial",
+    writers: ["fetch_openf1.py"], readers: ["—"], frontend: ["—"],
+    notes: "Driver ↔ pit wall radio communications. Pipeline ready (openf1_fetcher.py). Backfill pending — OpenF1 is only public source." },
+  { name: "openf1_intervals", docs: 1812781, sizeMB: 374.6, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "openf1_laps", docs: 206503, sizeMB: 127.5, idxCount: 4, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["chat_server.py", "build_telemetry_summaries"], frontend: ["—"] },
+  { name: "openf1_overtakes", docs: 19322, sizeMB: 4.3, idxCount: 1, category: "raw", status: "active",
+    writers: ["fetch_overtakes.py"], readers: ["self-contained"], frontend: ["—"],
+    notes: "Computed from openf1_position. Used by fetch_overtakes enrichment." },
+  { name: "openf1_pit", docs: 25161, sizeMB: 5.6, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_openf1.py", "backfill_gaps.py"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "openf1_position", docs: 272194, sizeMB: 48.3, idxCount: 5, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["fetch_overtakes.py"], frontend: ["—"] },
+  { name: "openf1_race_control", docs: 17663, sizeMB: 5.7, idxCount: 2, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "openf1_sessions", docs: 854, sizeMB: 0.3, idxCount: 2, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["backfill_gaps.py", "chat_server.py"], frontend: ["RaceSchedule"],
+    notes: "Contains duplicate rows (427 unique). Handled via $group." },
+  { name: "openf1_stints", docs: 29952, sizeMB: 6.2, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "openf1_weather", docs: 41879, sizeMB: 11.8, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_openf1.py"], readers: ["chat_server.py"], frontend: ["—"] },
+
+  // ── Raw Data: FastF1 ──
+  { name: "fastf1_laps", docs: 348566, sizeMB: 222.5, idxCount: 3, category: "raw", status: "active",
+    writers: ["fastf1_fetcher.py"], readers: ["build_telemetry_summaries.py", "driver_performance_markers.py"], frontend: ["—"] },
+  { name: "fastf1_weather", docs: 66495, sizeMB: 18.0, idxCount: 2, category: "raw", status: "active",
+    writers: ["fastf1_fetcher.py"], readers: ["chat_server.py"], frontend: ["—"] },
+
+  // ── Raw Data: Jolpica (Ergast) ──
+  { name: "jolpica_race_results", docs: 3458, sizeMB: 1.6, idxCount: 5, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/race_results (8 endpoints)"], frontend: ["McLarenAnalytics", "FleetOverview", "PrimeTeam"] },
+  { name: "jolpica_qualifying", docs: 3455, sizeMB: 0.9, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/qualifying"], frontend: ["—"] },
+  { name: "jolpica_pit_stops", docs: 5940, sizeMB: 1.2, idxCount: 4, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/pit_stops"], frontend: ["McLarenAnalytics"] },
+  { name: "jolpica_driver_standings", docs: 173, sizeMB: 0.0, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/driver_standings"], frontend: ["DriverIntel", "FleetOverview", "McLarenAnalytics"] },
+  { name: "jolpica_constructor_standings", docs: 80, sizeMB: 0.0, idxCount: 2, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/constructor_standings"], frontend: ["McLarenAnalytics"] },
+  { name: "jolpica_sprint_results", docs: 480, sizeMB: 0.2, idxCount: 3, category: "raw", status: "active",
+    writers: ["fetch_jolpica_full.py"], readers: ["/api/jolpica/sprint_results"], frontend: ["—"] },
+
+  // ── Derived: Telemetry ──
+  { name: "telemetry_compressed", docs: 201, sizeMB: 1459.3, idxCount: 1, category: "derived", status: "active",
+    writers: ["populate_telemetry.py"], readers: ["chat_server.py (proxy)"], frontend: ["CarTelemetry"],
+    notes: "Compressed full-session telemetry. Largest collection by size." },
+  { name: "telemetry_lap_summary", docs: 144989, sizeMB: 47.4, idxCount: 4, category: "derived", status: "active",
+    writers: ["build_telemetry_summaries.py", "build_openf1_race_summaries.py"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "telemetry_race_summary", docs: 3112, sizeMB: 1.0, idxCount: 3, category: "derived", status: "active",
+    writers: ["build_telemetry_summaries.py", "build_openf1_race_summaries.py"], readers: ["/api/telemetry/race_summary"], frontend: ["DriverIntel"] },
+
+  // ── Derived: Driver Intelligence ──
+  { name: "driver_performance_markers", docs: 40, sizeMB: 0.0, idxCount: 2, category: "intel", status: "active",
+    writers: ["driver_performance_markers.py"], readers: ["/api/driver_intel/performance_markers"], frontend: ["DriverIntel", "FleetOverview"] },
+  { name: "driver_overtake_profiles", docs: 31, sizeMB: 0.0, idxCount: 2, category: "intel", status: "active",
+    writers: ["fetch_overtakes.py"], readers: ["/api/driver_intel/overtake_profiles"], frontend: ["DriverIntel", "FleetOverview"] },
+  { name: "driver_telemetry_profiles", docs: 35, sizeMB: 0.0, idxCount: 2, category: "intel", status: "active",
+    writers: ["build_telemetry_profiles.py"], readers: ["/api/driver_intel/telemetry_profiles"], frontend: ["DriverIntel"] },
+  { name: "VectorProfiles", docs: 53, sizeMB: 0.6, idxCount: 2, category: "intel", status: "active",
+    writers: ["build_vector_profiles.py"], readers: ["/api/driver_intel/similar", "/api/team_intel/*"], frontend: ["PrimeDriver", "PrimeTeam"],
+    notes: "768-dim Nomic embeddings. Needs season-awareness for production." },
+
+  // ── Derived: Opponent Profiles ──
+  { name: "opponent_profiles", docs: 37, sizeMB: 0.1, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_opponent_profiles.py"], readers: ["/api/opponents/drivers"], frontend: ["DriverIntel (grid)"] },
+  { name: "opponent_circuit_profiles", docs: 1925, sizeMB: 0.6, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_opponent_profiles.py"], readers: ["/api/opponents/drivers/{id}/circuits"], frontend: ["—"] },
+  { name: "opponent_compound_profiles", docs: 457, sizeMB: 0.1, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_opponent_profiles.py"], readers: ["/api/opponents/drivers/{id}/compounds"], frontend: ["DriverIntel (compounds)"] },
+  { name: "circuit_pit_loss_times", docs: 31, sizeMB: 0.0, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_opponent_profiles.py"], readers: ["/api/opponents/circuits/pit-loss"], frontend: ["—"] },
+
+  // ── Derived: Circuit Intel ──
+  { name: "circuit_intelligence", docs: 25, sizeMB: 0.1, idxCount: 2, category: "intel", status: "active",
+    writers: ["build_circuit_intelligence.py"], readers: ["/api/circuit_intelligence"], frontend: ["CircuitIntel"] },
+
+  // ── Derived: Constructor Profiles ──
+  { name: "constructor_profiles", docs: 80, sizeMB: 0.1, idxCount: 4, category: "intel", status: "active",
+    writers: ["build_constructor_profiles.py"], readers: ["/api/constructor_profiles"], frontend: ["PrimeTeam"] },
+
+  // ── Anomaly Detection ──
+  { name: "anomaly_scores_snapshot", docs: 1, sizeMB: 3.4, idxCount: 1, category: "intel", status: "active",
+    writers: ["anomaly_scorer.py"], readers: ["/api/pipeline/anomaly"], frontend: ["FleetOverview", "DriverIntel"],
+    notes: "Single doc containing all driver anomaly scores. Live snapshot." },
+
+  // ── Strategy & ML Models ──
+  { name: "tyre_degradation_curves", docs: 286, sizeMB: 0.3, idxCount: 2, category: "model", status: "active",
+    writers: ["Colab: tyre_degradation_model.py"], readers: ["/api/strategy/degradation"], frontend: ["—"] },
+  { name: "elt_parameters", docs: 320, sizeMB: 0.1, idxCount: 3, category: "model", status: "active",
+    writers: ["Colab: elt_calculator.py"], readers: ["/api/strategy/elt"], frontend: ["—"] },
+  { name: "sc_probability_model", docs: 2, sizeMB: 0.0, idxCount: 2, category: "model", status: "active",
+    writers: ["Colab: sc_probability.py"], readers: ["/api/strategy/sc-probability"], frontend: ["—"] },
+  { name: "race_strategy_simulations", docs: 1, sizeMB: 0.0, idxCount: 2, category: "model", status: "active",
+    writers: ["Colab: strategy_simulator.py"], readers: ["/api/strategy/simulations"], frontend: ["—"] },
+  { name: "race_air_density", docs: 157, sizeMB: 0.1, idxCount: 3, category: "model", status: "active",
+    writers: ["backfill_gaps.py (Open-Meteo)"], readers: ["chat_server.py"], frontend: ["—"] },
+  { name: "xgboost_lap_predictions", docs: 3, sizeMB: 0.0, idxCount: 2, category: "model", status: "active",
+    writers: ["Colab: xgboost_predictor.py"], readers: ["/api/strategy/xgboost"], frontend: ["RaceStrategy"],
+    notes: "XGBoost lap time predictor. R²=0.998, MAE=0.346s. 34 features, 1017 trees. Per-circuit accuracy breakdown." },
+  { name: "bilstm_lap_predictions", docs: 1, sizeMB: 0.0, idxCount: 2, category: "model", status: "active",
+    writers: ["Colab: bilstm_temporal.py"], readers: ["/api/strategy/bilstm"], frontend: ["RaceStrategy"],
+    notes: "BiLSTM temporal lap predictor. R²=0.996, MAE=0.461s. 575K params, window_size=10." },
+
+  // ── KeX Briefings ──
+  { name: "kex_driver_briefings", docs: 20, sizeMB: 0.1, idxCount: 1, category: "kex", status: "active",
+    writers: ["chat_server.py (POST /api/driver_intel/kex)"], readers: ["chat_server.py (GET cached)"], frontend: ["DriverIntel (KexBriefingCard)"] },
+  { name: "kex_anomaly_briefings", docs: 16, sizeMB: 0.0, idxCount: 1, category: "kex", status: "active",
+    writers: ["chat_server.py (POST /api/anomaly/kex)"], readers: ["chat_server.py (GET cached)"], frontend: ["FleetOverview (KexBriefingCard)"] },
+  { name: "kex_circuit_briefings", docs: 3, sizeMB: 0.0, idxCount: 1, category: "kex", status: "active",
+    writers: ["chat_server.py (POST /api/circuit_intel/kex)"], readers: ["chat_server.py (GET cached)"], frontend: ["CircuitIntel (KexBriefingCard)"] },
+  { name: "kex_briefings", docs: 8, sizeMB: 0.0, idxCount: 1, category: "kex", status: "active",
+    writers: ["omni_kex_router.py"], readers: ["omni_kex_router.py"], frontend: ["—"],
+    notes: "McLaren team-level briefings." },
+  { name: "kex_comparison_briefings", docs: 9, sizeMB: 0.0, idxCount: 1, category: "kex", status: "active",
+    writers: ["chat_server.py (POST /api/driver_intel/compare/kex)"], readers: ["chat_server.py (GET cached)"], frontend: ["DriverIntel (compare tab)"] },
+
+  // ── Media & Vision ──
+  { name: "media_videos", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/videos"], frontend: ["MediaIntelligence"] },
+  { name: "media_frames", docs: 31, sizeMB: 4.5, idxCount: 2, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/media/{id}"], frontend: ["MediaIntelligence"] },
+  { name: "clip_index", docs: 1, sizeMB: 0.3, idxCount: 1, category: "media", status: "active",
+    writers: ["push_clip_index_to_mongo.py"], readers: ["/api/visual-search", "/api/visual-tags"], frontend: ["MediaIntelligence"] },
+  { name: "pipeline_gdino_results", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/gdino"], frontend: ["MediaIntelligence"] },
+  { name: "pipeline_videomae_results", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/videomae"], frontend: ["MediaIntelligence"] },
+  { name: "pipeline_timesformer_results", docs: 3, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/timesformer"], frontend: ["MediaIntelligence"] },
+  { name: "pipeline_minicpm_results", docs: 3, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/minicpm"], frontend: ["MediaIntelligence"] },
+
+  // ── Knowledge & System ──
+  { name: "f1_knowledge", docs: 6395, sizeMB: 89.7, idxCount: 1, category: "system", status: "active",
+    writers: ["enrichment/ingest_pdfs.py", "vectorstore.py"], readers: ["/api/pipeline/intelligence (RAG)", "omni_rag_router.py", "omni_bedding_router.py"], frontend: ["Chatbot"],
+    notes: "21 PDFs from data/mclaren_pdfs/ → 6395 chunks with 1024-dim BGE embeddings. Sources: 12 FIA regs (2024-2026 tech/sporting/financial/operational/general), 9 McLaren corporate docs (annual reports, financials, sustainability). Categories: fia_technical_regulation, fia_sporting_regulation, fia_financial_regulation, fia_operational_regulation, fia_general_provisions, mclaren_corporate." },
+  { name: "pipeline_log", docs: 29, sizeMB: 0.0, idxCount: 2, category: "system", status: "meta",
+    writers: ["data_quality_fixes.py", "profile_refresher.py", "updater.py"], readers: ["—"], frontend: ["—"],
+    notes: "Internal pipeline audit log." },
+];
+
+// ── Category config ──
+const CATEGORIES = {
+  all: { label: "All", class: "" },
+  raw: { label: "Raw Data", class: "cat-raw" },
+  derived: { label: "Derived", class: "cat-derived" },
+  intel: { label: "Intelligence", class: "cat-intel" },
+  model: { label: "Models", class: "cat-model" },
+  kex: { label: "KeX", class: "cat-kex" },
+  media: { label: "Media", class: "cat-media" },
+  system: { label: "System", class: "cat-system" },
+};
+
+const STATUS_CONFIG = {
+  active: { label: "Active", class: "status-active" },
+  partial: { label: "Partial", class: "status-partial" },
+  unused: { label: "Unused", class: "status-unused" },
+  meta: { label: "Meta", class: "status-meta" },
+};
+
+// ── State ──
+let currentFilter = "all";
+let currentSearch = "";
+let currentSort = { key: "name", asc: true };
+let currentView = "table";
+
+// ── Helpers ──
+function fmtDocs(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + "K";
+  return n.toString();
+}
+function fmtSize(mb) {
+  if (mb >= 1024) return (mb / 1024).toFixed(1) + " GB";
+  if (mb >= 1) return mb.toFixed(1) + " MB";
+  return (mb * 1024).toFixed(0) + " KB";
+}
+
+const maxSize = Math.max(...DATA.map(d => d.sizeMB));
+
+// ── Init ──
+function init() {
+  document.getElementById("lastUpdated").textContent = new Date().toISOString().slice(0, 16).replace("T", " ");
+
+  // Summary
+  const totalDocs = DATA.reduce((s, d) => s + d.docs, 0);
+  const totalSize = DATA.reduce((s, d) => s + d.sizeMB, 0);
+  const totalIdx = DATA.reduce((s, d) => s + d.idxCount, 0);
+  const activeCount = DATA.filter(d => d.status === "active").length;
+
+  document.getElementById("summaryStrip").innerHTML = `
+    <div class="summary-cell"><div class="value">${DATA.length}</div><div class="label">Collections</div></div>
+    <div class="summary-cell"><div class="value">${fmtDocs(totalDocs)}</div><div class="label">Total Docs</div></div>
+    <div class="summary-cell"><div class="value">${fmtSize(totalSize)}</div><div class="label">Total Size</div></div>
+    <div class="summary-cell"><div class="value">${totalIdx}</div><div class="label">Indexes</div></div>
+    <div class="summary-cell"><div class="value">${activeCount}</div><div class="label">Active</div></div>
+    <div class="summary-cell"><div class="value" style="color:var(--yellow)">${DATA.filter(d => d.status === "partial").length}</div><div class="label">Partial</div></div>
+    <div class="summary-cell"><div class="value" style="color:var(--red)">${DATA.filter(d => d.status === "unused").length}</div><div class="label">Unused</div></div>
+  `;
+
+  // Filter pills
+  const pillsEl = document.getElementById("filterPills");
+  Object.entries(CATEGORIES).forEach(([key, cfg]) => {
+    const count = key === "all" ? DATA.length : DATA.filter(d => d.category === key).length;
+    const btn = document.createElement("button");
+    btn.className = `pill${key === "all" ? " active" : ""}`;
+    btn.dataset.cat = key;
+    btn.textContent = `${cfg.label} (${count})`;
+    btn.onclick = () => {
+      pillsEl.querySelectorAll(".pill").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      currentFilter = key;
+      render();
+    };
+    pillsEl.appendChild(btn);
+  });
+
+  // Search
+  document.getElementById("searchInput").addEventListener("input", e => {
+    currentSearch = e.target.value.toLowerCase();
+    render();
+  });
+
+  // View toggle
+  document.querySelectorAll(".view-btn").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".view-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentView = btn.dataset.view;
+      document.getElementById("tableView").classList.toggle("hidden", currentView !== "table");
+      document.getElementById("cardView").classList.toggle("hidden", currentView !== "cards");
+      render();
+    };
+  });
+
+  // Sort headers
+  document.querySelectorAll("thead th[data-sort]").forEach(th => {
+    th.onclick = () => {
+      const key = th.dataset.sort;
+      if (currentSort.key === key) currentSort.asc = !currentSort.asc;
+      else { currentSort.key = key; currentSort.asc = true; }
+      document.querySelectorAll("thead th").forEach(h => h.classList.remove("sorted"));
+      th.classList.add("sorted");
+      th.querySelector(".sort-arrow").textContent = currentSort.asc ? "↓" : "↑";
+      render();
+    };
+  });
+
+  render();
+}
+
+function getFiltered() {
+  let items = DATA.filter(d => {
+    if (currentFilter !== "all" && d.category !== currentFilter) return false;
+    if (currentSearch && !d.name.toLowerCase().includes(currentSearch)
+        && !(d.notes || "").toLowerCase().includes(currentSearch)
+        && !d.writers.join(" ").toLowerCase().includes(currentSearch)
+        && !d.readers.join(" ").toLowerCase().includes(currentSearch)
+        && !d.frontend.join(" ").toLowerCase().includes(currentSearch)) return false;
+    return true;
+  });
+
+  const sortFns = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    docs: (a, b) => a.docs - b.docs,
+    size: (a, b) => a.sizeMB - b.sizeMB,
+    indexes: (a, b) => a.idxCount - b.idxCount,
+    category: (a, b) => a.category.localeCompare(b.category),
+    status: (a, b) => {
+      const order = { active: 0, partial: 1, unused: 2, meta: 3 };
+      return (order[a.status] || 9) - (order[b.status] || 9);
+    },
+  };
+
+  const fn = sortFns[currentSort.key] || sortFns.name;
+  items.sort((a, b) => currentSort.asc ? fn(a, b) : fn(b, a));
+  return items;
+}
+
+function render() {
+  const items = getFiltered();
+
+  // Table
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = items.map(d => {
+    const cat = CATEGORIES[d.category] || CATEGORIES.system;
+    const st = STATUS_CONFIG[d.status] || STATUS_CONFIG.meta;
+    const pct = maxSize > 0 ? Math.max(1, (d.sizeMB / maxSize) * 100) : 1;
+    return `<tr>
+      <td><span class="status-dot ${st.class}"></span>${st.label}</td>
+      <td><span class="coll-name">${d.name}</span>${d.notes ? `<br><span style="font-size:10px;color:var(--text-muted)">${d.notes}</span>` : ""}</td>
+      <td><span class="category-badge ${cat.class}">${cat.label}</span></td>
+      <td class="mono" style="font-size:12px;font-weight:600">${fmtDocs(d.docs)}</td>
+      <td>
+        <div class="size-bar">
+          <div class="size-bar-track"><div class="size-bar-fill" style="width:${pct}%"></div></div>
+          <span class="mono" style="font-size:11px;color:var(--text-dim)">${fmtSize(d.sizeMB)}</span>
+        </div>
+      </td>
+      <td class="mono" style="font-size:12px;color:var(--text-dim)">${d.idxCount}</td>
+      <td class="writers">${d.writers.map(w => `<code>${w}</code>`).join(", ")}</td>
+      <td class="readers">${d.readers.map(r => `<code>${r}</code>`).join(", ")}</td>
+      <td class="frontend">${d.frontend.map(f => f === "—" ? `<span style="color:var(--text-muted)">—</span>` : `<code>${f}</code>`).join(", ")}</td>
+    </tr>`;
+  }).join("");
+
+  // Cards
+  const cardGrid = document.getElementById("cardView");
+  cardGrid.innerHTML = items.map(d => {
+    const cat = CATEGORIES[d.category] || CATEGORIES.system;
+    const st = STATUS_CONFIG[d.status] || STATUS_CONFIG.meta;
+    return `<div class="data-card">
+      <div class="card-header">
+        <span class="coll-name">${d.name}</span>
+        <span class="category-badge ${cat.class}">${cat.label}</span>
+      </div>
+      <div class="card-stats">
+        <div class="stat-item"><div class="stat-val">${fmtDocs(d.docs)}</div><div class="stat-lbl">Docs</div></div>
+        <div class="stat-item"><div class="stat-val">${fmtSize(d.sizeMB)}</div><div class="stat-lbl">Size</div></div>
+        <div class="stat-item"><div class="stat-val">${d.idxCount}</div><div class="stat-lbl">Indexes</div></div>
+      </div>
+      <div style="margin-bottom:8px"><span class="status-dot ${st.class}"></span><span style="font-size:11px;color:var(--text-dim)">${st.label}</span></div>
+      <div class="card-pipes">
+        <strong>Writers:</strong> ${d.writers.map(w => `<code>${w}</code>`).join(", ")}<br>
+        <strong>Readers:</strong> ${d.readers.map(r => `<code>${r}</code>`).join(", ")}<br>
+        <strong>Frontend:</strong> ${d.frontend.join(", ")}
+        ${d.notes ? `<br><span style="font-size:10px;color:var(--text-muted);margin-top:4px;display:block">${d.notes}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+init();
+</script>
+</body>
+</html>

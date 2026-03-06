@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell,
@@ -6,9 +7,21 @@ import {
 } from 'recharts';
 import {
   Gauge, Zap, Timer, Loader2, AlertCircle, Wind, GitCompareArrows, Disc,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, Activity, TrendingUp,
 } from 'lucide-react';
+import KexBriefingCard from './KexBriefingCard';
+import { HealthGauge } from './HealthGauge';
+import { StatusBadge } from './StatusBadge';
+import { parseAnomalyDrivers, type VehicleData } from './anomalyHelpers';
+import { getCarTelemetryKex, type CarTelemetryKex } from '../api/driverIntel';
 // All data fetched from MongoDB via JSON API endpoints
+
+const MCLAREN_LOGO = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026/mclaren/2026mclarenlogowhite.webp';
+
+const DRIVER_INFO: Record<string, { name: string; nationality: string; flag: string; number: number }> = {
+  NOR: { name: 'Lando Norris', nationality: 'British', flag: '\u{1F1EC}\u{1F1E7}', number: 4 },
+  PIA: { name: 'Oscar Piastri', nationality: 'Australian', flag: '\u{1F1E6}\u{1F1FA}', number: 81 },
+};
 
 const compoundColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
@@ -163,6 +176,13 @@ export function CarTelemetry() {
   const [seasonSummary, setSeasonSummary] = useState<CarSummary[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
+  // KeX briefing state
+  const [kex, setKex] = useState<CarTelemetryKex | null>(null);
+  const [kexLoading, setKexLoading] = useState(false);
+
+  // Anomaly health state
+  const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
+
   // H2H state
   const [h2hMode, setH2hMode] = useState<'race' | 'season'>('race');
   const [h2hDriver2, setH2hDriver2] = useState('');
@@ -203,6 +223,32 @@ export function CarTelemetry() {
       })
       .catch(() => {});
   }, []);
+
+  // Fetch anomaly health data once
+  useEffect(() => {
+    fetch('/api/pipeline/anomaly')
+      .then(r => r.json())
+      .then(data => setAnomalyVehicles(parseAnomalyDrivers(data)))
+      .catch(() => {});
+  }, []);
+
+  // Fetch KeX briefing when driver/year/race/tab changes
+  useEffect(() => {
+    setKex(null);
+    if (!driver || !year) return;
+    if (tab !== 'detail' && tab !== 'season') return;
+    setKexLoading(true);
+    const raceParam = tab === 'detail' && race ? race : undefined;
+    getCarTelemetryKex(driver, year, raceParam)
+      .then(setKex)
+      .catch(() => setKex(null))
+      .finally(() => setKexLoading(false));
+  }, [driver, year, race, tab]);
+
+  const selectedVehicle = useMemo(() => {
+    if (!driver || anomalyVehicles.length === 0) return null;
+    return anomalyVehicles.find(v => v.code === driver) ?? null;
+  }, [driver, anomalyVehicles]);
 
   const years = meta?.years || [];
   const drivers = meta?.drivers_by_year?.[String(year)] || meta?.drivers || [];
@@ -360,22 +406,61 @@ export function CarTelemetry() {
 
   const highlightRace = race;
 
+  const driverInfo = DRIVER_INFO[driver];
+
   return (
     <div className="space-y-4">
-      {/* Tab Switcher + Controls */}
+      {/* ── Hero Header ── */}
+      <div className="relative bg-[#1A1F2E] border border-[rgba(255,128,0,0.15)] rounded-xl overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.07]" style={{ background: 'linear-gradient(135deg, #FF8000 0%, transparent 60%)' }} />
+        <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #FF8000, rgba(255,128,0,0.4), transparent)' }} />
+        <div className="relative flex items-center gap-4 p-4">
+          <img src={MCLAREN_LOGO} alt="McLaren" className="h-8 w-8 object-contain opacity-80" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-foreground">{driverInfo?.name || driver}</span>
+              {driverInfo && <span className="text-base">{driverInfo.flag}</span>}
+              <span className="text-[11px] text-[#FF8000]/60 font-mono">#{driverInfo?.number || ''}</span>
+            </div>
+            <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <span className="text-[#FF8000] font-semibold">McLaren</span>
+              <span className="opacity-40">|</span>
+              <span>{tab === 'detail' && race ? `${race} GP ${year}` : `${year} Season`}</span>
+              {tab === 'detail' && driverData.length > 0 && (
+                <><span className="opacity-40">|</span><span>{driverData.length.toLocaleString()} pts</span></>
+              )}
+              {tab === 'season' && seasonSummary.length > 0 && (
+                <><span className="opacity-40">|</span><span>{seasonSummary.length} races</span></>
+              )}
+            </div>
+          </div>
+          {/* Anomaly health gauge */}
+          {selectedVehicle && (
+            <div className="flex items-center gap-3">
+              <HealthGauge value={selectedVehicle.overallHealth} size={44} showLabel={false} />
+              <div className="flex flex-col items-end gap-0.5">
+                <StatusBadge status={selectedVehicle.level} size="sm" />
+                <span className="text-[10px] text-muted-foreground">{selectedVehicle.overallHealth.toFixed(0)}% health</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Tab Switcher + Controls ── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
           {([
-            { id: 'detail' as Tab, label: 'Race Detail' },
-            { id: 'season' as Tab, label: 'Season' },
-            { id: 'h2h' as Tab, label: 'Head to Head' },
-            { id: 'racecompare' as Tab, label: 'Compare' },
+            { id: 'detail' as Tab, label: 'Race Detail', icon: Activity },
+            { id: 'season' as Tab, label: 'Season', icon: TrendingUp },
+            { id: 'h2h' as Tab, label: 'Head to Head', icon: GitCompareArrows },
+            { id: 'racecompare' as Tab, label: 'Compare', icon: Disc },
           ]).map(t => (
             <button type="button" key={t.id} onClick={() => setTab(t.id)}
-              className={`text-sm px-4 py-1.5 rounded-md transition-all ${
+              className={`text-sm px-4 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
                 tab === t.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'
               }`}
-            >{t.label}</button>
+            ><t.icon className="w-3.5 h-3.5" />{t.label}</button>
           ))}
         </div>
         {/* Year */}
@@ -405,28 +490,46 @@ export function CarTelemetry() {
             </select>
           </>
         )}
-        {/* Driver */}
-        {tab !== 'h2h' && (
-          <select value={driver} onChange={e => setDriver(e.target.value)} aria-label="Select driver"
-            className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
-          >
-            {drivers.map(d => <option key={d} value={d}>{d}</option>)}
-          </select>
+        {/* Driver pills */}
+        {tab !== 'h2h' && drivers.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            {drivers.map(d => (
+              <button type="button" key={d} onClick={() => setDriver(d)}
+                className={`px-3 py-1 rounded-full text-sm font-semibold transition-all border ${
+                  driver === d
+                    ? 'bg-[#FF8000] text-white border-[#FF8000] shadow-[0_0_12px_rgba(255,128,0,0.3)]'
+                    : 'bg-transparent text-[#FF8000] border-[#FF8000]/30 hover:border-[#FF8000]/60'
+                }`}
+              >{d}</button>
+            ))}
+          </div>
         )}
         {/* H2H driver pickers + sub-mode */}
         {tab === 'h2h' && (
           <>
-            <select value={driver} onChange={e => setDriver(e.target.value)} aria-label="Driver 1"
-              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
-            >
-              {drivers.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <span className="text-[12px] text-muted-foreground">vs</span>
-            <select value={h2hDriver2} onChange={e => setH2hDriver2(e.target.value)} aria-label="Driver 2"
-              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg text-sm text-foreground px-3 py-1.5 outline-none"
-            >
-              {drivers.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+            <div className="flex items-center gap-1.5">
+              {drivers.map(d => (
+                <button type="button" key={`d1-${d}`} onClick={() => setDriver(d)}
+                  className={`px-3 py-1 rounded-full text-sm font-semibold transition-all border ${
+                    driver === d
+                      ? 'bg-[#FF8000] text-white border-[#FF8000] shadow-[0_0_12px_rgba(255,128,0,0.3)]'
+                      : 'bg-transparent text-[#FF8000] border-[#FF8000]/30 hover:border-[#FF8000]/60'
+                  }`}
+                >{d}</button>
+              ))}
+            </div>
+            <span className="text-[12px] text-muted-foreground font-semibold">vs</span>
+            <div className="flex items-center gap-1.5">
+              {drivers.map(d => (
+                <button type="button" key={`d2-${d}`} onClick={() => setH2hDriver2(d)}
+                  className={`px-3 py-1 rounded-full text-sm font-semibold transition-all border ${
+                    h2hDriver2 === d
+                      ? 'bg-[#22d3ee] text-white border-[#22d3ee] shadow-[0_0_12px_rgba(34,211,238,0.3)]'
+                      : 'bg-transparent text-[#22d3ee] border-[#22d3ee]/30 hover:border-[#22d3ee]/60'
+                  }`}
+                >{d}</button>
+              ))}
+            </div>
             <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
               {([{ id: 'race' as const, label: 'Single Race' }, { id: 'season' as const, label: 'Full Season' }]).map(m => (
                 <button type="button" key={m.id} onClick={() => setH2hMode(m.id)}
@@ -446,9 +549,26 @@ export function CarTelemetry() {
             ))}
           </div>
         )}
-        {tab === 'detail' && <span className="text-[12px] text-muted-foreground">{driverData.length.toLocaleString()} data points</span>}
-        {tab === 'season' && seasonSummary.length > 0 && <span className="text-[12px] text-muted-foreground">{seasonSummary.length} races</span>}
       </div>
+
+      {/* ── System Health Compact Bar ── */}
+      {selectedVehicle && selectedVehicle.systems.length > 0 && (tab === 'detail' || tab === 'season') && (
+        <div className="flex items-center gap-4 bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-lg px-4 py-2">
+          <span className="text-[10px] tracking-[0.2em] text-[#FF8000]/50 font-semibold">SYSTEMS</span>
+          {selectedVehicle.systems.slice(0, 4).map(sys => (
+            <div key={sys.name} className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">{sys.name}</span>
+              <div className="w-16 h-1.5 bg-[#222838] rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{
+                  width: `${sys.health}%`,
+                  backgroundColor: sys.level === 'nominal' ? '#22c55e' : sys.level === 'warning' ? '#FF8000' : '#ef4444',
+                }} />
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground">{sys.health}%</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {error && tab === 'detail' && (
         <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-500/10 rounded-lg p-3">
@@ -456,24 +576,43 @@ export function CarTelemetry() {
         </div>
       )}
 
-      {tab === 'detail' && (
-        <RaceDetailView kpis={kpis} speedTrace={speedTrace} lapTimes={lapTimes}
-          drsPerLap={drsPerLap} raceStints={raceStints} topSpeedPerLap={topSpeedPerLap} race={race} year={year} loading={loading} />
-      )}
-      {tab === 'season' && (
-        <SeasonCompareView seasonSummary={seasonSummary} loading={summaryLoading}
-          year={year} driver={driver} highlightRace={highlightRace} />
-      )}
-      {tab === 'h2h' && (
-        <H2HView mode={h2hMode} loading={h2hLoading} year={year} race={race}
-          driver1={driver} driver2={h2hDriver2}
-          raceData={h2hRaceData} season1={h2hSeason1} season2={h2hSeason2} />
-      )}
-      {tab === 'racecompare' && (
-        <CompareView mode={compareMode} loading={compareLoading} year={year} year2={year2} driver={driver}
-          race1={race} race2={race2} data1={compareData1} data2={compareData2}
-          season1={compareSeason1} season2={compareSeason2} years={years} onYear2Change={setYear2} />
-      )}
+      {/* ── Tab Content with Transitions ── */}
+      <AnimatePresence mode="wait">
+        <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+          {tab === 'detail' && (
+            <>
+              <RaceDetailView kpis={kpis} speedTrace={speedTrace} lapTimes={lapTimes}
+                drsPerLap={drsPerLap} raceStints={raceStints} topSpeedPerLap={topSpeedPerLap} race={race} year={year} loading={loading} />
+              {!loading && driverData.length > 0 && (
+                <div className="mt-4">
+                  <KexBriefingCard title="WISE Race Analysis" icon="brain" kex={kex} loading={kexLoading} loadingText="Analyzing race telemetry..." />
+                </div>
+              )}
+            </>
+          )}
+          {tab === 'season' && (
+            <>
+              <SeasonCompareView seasonSummary={seasonSummary} loading={summaryLoading}
+                year={year} driver={driver} highlightRace={highlightRace} />
+              {!summaryLoading && seasonSummary.length > 0 && (
+                <div className="mt-4">
+                  <KexBriefingCard title="WISE Season Analysis" icon="sparkles" kex={kex} loading={kexLoading} loadingText="Analyzing season telemetry..." />
+                </div>
+              )}
+            </>
+          )}
+          {tab === 'h2h' && (
+            <H2HView mode={h2hMode} loading={h2hLoading} year={year} race={race}
+              driver1={driver} driver2={h2hDriver2}
+              raceData={h2hRaceData} season1={h2hSeason1} season2={h2hSeason2} />
+          )}
+          {tab === 'racecompare' && (
+            <CompareView mode={compareMode} loading={compareLoading} year={year} year2={year2} driver={driver}
+              race1={race} race2={race2} data1={compareData1} data2={compareData2}
+              season1={compareSeason1} season2={compareSeason2} years={years} onYear2Change={setYear2} />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

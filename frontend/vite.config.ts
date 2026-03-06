@@ -19,6 +19,9 @@ function localDataPlugin() {
         // These endpoints are served by the Python backend — let proxy handle them
         if (filePath.startsWith('strategy/')) { next(); return; }
         if (filePath.startsWith('mccar-summary/')) { next(); return; }
+        if (filePath.startsWith('mccar-telemetry/')) { next(); return; }
+        if (filePath.startsWith('mccar-race-telemetry/')) { next(); return; }
+        if (filePath.startsWith('mccar-race-stints/')) { next(); return; }
         if (filePath.startsWith('mcdriver-summary/')) { next(); return; }
         if (filePath.startsWith('driver_intel/')) { next(); return; }
         if (filePath.startsWith('team_intel/')) { next(); return; }
@@ -975,6 +978,9 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/api/local/mccar-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/mccar-telemetry': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/mccar-race-telemetry': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/mccar-race-stints': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/mcdriver-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/strategy': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true },
@@ -986,6 +992,7 @@ export default defineConfig({
       '/api/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/circuit_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/anomaly': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
+      '/api/forecast': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/pipeline': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/f1data': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/mccar': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },

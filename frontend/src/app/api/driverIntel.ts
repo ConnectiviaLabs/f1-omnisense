@@ -100,3 +100,56 @@ export async function getComparisonKex(drivers: string[]): Promise<ComparisonKex
   if (!res.ok) throw new Error(`Comparison KeX failed: ${res.status}`);
   return res.json();
 }
+
+export interface CarTelemetryKex {
+  driver_code: string;
+  year: number;
+  race: string | null;
+  type: 'race' | 'season';
+  text: string;
+  model_used: string;
+  provider_used: string;
+  scores: Record<string, number>;
+  summary: string;
+  grounding_score?: number;
+  generated_at: number;
+}
+
+export async function getCarTelemetryKex(
+  driverCode: string, year: number, race?: string,
+): Promise<CarTelemetryKex> {
+  const res = await fetch(`${BASE}/mccar-telemetry/kex/${encodeURIComponent(driverCode)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ year, ...(race && { race }) }),
+  });
+  if (!res.ok) throw new Error(`Car telemetry KeX failed: ${res.status}`);
+  return res.json();
+}
+
+export interface ForecastKex {
+  driver_code: string;
+  text: string;
+  model_used: string;
+  provider_used: string;
+  scores: Record<string, number>;
+  summary: string;
+  grounding_score?: number;
+  generated_at: number;
+}
+
+export async function getForecastKex(driverCode: string): Promise<ForecastKex> {
+  const res = await fetch(`${BASE}/forecast/kex/${encodeURIComponent(driverCode)}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Forecast KeX failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getAnomalyKex(driverCode: string): Promise<DriverKex> {
+  const res = await fetch(`${BASE}/anomaly/kex/${encodeURIComponent(driverCode)}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Anomaly KeX failed: ${res.status}`);
+  return res.json();
+}
