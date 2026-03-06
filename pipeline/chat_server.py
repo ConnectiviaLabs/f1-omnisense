@@ -764,6 +764,207 @@ def _extract_summary(text: str, max_chars: int = 300) -> str:
     return summary
 
 
+def _scores_from_fingerprint(insight) -> dict:
+    """Build radar scores from WISE fingerprint numeric_stats (100% grounded).
+
+    Picks up to 7 columns with the highest coefficient of variation (most
+    interesting spread), normalizes each mean to 0-10 within its own min-max range.
+    """
+    fp = getattr(insight, "fingerprint", None)
+    if not fp:
+        return {}
+    stats = getattr(fp, "numeric_stats", None) or (fp.get("numeric_stats") if isinstance(fp, dict) else None)
+    if not stats:
+        return {}
+
+    # Skip identifier / non-metric columns
+    skip = {"_id", "updated_at", "driver_code", "Driver", "season", "year",
+            "Year", "Race", "round", "samples", "laps"}
+
+    # Friendly display names for known columns
+    labels = {
+        # telemetry_race_summary columns
+        "avg_speed": "Avg Speed",
+        "top_speed": "Top Speed",
+        "avg_rpm": "Engine RPM",
+        "max_rpm": "Peak RPM",
+        "avg_throttle": "Throttle %",
+        "brake_pct": "Braking",
+        "drs_pct": "DRS Usage",
+        # jolpica_race_results columns
+        "grid": "Grid Position",
+        "position": "Race Finish",
+        "points": "Points",
+        "positions_gained": "Overtaking",
+        # aggregate profile columns (legacy)
+        "avg_race_speed_kmh": "Race Speed",
+        "lap_time_consistency_std": "Consistency",
+        "degradation_slope_s_per_lap": "Tyre Deg",
+        "overtake_ratio": "Overtake Rate",
+        "late_race_delta_s": "Late Race Pace",
+        "avg_braking_g": "Braking Force",
+        "full_throttle_pct": "Throttle %",
+        "drs_gain_kmh": "DRS Gain",
+        "braking_consistency_std": "Brake Consistency",
+        "avg_stint_laps": "Stint Length",
+        "brake_overlap_throttle_pct": "Brake Overlap",
+        # anomaly columns
+        "overallHealth": "Overall Health",
+        # circuit columns
+        "estimated_corners": "Corner Count",
+        "drs_zones": "DRS Zones",
+        "elevation_gain_m": "Elevation",
+        "est_pit_lane_loss_s": "Pit Loss",
+        "avg_temp_c": "Temperature",
+        "air_density_kg_m3": "Air Density",
+        "downforce_loss_pct": "DF Loss",
+        "pole_win_rate": "Pole-Win %",
+        "avg_positions_gained": "Overtaking",
+        "dnf_rate": "DNF Rate",
+        "pole_converted": "Pole Conv.",
+        "dnf_count": "DNF Count",
+        "entries": "Race Entries",
+    }
+
+    # Score each column by coefficient of variation (interestingness)
+    candidates = []
+    for col, s in stats.items():
+        if col in skip:
+            continue
+        mean = s.get("mean", 0)
+        std = s.get("std", 0)
+        mn = s.get("min", 0)
+        mx = s.get("max", 0)
+        rng = mx - mn
+        if rng == 0:
+            continue
+        cv = abs(std / mean) if mean != 0 else std
+        # Normalize mean to 0-10 within column range
+        norm = round((mean - mn) / rng * 10, 1)
+        label = labels.get(col, col.replace("_", " ").title()[:18])
+        candidates.append((cv, label, max(0, min(10, norm))))
+
+    # Pick top 7 by interestingness, sort alphabetically for display
+    candidates.sort(key=lambda x: -x[0])
+    top = sorted(candidates[:7], key=lambda x: x[1])
+    return {label: val for _, label, val in top}
+
+
+@app.post("/api/local/driver_intel/kex/compare")
+async def driver_compare_kex(body: dict):
+    """KeX-powered driver comparison — Gen UI with WISE fingerprint scores."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    drivers = body.get("drivers", [])
+    if len(drivers) < 2 or len(drivers) > 4:
+        raise HTTPException(400, "Provide 2-4 driver codes")
+
+    codes = [d.upper() for d in drivers]
+    db = get_data_db()
+    coll = db["kex_comparison_briefings"]
+
+    # ── Fetch opponent profiles ───────────────────────────────────────
+    cache_key = "+".join(sorted(codes))
+    rows = []
+    for code in codes:
+        doc = db["opponent_profiles"].find_one({"driver_code": code}, {"_id": 0})
+        if doc:
+            rows.append(doc)
+    if len(rows) < 2:
+        raise HTTPException(404, f"Need opponent_profiles for at least 2 drivers, found {len(rows)}")
+
+    # ── Check cache (hash includes actual data content) ────────────────
+    hash_payload = "v2:" + _json.dumps(
+        {d.get("driver_code", ""): d.get("updated_at", "") for d in rows},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(rows)
+    # Keep driver_code for reference, drop non-numeric metadata
+    meta_cols = ["driver_id", "forename", "surname", "nationality", "dob",
+                 "seasons", "updated_at", "career_stats_updated_at",
+                 "jolpica_enriched_at", "driver_number", "age", "preferred_compound"]
+    df = df.drop(columns=[c for c in meta_cols if c in df.columns], errors="ignore")
+
+    # ── WISE extraction ────────────────────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    driver_list = ", ".join(codes)
+    persona = (
+        f"You are an F1 strategist comparing {len(codes)} drivers head-to-head. "
+        "Focus on what differentiates them — where their strengths and weaknesses diverge. "
+        "Highlight strategic matchup implications: who has the edge in qualifying, race pace, "
+        "tyre management, late-race performance, and overtaking. "
+        "IMPORTANT: Write a concise flowing comparison in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Compare these F1 drivers head-to-head: {driver_list}. Analyze their relative strengths, weaknesses, and strategic matchup implications."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Compare KeX Groq failed, falling back to edge: %s", e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Compare KeX edge fallback also failed")
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "cache_key": cache_key,
+        "drivers": codes,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 @app.post("/api/local/driver_intel/kex/{driver_code}")
 async def driver_intel_kex(driver_code: str, force: bool = False):
     """Generate WISE knowledge extraction briefing for a driver.
@@ -779,26 +980,26 @@ async def driver_intel_kex(driver_code: str, force: bool = False):
     db = get_data_db()
     coll = db["kex_driver_briefings"]
 
-    # ── Gather on-screen data ─────────────────────────────────────────
-    perf = db["driver_performance_markers"].find_one({"Driver": code}, {"_id": 0})
-    overtake = db["driver_overtake_profiles"].find_one({"driver_code": code}, {"_id": 0})
-    telem = db["driver_telemetry_profiles"].find_one({"driver_code": code}, {"_id": 0})
+    # ── Gather full historical race data (pre-2025) ──────────────────
+    import pandas as pd
 
-    # Anomaly / health data
-    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
-    driver_health = None
-    if "drivers" in snapshot:
-        for d in snapshot.get("drivers", []):
-            if d.get("code") == code or d.get("name_acronym") == code:
-                driver_health = d
-                break
+    telem_docs = list(db["telemetry_race_summary"].find(
+        {"Driver": code}, {"_id": 0, "compounds": 0}
+    ))
+    results_docs = list(db["jolpica_race_results"].find(
+        {"driver_code": code}, {"_id": 0}
+    ))
 
-    if not perf and not overtake and not telem:
-        raise HTTPException(404, f"No intelligence data for driver {code}")
+    if not telem_docs and not results_docs:
+        raise HTTPException(404, f"No historical data for driver {code}")
 
-    # ── Compute data hash to detect changes ───────────────────────────
-    hash_payload = "v2:" + _json.dumps(
-        {"perf": perf, "overtake": overtake, "telem": telem, "health": driver_health},
+    # ── Compute data hash to detect changes (includes content sample) ─
+    sample_telem = telem_docs[-1] if telem_docs else {}
+    sample_results = results_docs[-1] if results_docs else {}
+    hash_payload = "v5:" + _json.dumps(
+        {"telem_n": len(telem_docs), "results_n": len(results_docs),
+         "last_telem": {k: v for k, v in sample_telem.items() if k not in ("_id", "compounds")},
+         "last_result": {k: v for k, v in sample_results.items() if k != "_id"}},
         sort_keys=True, default=str,
     )
     data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
@@ -810,75 +1011,87 @@ async def driver_intel_kex(driver_code: str, force: bool = False):
             existing.pop("_id", None)
             return existing
 
-    # ── Compute scores from real data (same normalization as frontend) ──
-    def _norm(val, lo, hi, invert=False):
-        if val is None:
-            return 0
-        clamped = max(lo, min(hi, val))
-        n = (clamped - lo) / (hi - lo) * 100 if hi != lo else 50
-        return round(100 - n if invert else n)
+    # ── Build rich DataFrame for WISE ─────────────────────────────────
+    telem_df = pd.DataFrame(telem_docs) if telem_docs else pd.DataFrame()
+    results_df = pd.DataFrame(results_docs) if results_docs else pd.DataFrame()
 
-    scores = {
-        "Consistency": _norm(perf.get("lap_time_consistency_std") if perf else None, 0, 30, True),
-        "Tyre Mgmt": _norm(perf.get("degradation_slope_s_per_lap") if perf else None, -0.3, 0.1, True),
-        "Overtaking": _norm(overtake.get("overtake_ratio") if overtake else None, 0.5, 1.5, False),
-        "Late Race": _norm(perf.get("late_race_delta_s") if perf else None, -30, 5, True),
-        "Top Speed": _norm(telem.get("avg_race_speed_kmh") if telem else None, 170, 220, False),
-        "Braking": _norm(telem.get("avg_braking_g") if telem else None, 2, 5, False),
-    }
+    # Merge on (Year/season, Race/round) if both exist
+    if not telem_df.empty and not results_df.empty:
+        # Standardize join keys
+        if "Year" in telem_df.columns and "season" in results_df.columns:
+            results_df["Year"] = results_df["season"].astype(int)
+            results_df = results_df.drop(columns=["season"])
+        if "Race" in telem_df.columns and "round" in results_df.columns:
+            # Race is str in telemetry, round is int in results — coerce both to int
+            telem_df["Race"] = pd.to_numeric(telem_df["Race"], errors="coerce")
+            results_df["Race"] = results_df["round"].astype(int)
+            results_df = results_df.drop(columns=["round"])
+        merge_on = [c for c in ["Year", "Race"] if c in telem_df.columns and c in results_df.columns]
+        if merge_on:
+            df = telem_df.merge(results_df, on=merge_on, how="outer", suffixes=("", "_res"))
+        else:
+            df = pd.concat([telem_df, results_df], ignore_index=True)
+    elif not telem_df.empty:
+        df = telem_df
+    else:
+        df = results_df
 
-    # ── Build data context for WISE ──────────────────────────────────
-    import pandas as pd
-
-    rows = []
-    if perf:
-        rows.append({k: v for k, v in perf.items() if k != "updated_at"})
-    if overtake:
-        rows.append({k: v for k, v in overtake.items() if k != "updated_at"})
-    if telem:
-        rows.append({k: v for k, v in telem.items() if k != "updated_at"})
-    if driver_health:
-        flat = {"overallHealth": driver_health.get("overallHealth")}
-        for s in driver_health.get("systems", []):
-            flat[f"{s.get('name','')}_health"] = s.get("health")
-        rows.append(flat)
-
-    df = pd.DataFrame(rows) if rows else pd.DataFrame()
+    # Drop non-numeric clutter columns that confuse fingerprinting
+    drop_cols = [c for c in ["driver_code", "Driver", "race_name", "circuit_id",
+                              "date", "status", "fastest_lap_time", "driver_code_res"] if c in df.columns]
+    df = df.drop(columns=drop_cols, errors="ignore")
 
     # ── WISE extraction via OmniKeX ──────────────────────────────────
-    try:
-        from omnikex.pillars import extract_realtime
-        from omnikex._types import KexLLMConfig, LLMProvider
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
 
-        persona = (
-            "You are an F1 performance analyst preparing a driver intelligence briefing. "
-            "Focus on driving style, strengths, weaknesses, race strategy implications, "
-            "and competitor context. "
-            "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
-            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
-            "Do NOT include markdown tables. Just write clear engineering prose."
-        )
+    persona = (
+        "You are an F1 performance analyst preparing a driver intelligence briefing. "
+        "Focus on driving style, strengths, weaknesses, race strategy implications, "
+        "and competitor context. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze driver {code}'s complete performance profile — driving style, strengths, weaknesses, and strategic implications."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
         llm_cfg = KexLLMConfig(
             provider=LLMProvider.GROQ,
             model="llama-3.3-70b-versatile",
             task_type="realtime",
             temperature=0.15,
         )
-        insight = extract_realtime(
-            df,
-            f"Analyze driver {code}'s complete performance profile — driving style, strengths, weaknesses, and strategic implications.",
-            llm_config=llm_cfg,
-            persona_context=persona,
-            response_length="medium",
-            verify=True,
-        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
         text = insight.text
         model_used = insight.model_used
         provider_used = insight.provider_used
         grounding_score = insight.grounding.grounding_score if insight.grounding else None
     except Exception as e:
-        logger.exception("Driver KeX WISE extraction failed for %s", code)
-        raise HTTPException(500, f"WISE extraction failed: {e}")
+        logger.warning("Driver KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Driver KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
 
     now = _time.time()
     result = {
@@ -924,7 +1137,7 @@ async def anomaly_kex(driver_code: str):
         raise HTTPException(404, f"No anomaly data for driver {code}")
 
     # ── Compute data hash ─────────────────────────────────────────────
-    hash_payload = "v2:" + _json.dumps(driver_data, sort_keys=True, default=str)
+    hash_payload = "v3:" + _json.dumps(driver_data, sort_keys=True, default=str)
     data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
 
     # Return cached if hash matches
@@ -960,14 +1173,6 @@ async def anomaly_kex(driver_code: str):
         parts = [f"{name}: {info.get('health','?')}%" for name, info in rsys.items()]
         trend_lines.append(f"- {r.get('race','?')}: {', '.join(parts)}")
 
-    # ── Compute scores from real health data ────────────────────────────
-    scores = {}
-    for s in systems:
-        name = s.get("name", "")
-        health = s.get("health")
-        if name and health is not None:
-            scores[name] = round(health)
-
     # ── Build DataFrame for WISE ─────────────────────────────────────
     import pandas as pd
 
@@ -991,38 +1196,55 @@ async def anomaly_kex(driver_code: str):
     df = pd.DataFrame(trend_rows) if trend_rows else pd.DataFrame([flat])
 
     # ── WISE extraction via OmniKeX ──────────────────────────────────
-    try:
-        from omnikex.pillars import extract_realtime
-        from omnikex._types import KexLLMConfig, LLMProvider
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
 
-        persona = (
-            "You are an F1 reliability engineer preparing an anomaly detection briefing. "
-            "Focus on system health status, degradation trends, risk factors, and recommended actions. "
-            "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
-            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
-            "Do NOT include markdown tables. Just write clear engineering prose."
-        )
+    persona = (
+        "You are an F1 reliability engineer preparing an anomaly detection briefing. "
+        "Focus on system health status, degradation trends, risk factors, and recommended actions. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze driver {code}'s car health and reliability — system-by-system assessment, trends, and maintenance priorities."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
         llm_cfg = KexLLMConfig(
             provider=LLMProvider.GROQ,
             model="llama-3.3-70b-versatile",
             task_type="anomaly",
             temperature=0.15,
         )
-        insight = extract_realtime(
-            df,
-            f"Analyze driver {code}'s car health and reliability — system-by-system assessment, trends, and maintenance priorities.",
-            llm_config=llm_cfg,
-            persona_context=persona,
-            response_length="medium",
-            verify=True,
-        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
         text = insight.text
         model_used = insight.model_used
         provider_used = insight.provider_used
         grounding_score = insight.grounding.grounding_score if insight.grounding else None
     except Exception as e:
-        logger.exception("Anomaly KeX WISE extraction failed for %s", code)
-        raise HTTPException(500, f"WISE extraction failed: {e}")
+        logger.warning("Anomaly KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="anomaly",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Anomaly KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
 
     now = _time.time()
     result = {
@@ -1209,7 +1431,7 @@ async def circuit_intel_kex(circuit_id: str, force: bool = False):
          "latest_season": results[-1].get("season") if results else None},
         sort_keys=True, default=str,
     )
-    data_hash = hashlib.sha256(("v2:" + hash_payload).encode()).hexdigest()[:16]
+    data_hash = hashlib.sha256(("v3:" + hash_payload).encode()).hexdigest()[:16]
 
     # Return cached if hash matches (data unchanged)
     if not force:
@@ -1289,86 +1511,98 @@ async def circuit_intel_kex(circuit_id: str, force: bool = False):
 {chr(10).join(winners) if winners else 'No winner data'}
 """
 
-    # ── Compute scores from real circuit data ───────────────────────────
-    def _norm(val, lo, hi, invert=False):
-        if val is None:
-            return 0
-        clamped = max(lo, min(hi, val))
-        n = (clamped - lo) / (hi - lo) * 100 if hi != lo else 50
-        return round(100 - n if invert else n)
-
-    corners = circuit_meta.get("estimated_corners", 0) if circuit_meta else 0
-    drs_zones = circuit_meta.get("drs_zones", 0) if circuit_meta else 0
-    elev_gain = circuit_meta.get("elevation_gain_m", 0) if circuit_meta else 0
-    length_m = circuit_meta.get("computed_length_m", 0) if circuit_meta else 0
-    pit_time = pit_loss.get("est_pit_lane_loss_s", 0) if pit_loss else 0
-    df_loss = air_data[-1].get("downforce_loss_pct", 0) if air_data else 0
-    temp_range = 0
-    if air_data and len(air_data) > 1:
-        temps = [a.get("avg_temp_c", 20) for a in air_data]
-        temp_range = max(temps) - min(temps)
-
-    scores = {
-        "Overtaking": _norm(avg_gain + drs_zones * 0.3, -1, 3),
-        "Strategy": _norm(pit_time, 15, 30),
-        "Tyre Stress": _norm(dnf_rate + corners * 0.5, 0, 30),
-        "Aero Demand": _norm(corners + elev_gain * 0.05, 10, 40),
-        "Power Sens.": _norm(length_m / 1000 - corners * 0.05, 3, 7),
-        "Weather": _norm(temp_range + (df_loss or 0) * 2, 0, 20),
-    }
-
-    # ── Build DataFrame for WISE ─────────────────────────────────────
+    # ── Build DataFrame for WISE (per-season rows) ─────────────────
     import pandas as pd
 
-    flat = {}
-    if circuit_meta:
-        flat.update({k: v for k, v in circuit_meta.items()
-                     if k not in ("coordinates", "bbox", "sectors_geojson")})
-    if pit_loss:
-        flat.update({f"pit_{k}": v for k, v in pit_loss.items()})
-    if air_data:
-        flat.update({f"air_{k}": v for k, v in air_data[-1].items()})
-    flat["pole_win_rate"] = pole_rate
-    flat["avg_positions_gained"] = avg_gain
-    flat["dnf_rate"] = dnf_rate
-    flat["total_seasons"] = len(seasons)
+    season_rows = []
+    for s in seasons:
+        s_results = [r for r in results if r["season"] == s]
+        s_valid = [r for r in s_results if r.get("grid") and r.get("position") and r["grid"] > 0 and r["position"] > 0]
+        s_gains = [r["grid"] - r["position"] for r in s_valid]
+        s_poles = [r for r in s_results if r.get("grid") == 1]
+        s_dnfs = sum(1 for r in s_results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+        row = {
+            "season": s,
+            "entries": len(s_results),
+            "avg_positions_gained": round(sum(s_gains) / len(s_gains), 2) if s_gains else 0,
+            "pole_converted": 1 if (s_poles and s_poles[0].get("position") == 1) else 0,
+            "dnf_count": s_dnfs,
+            "dnf_rate": round(s_dnfs / len(s_results) * 100, 1) if s_results else 0,
+        }
+        # Add air density data for that season if available
+        s_air = next((a for a in air_data if a.get("year") == s), None)
+        if s_air:
+            row["avg_temp_c"] = s_air.get("avg_temp_c")
+            row["air_density_kg_m3"] = s_air.get("air_density_kg_m3")
+            row["downforce_loss_pct"] = s_air.get("downforce_loss_pct")
+        season_rows.append(row)
 
-    df = pd.DataFrame([flat])
+    if season_rows:
+        df = pd.DataFrame(season_rows)
+    else:
+        # Fallback: single row from metadata
+        flat = {}
+        if circuit_meta:
+            flat.update({k: v for k, v in circuit_meta.items()
+                         if k not in ("coordinates", "bbox", "sectors_geojson")})
+        if pit_loss:
+            flat.update({f"pit_{k}": v for k, v in pit_loss.items()})
+        flat["pole_win_rate"] = pole_rate
+        flat["avg_positions_gained"] = avg_gain
+        flat["dnf_rate"] = dnf_rate
+        df = pd.DataFrame([flat])
 
     # ── WISE extraction via OmniKeX ──────────────────────────────────
-    try:
-        from omnikex.pillars import extract_realtime
-        from omnikex._types import KexLLMConfig, LLMProvider
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
 
-        persona = (
-            "You are an F1 strategy analyst preparing a circuit intelligence briefing. "
-            "Focus on circuit character, strategic implications, overtaking potential, "
-            "historical patterns, and environmental factors. "
-            "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
-            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
-            "Do NOT include markdown tables. Just write clear engineering prose."
-        )
+    persona = (
+        "You are an F1 strategy analyst preparing a circuit intelligence briefing. "
+        "Focus on circuit character, strategic implications, overtaking potential, "
+        "historical patterns, and environmental factors. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze circuit {circuit_name} — character, strategy, overtaking, historical trends, and environmental impact."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
         llm_cfg = KexLLMConfig(
             provider=LLMProvider.GROQ,
             model="llama-3.3-70b-versatile",
             task_type="realtime",
             temperature=0.15,
         )
-        insight = extract_realtime(
-            df,
-            f"Analyze circuit {circuit_name} — character, strategy, overtaking, historical trends, and environmental impact.",
-            llm_config=llm_cfg,
-            persona_context=persona,
-            response_length="medium",
-            verify=True,
-        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
         text = insight.text
         model_used = insight.model_used
         provider_used = insight.provider_used
         grounding_score = insight.grounding.grounding_score if insight.grounding else None
     except Exception as e:
-        logger.exception("Circuit KeX WISE extraction failed for %s", circuit_id)
-        raise HTTPException(500, f"WISE extraction failed: {e}")
+        logger.warning("Circuit KeX Groq failed for %s, falling back to edge model: %s", circuit_id, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="gemma3:4b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Circuit KeX edge fallback also failed for %s", circuit_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
 
     now = _time.time()
     result = {

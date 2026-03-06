@@ -7,7 +7,7 @@ import {
 import { Users, Search, Loader2, Target, Zap, ChevronRight, X, GitCompare, Disc, ArrowLeft, TrendingUp, TrendingDown, Minus, Gauge, Activity } from 'lucide-react';
 import type { DriverPerformanceMarker, DriverOvertakeProfile, DriverTelemetryProfile } from '../types';
 import * as api from '../api/driverIntel';
-import type { DriverKex, SimilarDriver } from '../api/driverIntel';
+import type { DriverKex, SimilarDriver, ComparisonKex } from '../api/driverIntel';
 import { HealthGauge } from './HealthGauge';
 import KexBriefingCard from './KexBriefingCard';
 import { StatusBadge } from './StatusBadge';
@@ -389,9 +389,12 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
         <span className="text-[11px] text-muted-foreground ml-auto font-mono">{sorted.length} drivers</span>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-        {sorted.map((d: any, i: number) => {
+      {/* ── McLaren Drivers — prominent cards ── */}
+      {(() => {
+        const mclarenDrivers = sorted.filter((d: any) => (d.team || '') === 'McLaren');
+        const otherDrivers = sorted.filter((d: any) => (d.team || '') !== 'McLaren');
+
+        const renderDriverCard = (d: any, i: number, isMcLaren: boolean) => {
           const dCode = d.driver_code || d.code || d.driver_id?.slice(0, 3).toUpperCase();
           const vehicle = anomalyVehicles.find(v => v.code === dCode);
           const team = d.team || vehicle?.team || '';
@@ -405,38 +408,40 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.4) }}
               onClick={() => onSelect(d.driver_id)}
-              className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl text-left hover:border-[rgba(255,128,0,0.25)] transition-all group relative overflow-hidden"
+              className={`text-left rounded-xl transition-all group relative overflow-hidden ${
+                isMcLaren
+                  ? 'bg-[#1A1F2E] border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]'
+                  : 'bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] hover:border-[rgba(255,128,0,0.25)]'
+              }`}
             >
               {/* Team color left accent stripe */}
-              <div className="absolute top-0 left-0 bottom-0 w-[3px] rounded-l-xl" style={{ background: color }} />
+              <div className={`absolute top-0 left-0 bottom-0 rounded-l-xl ${isMcLaren ? 'w-[4px]' : 'w-[3px]'}`} style={{ background: color }} />
 
-              <div className="p-4 pl-5">
+              <div className={isMcLaren ? 'p-5 pl-6' : 'p-4 pl-5'}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     {TEAM_NAME_TO_LOGO[team] && TEAM_LOGOS[TEAM_NAME_TO_LOGO[team]] && (
-                      <img src={TEAM_LOGOS[TEAM_NAME_TO_LOGO[team]]} alt={team} className="h-4 w-4 object-contain shrink-0" />
+                      <img src={TEAM_LOGOS[TEAM_NAME_TO_LOGO[team]]} alt={team} className={`object-contain shrink-0 ${isMcLaren ? 'h-5 w-5' : 'h-4 w-4'}`} />
                     )}
-                    <span className="text-[11px] font-medium tracking-wide truncate" style={{ color }}>{team}</span>
+                    <span className={`font-medium tracking-wide truncate ${isMcLaren ? 'text-[12px]' : 'text-[11px]'}`} style={{ color }}>{team}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {vehicle && <TrendIcon trend={trend} />}
-                    {vehicle && <HealthGauge value={vehicle.overallHealth} size={32} showLabel={false} strokeWidth={3} />}
+                    {vehicle && <HealthGauge value={vehicle.overallHealth} size={isMcLaren ? 38 : 32} showLabel={false} strokeWidth={3} />}
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Driver number badge */}
                   {vehicle && vehicle.number > 0 && (
-                    <span className="text-[18px] font-black font-mono leading-none opacity-25" style={{ color }}>
+                    <span className={`font-black font-mono leading-none opacity-25 ${isMcLaren ? 'text-[22px]' : 'text-[18px]'}`} style={{ color }}>
                       {vehicle.number}
                     </span>
                   )}
-                  <div className="text-foreground font-bold text-[15px] leading-tight group-hover:text-[#FF8000] transition-colors">
+                  <div className={`text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors ${isMcLaren ? 'text-[17px]' : 'text-[15px]'}`}>
                     {formatDriverName(d.driver_id)}
                   </div>
                 </div>
 
-                {/* Championship standing */}
                 {standing && (
                   <div className="flex items-center gap-2 mt-1.5 text-[11px]">
                     <span className="font-mono font-bold text-[#FF8000]">P{standing.position}</span>
@@ -457,8 +462,8 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
                   <div className="mt-3 space-y-1">
                     {vehicle.systems.map(sys => (
                       <div key={sys.name} className="flex items-center gap-1.5">
-                        <span className="text-[8px] text-muted-foreground/70 w-10 truncate">{sys.name}</span>
-                        <div className="flex-1 h-1 bg-[#222838] rounded-full overflow-hidden">
+                        <span className={`text-muted-foreground/70 truncate ${isMcLaren ? 'text-[9px] w-12' : 'text-[8px] w-10'}`}>{sys.name}</span>
+                        <div className={`flex-1 bg-[#222838] rounded-full overflow-hidden ${isMcLaren ? 'h-1.5' : 'h-1'}`}>
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
                         </div>
                       </div>
@@ -470,8 +475,30 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
               </div>
             </motion.button>
           );
-        })}
-      </div>
+        };
+
+        return (
+          <>
+            {mclarenDrivers.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {mclarenDrivers.map((d: any, i: number) => renderDriverCard(d, i, true))}
+              </div>
+            )}
+
+            {otherDrivers.length > 0 && mclarenDrivers.length > 0 && (
+              <div className="flex items-center gap-3 mt-2">
+                <div className="h-px flex-1 bg-[rgba(255,128,0,0.08)]" />
+                <span className="text-[10px] text-muted-foreground/50 uppercase tracking-widest">All Drivers</span>
+                <div className="h-px flex-1 bg-[rgba(255,128,0,0.08)]" />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {otherDrivers.map((d: any, i: number) => renderDriverCard(d, i, false))}
+            </div>
+          </>
+        );
+      })()}
 
       {filtered.length === 0 && (
         <div className="text-center py-12 text-muted-foreground text-sm">No drivers match your search.</div>
@@ -628,9 +655,14 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-foreground truncate">{driverName}</h2>
-              <span className="text-[11px] font-semibold tracking-wide px-2.5 py-0.5 rounded-md" style={{ color: teamColor, background: `${teamColor}15`, border: `1px solid ${teamColor}25` }}>
-                {teamName}
-              </span>
+              {teamName && (
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide px-2.5 py-0.5 rounded-md" style={{ color: teamColor, background: `${teamColor}15`, border: `1px solid ${teamColor}25` }}>
+                  {TEAM_NAME_TO_LOGO[teamName] && TEAM_LOGOS[TEAM_NAME_TO_LOGO[teamName]] && (
+                    <img src={TEAM_LOGOS[TEAM_NAME_TO_LOGO[teamName]]} alt={teamName} className="h-4 w-4 object-contain" />
+                  )}
+                  {teamName}
+                </span>
+              )}
             </div>
             {driverObj?.nationality && (
               <div className="flex items-center gap-1.5 mt-1 text-[12px] text-muted-foreground">
@@ -651,7 +683,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
           >
             {drivers.map((d: any) => (
               <option key={d.driver_id} value={d.driver_id}>
-                {formatDriverName(d.driver_id)} \u2014 {d.team || ''}
+                {formatDriverName(d.driver_id)} — {d.team || ''}
               </option>
             ))}
           </select>
@@ -668,7 +700,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
           {/* Radar Chart */}
           <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
-            <SectionHeader icon={Target} label="Performance Radar" sub="Normalized 0\u2013100 across 6 dimensions" />
+            <SectionHeader icon={Target} label="Performance Radar" sub="Normalized 0–100 across 6 dimensions" />
             {radarData.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={260}>
@@ -901,16 +933,27 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                         <XAxis dataKey="race" tick={{ fontSize: 9, fill: '#555' }} interval="preserveStartEnd" />
                         <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#555' }} width={28} />
                         <Tooltip content={<CustomTooltip />} />
-                        <Area type="monotone" dataKey="Speed" stroke="#FF8000" fill="#FF8000" fillOpacity={0.06} strokeWidth={1.5} dot={false} />
-                        <Area type="monotone" dataKey="Lap Pace" stroke="#00d4ff" fill="#00d4ff" fillOpacity={0.06} strokeWidth={1.5} dot={false} />
-                        <Area type="monotone" dataKey="Tyre Management" stroke="#22c55e" fill="#22c55e" fillOpacity={0.06} strokeWidth={1.5} dot={false} />
+                        {(() => {
+                          const systemNames = healthTrendData.length > 0
+                            ? Object.keys(healthTrendData[0]).filter(k => k !== 'race')
+                            : [];
+                          const colors = ['#FF8000', '#00d4ff', '#22c55e', '#a78bfa', '#f472b6'];
+                          return systemNames.map((name, i) => (
+                            <Area key={name} type="monotone" dataKey={name} stroke={colors[i % colors.length]} fill={colors[i % colors.length]} fillOpacity={0.06} strokeWidth={1.5} dot={false} />
+                          ));
+                        })()}
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
                   <div className="flex items-center gap-4 mt-2 justify-center">
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="w-2 h-0.5 rounded bg-[#FF8000]" /> Speed</div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="w-2 h-0.5 rounded bg-[#00d4ff]" /> Lap Pace</div>
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><span className="w-2 h-0.5 rounded bg-[#22c55e]" /> Tyre Mgmt</div>
+                    {healthTrendData.length > 0 && Object.keys(healthTrendData[0]).filter(k => k !== 'race').map((name, i) => {
+                      const colors = ['#FF8000', '#00d4ff', '#22c55e', '#a78bfa', '#f472b6'];
+                      return (
+                        <div key={name} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="w-2 h-0.5 rounded" style={{ backgroundColor: colors[i % colors.length] }} /> {name}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -945,6 +988,9 @@ function CompareDrivers() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [similarDrivers, setSimilarDrivers] = useState<SimilarDriver[]>([]);
+  const [comparisonKex, setComparisonKex] = useState<ComparisonKex | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [opponentProfiles, setOpponentProfiles] = useState<Record<string, any>>({});
 
   useEffect(() => {
     Promise.all([
@@ -980,6 +1026,28 @@ function CompareDrivers() {
     api.getSimilarDrivers(code, 5).then(setSimilarDrivers).catch(() => setSimilarDrivers([]));
   }, [selected, getDriverCode]);
 
+  // Fetch full opponent profiles for selected drivers
+  useEffect(() => {
+    if (selected.length < 2) return;
+    selected.forEach(driverId => {
+      if (opponentProfiles[driverId]) return;
+      api.getOpponentDriver(driverId).then(profile => {
+        setOpponentProfiles(prev => ({ ...prev, [driverId]: profile }));
+      }).catch(() => {});
+    });
+  }, [selected, opponentProfiles]);
+
+  // Trigger KeX comparison when 2+ drivers selected
+  useEffect(() => {
+    if (selected.length < 2) { setComparisonKex(null); return; }
+    const codes = selected.map(getDriverCode);
+    setComparisonLoading(true);
+    api.getComparisonKex(codes)
+      .then(setComparisonKex)
+      .catch(() => setComparisonKex(null))
+      .finally(() => setComparisonLoading(false));
+  }, [selected, getDriverCode]);
+
   const getDriverData = useCallback((code: string) => {
     const m = allMarkers.find(x => x.Driver === code);
     const o = allOvertakes.find(x => x.driver_code === code);
@@ -989,46 +1057,94 @@ function CompareDrivers() {
 
   const compareRadarData = useMemo(() => {
     if (selected.length < 2) return [];
-    const metrics = ['Consistency', 'Tyre Mgmt', 'Overtaking', 'Late Race', 'Top Speed', 'Braking'];
-    return metrics.map(metric => {
-      const row: any = { metric };
+    const hasProfiles = selected.every(id => opponentProfiles[id]);
+    const metrics: { label: string; key: string; min: number; max: number; invert: boolean }[] = [
+      { label: 'Qualifying', key: 'q3_appearance_rate', min: 0, max: 1, invert: false },
+      { label: 'Race Pace', key: 'avg_finish_position', min: 1, max: 20, invert: true },
+      { label: 'Overtaking', key: 'avg_positions_gained', min: -3, max: 5, invert: false },
+      { label: 'Tyre Life', key: 'avg_tyre_life', min: 10, max: 35, invert: false },
+      { label: 'Strategy', key: 'undercut_aggression_score', min: 0, max: 1, invert: false },
+      { label: 'Consistency', key: 'g_consistency', min: 0, max: 1, invert: false },
+      { label: 'Braking', key: 'avg_braking_g', min: 2, max: 5, invert: false },
+      { label: 'Late Race', key: 'late_race_position_loss', min: 0, max: 5, invert: true },
+      { label: 'Top Speed', key: 'avg_top_speed', min: 280, max: 340, invert: false },
+      { label: 'Starts', key: 'avg_positions_gained_lap1_to_5', min: -2, max: 4, invert: false },
+    ];
+    return metrics.map(({ label, key, min, max, invert }) => {
+      const row: any = { metric: label };
       selected.forEach(driverId => {
         const code = getDriverCode(driverId);
-        const { m, o, t } = getDriverData(code);
-        let val = 0;
-        switch (metric) {
-          case 'Consistency': val = normalize(m?.lap_time_consistency_std ?? null, 0, 30, true); break;
-          case 'Tyre Mgmt': val = normalize(m?.degradation_slope_s_per_lap ?? null, -0.3, 0.1, true); break;
-          case 'Overtaking': val = normalize(o?.overtake_ratio ?? null, 0.5, 1.5, false); break;
-          case 'Late Race': val = normalize(m?.late_race_delta_s ?? null, -30, 5, true); break;
-          case 'Top Speed': val = normalize(t?.avg_race_speed_kmh ?? null, 170, 220, false); break;
-          case 'Braking': val = normalize(t?.avg_braking_g ?? null, 2, 5, false); break;
+        if (hasProfiles) {
+          const p = opponentProfiles[driverId];
+          row[code] = normalize(p?.[key] ?? null, min, max, invert);
+        } else {
+          const { m, o, t } = getDriverData(code);
+          let val = 0;
+          switch (label) {
+            case 'Qualifying': val = normalize(m?.lap_time_consistency_std ?? null, 0, 30, true); break;
+            case 'Overtaking': val = normalize(o?.overtake_ratio ?? null, 0.5, 1.5, false); break;
+            case 'Top Speed': val = normalize(t?.avg_race_speed_kmh ?? null, 170, 220, false); break;
+            case 'Braking': val = normalize(t?.avg_braking_g ?? null, 2, 5, false); break;
+            default: val = 0;
+          }
+          row[code] = val;
         }
-        row[code] = val;
       });
       return row;
     });
-  }, [selected, getDriverCode, getDriverData]);
+  }, [selected, getDriverCode, getDriverData, opponentProfiles]);
 
   const comparisonStats = useMemo(() => {
     if (selected.length < 2) return [];
     const codes = selected.map(getDriverCode);
-    const dataMap = Object.fromEntries(codes.map(c => [c, getDriverData(c)]));
+    const hasProfiles = selected.every(id => opponentProfiles[id]);
     const fmt = (v: number | null | undefined, p = 2) => v != null ? v.toFixed(p) : '\u2014';
-    const rows: { label: string; unit: string; values: Record<string, string>; bestDir?: 'low' | 'high' }[] = [
-      { label: 'Avg Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_race_speed_kmh, 1)])) },
-      { label: 'Top Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_race_speed_kmh, 1)])) },
-      { label: 'Braking G', unit: 'G', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_braking_g)])) },
-      { label: 'Full Throttle', unit: '%', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t ? dataMap[c].t!.full_throttle_ratio * 100 : null, 1)])) },
-      { label: 'DRS Gain', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.drs_speed_gain_kmh, 1)])) },
-      { label: 'Tyre Degradation', unit: 's/lap', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.degradation_slope_s_per_lap, 3)])) },
-      { label: 'Lap Consistency', unit: 'std', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.lap_time_consistency_std)])) },
-      { label: 'Late Race Delta', unit: 's', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.late_race_delta_s)])) },
-      { label: 'OT Made/Race', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtakes_per_race, 1)])) },
-      { label: 'OT Ratio', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtake_ratio)])) },
-    ];
+    const pct = (v: number | null | undefined) => v != null ? `${(v * 100).toFixed(1)}%` : '\u2014';
+    const op = (code: string) => {
+      const id = selected.find(id => getDriverCode(id) === code);
+      return id ? opponentProfiles[id] : null;
+    };
+    type Row = { label: string; unit: string; values: Record<string, string>; bestDir?: 'low' | 'high' };
+    const rows: Row[] = [];
+
+    if (hasProfiles) {
+      // Rich metrics from opponent_profiles
+      rows.push(
+        { label: 'Avg Finish', unit: 'pos', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_finish_position, 1)])) },
+        { label: 'Avg Grid', unit: 'pos', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_grid_position, 1)])) },
+        { label: 'Q3 Rate', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, pct(op(c)?.q3_appearance_rate)])) },
+        { label: 'Positions Gained', unit: '/race', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_positions_gained, 2)])) },
+        { label: 'Top Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_top_speed, 1)])) },
+        { label: 'Braking G', unit: 'G', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_braking_g, 2)])) },
+        { label: 'Tyre Life', unit: 'laps', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_tyre_life, 1)])) },
+        { label: 'Long Stint', unit: 'laps', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.long_stint_capability, 1)])) },
+        { label: 'Pit Duration', unit: 's', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_pit_duration_s, 1)])) },
+        { label: 'Undercut Aggression', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.undercut_aggression_score, 2)])) },
+        { label: 'Tyre Extension', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.tyre_extension_bias, 2)])) },
+        { label: 'Late Race Loss', unit: 'pos', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.late_race_position_loss, 2)])) },
+        { label: 'Position Volatility', unit: '', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.position_volatility, 2)])) },
+        { label: 'Throttle Smoothness', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.throttle_smoothness, 3)])) },
+        { label: 'G Consistency', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.g_consistency, 3)])) },
+        { label: 'DNF Rate', unit: '', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, pct(op(c)?.dnf_rate)])) },
+        { label: 'Points/Race', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(op(c)?.avg_points_per_race, 1)])) },
+      );
+    } else {
+      // Fallback to aggregate collections
+      const dataMap = Object.fromEntries(codes.map(c => [c, getDriverData(c)]));
+      rows.push(
+        { label: 'Avg Speed', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_race_speed_kmh, 1)])) },
+        { label: 'Braking G', unit: 'G', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.avg_braking_g)])) },
+        { label: 'Full Throttle', unit: '%', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t ? dataMap[c].t!.full_throttle_ratio * 100 : null, 1)])) },
+        { label: 'DRS Gain', unit: 'km/h', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].t?.drs_speed_gain_kmh, 1)])) },
+        { label: 'Tyre Degradation', unit: 's/lap', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.degradation_slope_s_per_lap, 3)])) },
+        { label: 'Lap Consistency', unit: 'std', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.lap_time_consistency_std)])) },
+        { label: 'Late Race Delta', unit: 's', bestDir: 'low', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].m?.late_race_delta_s)])) },
+        { label: 'OT Made/Race', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtakes_per_race, 1)])) },
+        { label: 'OT Ratio', unit: '', bestDir: 'high', values: Object.fromEntries(codes.map(c => [c, fmt(dataMap[c].o?.overtake_ratio)])) },
+      );
+    }
     return rows;
-  }, [selected, getDriverCode, getDriverData]);
+  }, [selected, getDriverCode, getDriverData, opponentProfiles]);
 
   const filteredDrivers = drivers.filter((d: any) => {
     if (!search) return true;
@@ -1050,7 +1166,7 @@ function CompareDrivers() {
       {/* Selected drivers bar */}
       <div className="flex items-center gap-2 flex-wrap min-h-[40px] bg-[#0D1117]/40 rounded-xl px-4 py-2 border border-[rgba(255,128,0,0.06)]">
         {selected.length === 0 ? (
-          <span className="text-[12px] text-muted-foreground">Pick 2\u20134 drivers to compare</span>
+          <span className="text-[12px] text-muted-foreground">Pick 2–4 drivers to compare</span>
         ) : (
           selected.map((driverId, i) => {
             const code = getDriverCode(driverId);
@@ -1123,7 +1239,7 @@ function CompareDrivers() {
                 <>
                   <GitCompare className="w-7 h-7 mb-3 opacity-30" />
                   <p className="text-[13px] mb-1">Similar to <span className="text-[#FF8000] font-semibold">{getDriverCode(selected[0])}</span></p>
-                  <p className="text-[10px] opacity-50 mb-4">Vector profile similarity \u2014 click to add</p>
+                  <p className="text-[10px] opacity-50 mb-4">Vector profile similarity — click to add</p>
                   <div className="space-y-1.5 w-full max-w-xs">
                     {similarDrivers.map((s, i) => {
                       const pct = Math.round(s.score * 100);
@@ -1137,10 +1253,15 @@ function CompareDrivers() {
                           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-[#0D1117] hover:bg-[#FF8000]/[0.03] border border-transparent hover:border-[#FF8000]/15 transition-all group"
                         >
                           <span className="text-[10px] font-mono text-muted-foreground/50 w-3">{i + 1}</span>
-                          <span className="w-1.5 h-4 rounded-sm" style={{ backgroundColor: color }} />
+                          {TEAM_NAME_TO_LOGO[s.team] && TEAM_LOGOS[TEAM_NAME_TO_LOGO[s.team]] ? (
+                            <img src={TEAM_LOGOS[TEAM_NAME_TO_LOGO[s.team]]} alt={s.team} className="w-4 h-4 object-contain shrink-0" />
+                          ) : (
+                            <span className="w-1.5 h-4 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                          )}
                           <div className="flex-1 text-left">
                             <span className="text-[11px] font-semibold text-foreground group-hover:text-[#FF8000] transition-colors">{s.driver_code}</span>
-                            <span className="text-[9px] text-muted-foreground/60 ml-2">{s.team}</span>
+                            <span className="text-[9px] text-muted-foreground/60 ml-1.5">{driverEntry ? formatDriverName(driverEntry.driver_id) : ''}</span>
+                            <span className="text-[8px] ml-1" style={{ color }}>{s.team}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="w-14 h-1 bg-[#222838] rounded-full overflow-hidden">
@@ -1165,12 +1286,38 @@ function CompareDrivers() {
             <>
               {/* Radar */}
               <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
-                <SectionHeader icon={Target} label="Performance Comparison" sub="Normalized 0\u2013100 across 6 dimensions" />
-                <ResponsiveContainer width="100%" height={320}>
-                  <RadarChart data={compareRadarData} cx="50%" cy="50%" outerRadius="75%">
-                    <PolarGrid stroke="rgba(255,128,0,0.08)" gridType="polygon" />
-                    <PolarAngleAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 10, fontWeight: 500 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                <SectionHeader icon={Target} label="Driver Profile Overlay" sub="Individual strengths side-by-side — each shape is one driver" />
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 mb-2">
+                  {selected.map((driverId, i) => {
+                    const code = getDriverCode(driverId);
+                    const driver = drivers.find((d: any) => d.driver_id === driverId);
+                    const teamKey = TEAM_NAME_TO_LOGO[driver?.team];
+                    return (
+                      <span key={driverId} className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: COMPARE_COLORS[i] }}>
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COMPARE_COLORS[i] }} />
+                        {teamKey && TEAM_LOGOS[teamKey] && (
+                          <img src={TEAM_LOGOS[teamKey]} alt="" className="h-3.5 w-3.5 object-contain" />
+                        )}
+                        {code}
+                      </span>
+                    );
+                  })}
+                </div>
+                <ResponsiveContainer width="100%" height={380}>
+                  <RadarChart data={compareRadarData} cx="50%" cy="50%" outerRadius="68%">
+                    <PolarGrid stroke="rgba(255,128,0,0.1)" gridType="polygon" />
+                    <PolarAngleAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 9, fontWeight: 500 }} />
+                    <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{
+                        background: '#1A1F2E',
+                        border: '1px solid rgba(255,128,0,0.2)',
+                        fontSize: 11,
+                        borderRadius: 8,
+                      }}
+                      formatter={(value: number, name: string) => [`${Math.round(value)}`, name]}
+                    />
                     {selected.map((driverId, i) => {
                       const code = getDriverCode(driverId);
                       return (
@@ -1181,7 +1328,7 @@ function CompareDrivers() {
                           stroke={COMPARE_COLORS[i]}
                           strokeWidth={2}
                           fill={COMPARE_COLORS[i]}
-                          fillOpacity={0.06}
+                          fillOpacity={0.08}
                           dot={{ r: 3, fill: COMPARE_COLORS[i], strokeWidth: 0 }}
                         />
                       );
@@ -1189,6 +1336,15 @@ function CompareDrivers() {
                   </RadarChart>
                 </ResponsiveContainer>
               </div>
+
+              {/* KeX Comparison Briefing (Gen UI) */}
+              <KexBriefingCard
+                title={`WISE Matchup Analysis — ${selectedCodes.join(' vs ')}`}
+                icon="sparkles"
+                kex={comparisonKex}
+                loading={comparisonLoading}
+                loadingText="WISE analyzing what differentiates these drivers…"
+              />
 
               {/* Stats Table */}
               <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
@@ -1230,6 +1386,7 @@ function CompareDrivers() {
                   </table>
                 </div>
               </div>
+
             </>
           )}
         </div>

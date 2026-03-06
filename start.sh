@@ -57,7 +57,7 @@ echo -e "${G}  [✓] nomic-embed-text ready${C}"
 
 # 3. Start API server (Knowledge Agent + 3D Model Gen on port 8300)
 echo -e "\n${O}  Starting API server (port 8300)...${C}"
-python "$ROOT/pipeline/chat_server.py" &
+PYTHONPATH="$ROOT/pipeline:$ROOT" python -m uvicorn pipeline.chat_server:app --host 0.0.0.0 --port 8300 &
 API_PID=$!
 
 for i in $(seq 1 15); do

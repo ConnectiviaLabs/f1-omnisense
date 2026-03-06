@@ -4,6 +4,7 @@ import { Home_v3 as Home } from './components/Home_v3';
 import { LiveDashboard } from './components/LiveDashboard';
 import { CarTelemetry } from './components/CarTelemetry';
 import { DriverBiometrics } from './components/DriverBiometrics';
+import { RaceSchedule } from './components/RaceSchedule';
 import { PrimeDriver } from './components/PrimeDriver';
 import { PrimeCar } from './components/PrimeCar';
 import { PrimeTeam } from './components/PrimeTeam';
@@ -18,13 +19,14 @@ import type { Pillar, StrategyTab } from './components/Sidebar';
 import { parseAnomalyDrivers } from './components/anomalyHelpers';
 import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
 
-const RACE_DAY_VIEWS = new Set<ViewType>(['dashboard', 'car', 'driver']);
+const RACE_DAY_VIEWS = new Set<ViewType>(['dashboard', 'car', 'driver', 'schedule']);
 
 const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   home: { title: 'Home', subtitle: '' },
   dashboard: { title: 'Live Race Dashboard', subtitle: 'Real-time F1 telemetry from OpenF1 API' },
   car: { title: 'Car Telemetry', subtitle: 'RPM, speed, throttle, brake, DRS & tire data across all drivers' },
   driver: { title: 'Driver Biometrics', subtitle: 'Heart rate, cockpit temperature & physiological data for NOR & PIA' },
+  schedule: { title: '2026 Race Calendar', subtitle: '24-round FIA Formula 1 World Championship season schedule' },
   'prime-driver': { title: 'Driver Intelligence', subtitle: 'Performance markers, overtaking profiles & telemetry style for all 40 drivers' },
   'prime-car': { title: 'Car Intelligence', subtitle: 'Predictive maintenance, anomaly detection & fleet health monitoring' },
   'prime-team': { title: 'Team Intelligence', subtitle: 'Constructor performance, fleet anomalies & forecasting across all 10 teams' },
@@ -130,6 +132,7 @@ export default function App() {
       case 'dashboard': return <LiveDashboard />;
       case 'car': return <CarTelemetry />;
       case 'driver': return <DriverBiometrics />;
+      case 'schedule': return <RaceSchedule />;
       case 'prime-driver': return <PrimeDriver prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
       case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} activePillar={activePillar} />;
       case 'prime-team': return <PrimeTeam prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;

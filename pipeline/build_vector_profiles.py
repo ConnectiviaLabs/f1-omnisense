@@ -47,6 +47,7 @@ def _collect_driver_codes(db) -> list[str]:
     codes.update(db["driver_performance_markers"].distinct("Driver"))
     codes.update(db["driver_overtake_profiles"].distinct("driver_code"))
     codes.update(db["driver_telemetry_profiles"].distinct("driver_code"))
+    codes.update(c for c in db["opponent_profiles"].distinct("driver_code") if c)
 
     snapshot = db["anomaly_scores_snapshot"].find_one({}, {"drivers.code": 1})
     if snapshot:
@@ -131,6 +132,19 @@ def _fetch_all_sources(db) -> dict:
                 "topics": doc.get("topics", []),
             }
 
+    # 6. Opponent profiles — 58 numeric metrics per driver (strategy, quali, endurance)
+    _OPP_SKIP = {"_id", "driver_id", "driver_code", "forename", "surname",
+                  "nationality", "dob", "seasons", "updated_at",
+                  "career_stats_updated_at", "jolpica_enriched_at",
+                  "driver_number", "age", "preferred_compound"}
+    sources["opponent"] = {}
+    for doc in db["opponent_profiles"].find({}, {"_id": 0}):
+        code = doc.get("driver_code")
+        if code:
+            sources["opponent"][code] = {
+                k: v for k, v in doc.items() if k not in _OPP_SKIP
+            }
+
     return sources
 
 
@@ -198,6 +212,19 @@ def _fetch_season_sources(db, season: int) -> dict:
                 "topics": doc.get("topics", []),
             }
 
+    # 6. Opponent profiles — career-wide data, not season-specific
+    _OPP_SKIP = {"_id", "driver_id", "driver_code", "forename", "surname",
+                  "nationality", "dob", "seasons", "updated_at",
+                  "career_stats_updated_at", "jolpica_enriched_at",
+                  "driver_number", "age", "preferred_compound"}
+    sources["opponent"] = {}
+    for doc in db["opponent_profiles"].find({}, {"_id": 0}):
+        code = doc.get("driver_code")
+        if code:
+            sources["opponent"][code] = {
+                k: v for k, v in doc.items() if k not in _OPP_SKIP
+            }
+
     return sources
 
 
@@ -251,6 +278,14 @@ def _merge_driver(code: str, sources: dict) -> dict:
         found.append("briefing")
     else:
         doc["briefing_summary"] = None
+
+    # Opponent profile (strategy, qualifying, endurance — 58 metrics)
+    opp = sources.get("opponent", {}).get(code)
+    if opp:
+        doc["opponent"] = opp
+        found.append("opponent")
+    else:
+        doc["opponent"] = None
 
     doc["sources_found"] = found
     return doc
@@ -346,6 +381,30 @@ def _build_narrative(doc: dict) -> str:
         parts.append(
             f"System health: {_q_health(oh)} at {oh}/100 overall ({h.get('overall_level', '?')}). "
             + (f"Systems: {sys_parts}." if sys_parts else "")
+        )
+
+    # Opponent profile (strategy, qualifying, endurance)
+    opp = doc.get("opponent")
+    if opp:
+        parts.append(
+            f"Strategy: undercut aggression {_safe(opp.get('undercut_aggression_score'))}, "
+            f"tyre extension bias {_safe(opp.get('tyre_extension_bias'))}, "
+            f"avg tyre life {_safe(opp.get('avg_tyre_life'), '.1f')} laps. "
+            f"Pit stops: 1-stop {_safe(opp.get('one_stop_freq'))}, "
+            f"2-stop {_safe(opp.get('two_stop_freq'))}, "
+            f"3-stop {_safe(opp.get('three_stop_freq'))}. "
+            f"First stop lap {_safe(opp.get('avg_first_stop_lap'), '.1f')}. "
+            f"Qualifying: Q3 rate {_safe(opp.get('q3_appearance_rate'))}, "
+            f"avg grid P{_safe(opp.get('avg_quali_position'), '.1f')}, "
+            f"quali-race delta {_safe(opp.get('quali_race_pace_delta_pct'), '.1f')}%. "
+            f"Late race: speed drop {_safe(opp.get('late_race_speed_drop'), '.1f')} km/h, "
+            f"degradation {_safe(opp.get('late_race_degradation'))}, "
+            f"position loss {_safe(opp.get('late_race_position_loss'), '.1f')}. "
+            f"Endurance: long stint {_safe(opp.get('long_stint_capability'))}, "
+            f"stint slope {_safe(opp.get('stint_endurance_slope'))}. "
+            f"Consistency: braking G-std {_safe(opp.get('g_consistency'))}, "
+            f"throttle smoothness {_safe(opp.get('throttle_smoothness'), '.1f')}, "
+            f"position volatility {_safe(opp.get('position_volatility'), '.1f')}."
         )
 
     # Briefing snippet

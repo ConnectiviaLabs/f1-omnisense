@@ -31,8 +31,7 @@ export async function getOpponentDriver(id: string): Promise<any> {
 }
 
 export async function compareDrivers(ids: string[]): Promise<any> {
-  const qs = ids.map(id => `ids=${id}`).join('&');
-  const res = await fetch(`${BASE}/opponents/compare?${qs}`);
+  const res = await fetch(`${BASE}/opponents/compare?drivers=${ids.join(',')}`);
   return res.json();
 }
 
@@ -78,5 +77,26 @@ export async function getDriverKex(driverCode: string, force = false): Promise<D
     method: 'POST',
   });
   if (!res.ok) throw new Error(`KeX generation failed: ${res.status}`);
+  return res.json();
+}
+
+export interface ComparisonKex {
+  drivers: string[];
+  text: string;
+  model_used: string;
+  provider_used: string;
+  scores: Record<string, number>;
+  summary: string;
+  grounding_score?: number;
+  generated_at: number;
+}
+
+export async function getComparisonKex(drivers: string[]): Promise<ComparisonKex> {
+  const res = await fetch(`${BASE}/driver_intel/kex/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ drivers }),
+  });
+  if (!res.ok) throw new Error(`Comparison KeX failed: ${res.status}`);
   return res.json();
 }

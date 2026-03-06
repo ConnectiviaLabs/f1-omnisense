@@ -123,6 +123,7 @@ class LiveUpdater:
             "openf1_sessions", "openf1_laps", "openf1_intervals",
             "openf1_position", "openf1_stints", "openf1_pit",
             "openf1_race_control", "openf1_weather", "openf1_drivers",
+            "openf1_team_radio",
             "fastf1_laps", "fastf1_weather", "telemetry_compressed",
             "opponent_profiles", "opponent_circuit_profiles",
             "opponent_compound_profiles", "circuit_pit_loss_times",

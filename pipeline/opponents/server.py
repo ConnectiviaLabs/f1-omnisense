@@ -51,8 +51,24 @@ def get_stats():
 
 @router.get("/drivers")
 def list_drivers():
-    """Summary list of all profiled drivers."""
-    drivers = _get_profiler().get_all_drivers()
+    """Summary list of all profiled drivers, enriched with latest team."""
+    profiler = _get_profiler()
+    drivers = profiler.get_all_drivers()
+
+    # Enrich with latest team from jolpica_race_results
+    pipeline = [
+        {"$sort": {"season": -1, "round": -1}},
+        {"$group": {"_id": "$driver_code", "team": {"$first": "$constructor_name"}}},
+    ]
+    team_map = {
+        doc["_id"]: doc["team"]
+        for doc in profiler.db["jolpica_race_results"].aggregate(pipeline)
+        if doc.get("_id")
+    }
+    for d in drivers:
+        code = d.get("driver_code") or d.get("driver_id", "").split("_")[-1].upper()[:3]
+        d["team"] = team_map.get(code, d.get("team", ""))
+
     return {"drivers": drivers, "count": len(drivers)}
 
 

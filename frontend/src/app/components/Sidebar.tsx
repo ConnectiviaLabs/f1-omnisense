@@ -16,6 +16,7 @@ import {
   TrendingUp,
   MapPin,
   BarChart3,
+  Calendar,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
@@ -41,6 +42,7 @@ const RACE_DAY_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Live Dashboard', icon: LayoutDashboard },
   { id: 'car', label: 'Car Telemetry', icon: Gauge },
   { id: 'driver', label: 'Driver Biometrics', icon: Heart },
+  { id: 'schedule', label: '2026 Calendar', icon: Calendar },
 ];
 
 const PRIME_INTEL_ITEMS: (anomalyCount?: number) => NavItem[] = (anomalyCount) => [
