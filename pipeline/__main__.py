@@ -351,7 +351,7 @@ def run_pipeline(
         if mode == "cloud":
             print("  Check GROQ_API_KEY in environment or .env")
         else:
-            print("  Run: ollama pull gemma3:4b && ollama pull qwen3-vl:8b")
+            print("  Run: ollama pull qwen3.5:9b")
         sys.exit(1)
 
     # ── Initialize tracker ─────────────────────────────────────────────

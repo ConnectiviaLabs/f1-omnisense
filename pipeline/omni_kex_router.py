@@ -287,10 +287,10 @@ def mclaren_briefing(year: int, force: bool = False):
         if df.empty:
             continue
 
-        # Realtime pillar extraction (Ollama + ministral-3)
+        # Realtime pillar extraction (Ollama + qwen3.5)
         llm_cfg = KexLLMConfig(
             provider=LLMProvider.OLLAMA,
-            model="ministral-3:8b",
+            model="qwen3.5:9b",
             task_type="realtime",
         )
         try:

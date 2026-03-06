@@ -931,7 +931,7 @@ async def driver_compare_kex(body: dict):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="realtime",
                 temperature=0.15,
             )
@@ -1078,7 +1078,7 @@ async def driver_intel_kex(driver_code: str, force: bool = False):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="realtime",
                 temperature=0.15,
             )
@@ -1236,7 +1236,7 @@ async def car_telemetry_kex(driver_code: str, body: dict = {}):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="realtime",
                 temperature=0.15,
             )
@@ -1393,7 +1393,7 @@ async def anomaly_kex(driver_code: str):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="anomaly",
                 temperature=0.15,
             )
@@ -1515,7 +1515,7 @@ async def forecast_kex(driver_code: str):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="forecast",
                 temperature=0.15,
             )
@@ -1873,7 +1873,7 @@ async def circuit_intel_kex(circuit_id: str, force: bool = False):
         try:
             llm_cfg = KexLLMConfig(
                 provider=LLMProvider.OLLAMA,
-                model="gemma3:4b",
+                model="qwen3.5:9b",
                 task_type="realtime",
                 temperature=0.15,
             )
