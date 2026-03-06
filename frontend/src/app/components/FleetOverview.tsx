@@ -437,15 +437,18 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     setTrendYear(trendYears[0] ?? null);
   }, [trendYears]);
 
+  const TREND_SYSTEMS = ['Power Unit', 'Brakes', 'Drivetrain', 'Suspension', 'Thermal', 'Electronics', 'Tyre Management'] as const;
+  const TREND_ABBR: Record<string, string> = {
+    'Power Unit': 'PU', 'Brakes': 'BRK', 'Drivetrain': 'DRV',
+    'Suspension': 'SUS', 'Thermal': 'THR', 'Electronics': 'ELC', 'Tyre Management': 'TYR',
+  };
+
   const trendData = useMemo(() => {
     if (!selectedCar) return [];
     return selectedCar.races
       .filter(r => !trendYear || r.race.startsWith(`${trendYear} `))
       .map(r => {
         const systems = r.systems;
-        const speedFeats = systems['Speed']?.features ?? {};
-        const paceFeats = systems['Lap Pace']?.features ?? {};
-        const tyreFeats = systems['Tyre Management']?.features ?? {};
 
         // Collect maintenance actions across all systems for this race
         const actions = Object.values(systems)
@@ -454,14 +457,14 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
         const actionPriority = ['alert_and_remediate', 'alert', 'log_and_monitor', 'log'];
         const topAction = actionPriority.find(a => actions.includes(a)) ?? 'none';
 
+        const sysHealth: Record<string, number> = {};
+        for (const sys of TREND_SYSTEMS) {
+          sysHealth[sys] = systems[sys]?.health ?? 0;
+        }
+
         return {
           race: r.race.replace(/^\d{4}\s+/, ''),
-          speedHealth: systems['Speed']?.health ?? 0,
-          paceHealth: systems['Lap Pace']?.health ?? 0,
-          tyreHealth: systems['Tyre Management']?.health ?? 0,
-          speedST: speedFeats['SpeedST'] ?? 0,
-          lapTime: paceFeats['LapTime'] ?? 0,
-          tyreLife: tyreFeats['TyreLife'] ?? 0,
+          sysHealth,
           maintenanceAction: topAction,
         };
       });
@@ -965,12 +968,9 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                   <thead className="sticky top-0 bg-[#1A1F2E]">
                     <tr className="border-b border-[rgba(255,128,0,0.12)]">
                       <th className="text-left py-1 text-muted-foreground font-normal">Race</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Speed</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Pace</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Tyres</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Trap km/h</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Lap (s)</th>
-                      <th className="text-right py-1 text-muted-foreground font-normal">Tyre Life</th>
+                      {TREND_SYSTEMS.map(sys => (
+                        <th key={sys} className="text-right py-1 text-muted-foreground font-normal" title={sys}>{TREND_ABBR[sys]}</th>
+                      ))}
                       <th className="text-right py-1 text-muted-foreground font-normal">Action</th>
                     </tr>
                   </thead>
@@ -978,12 +978,12 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                     {trendData.slice(-10).map((d, i) => (
                       <tr key={i} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[rgba(255,128,0,0.02)]">
                         <td className="py-0.5 text-foreground">{d.race}</td>
-                        <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.speedHealth) }}>{d.speedHealth}%</td>
-                        <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.paceHealth) }}>{d.paceHealth}%</td>
-                        <td className="py-0.5 text-right font-mono" style={{ color: healthColor(d.tyreHealth) }}>{d.tyreHealth}%</td>
-                        <td className="py-0.5 text-right font-mono text-foreground">{d.speedST ? Math.round(d.speedST) : '—'}</td>
-                        <td className="py-0.5 text-right font-mono text-foreground">{d.lapTime ? d.lapTime.toFixed(1) : '—'}</td>
-                        <td className="py-0.5 text-right font-mono text-foreground">{d.tyreLife ? Math.round(d.tyreLife) : '—'}</td>
+                        {TREND_SYSTEMS.map(sys => {
+                          const h = d.sysHealth[sys] ?? 0;
+                          return (
+                            <td key={sys} className="py-0.5 text-right font-mono" style={{ color: healthColor(h) }}>{h}%</td>
+                          );
+                        })}
                         <td className="py-0.5 text-right">
                           {d.maintenanceAction !== 'none' && <MaintenanceBadge action={d.maintenanceAction} />}
                         </td>
