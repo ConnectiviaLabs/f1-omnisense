@@ -469,6 +469,17 @@ const DATA = [
     writers: ["build_vector_profiles.py"], readers: ["/api/driver_intel/similar", "/api/team_intel/*"], frontend: ["PrimeDriver", "PrimeTeam"],
     notes: "768-dim Nomic embeddings. Needs season-awareness for production." },
 
+  // ── VictoryProfiles (3-layer team knowledge base) ──
+  { name: "victory_driver_profiles", docs: 0, sizeMB: 0.0, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_victory_profiles.py"], readers: ["/api/victory/team/{team}/{season}"], frontend: ["Team Intel (future)"],
+    notes: "Layer 1: per-driver per-team per-season profiles with Nomic 768-dim embeddings." },
+  { name: "victory_car_profiles", docs: 0, sizeMB: 0.0, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_victory_profiles.py"], readers: ["/api/victory/team/{team}/{season}"], frontend: ["Team Intel (future)"],
+    notes: "Layer 2: per-team per-season car profiles (health, telemetry, reliability) with embeddings." },
+  { name: "victory_team_kb", docs: 0, sizeMB: 0.0, idxCount: 1, category: "intel", status: "active",
+    writers: ["build_victory_profiles.py"], readers: ["/api/victory/*"], frontend: ["Team Intel (future)"],
+    notes: "Layer 3: team-wide knowledge base combining driver + car profiles with structured metadata." },
+
   // ── Derived: Opponent Profiles ──
   { name: "opponent_profiles", docs: 37, sizeMB: 0.1, idxCount: 1, category: "intel", status: "active",
     writers: ["build_opponent_profiles.py"], readers: ["/api/opponents/drivers"], frontend: ["DriverIntel (grid)"] },
