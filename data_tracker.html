@@ -545,19 +545,22 @@ const DATA = [
 
   // ── Media & Vision ──
   { name: "media_videos", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
-    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/videos"], frontend: ["MediaIntelligence"] },
+    writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/videos", "/api/omni/vis/upload"], frontend: ["MediaIntelligence"] },
   { name: "media_frames", docs: 31, sizeMB: 4.5, idxCount: 2, category: "media", status: "active",
     writers: ["omni_vis_router.py"], readers: ["/api/media/{id}"], frontend: ["MediaIntelligence"] },
+  { name: "media_vlm_analyses", docs: 0, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
+    writers: ["omni_vis_router.py (vlm-analyze)"], readers: ["/api/omni/vis/results/{filename}"], frontend: ["MediaIntelligence"],
+    notes: "Groq vision analysis results (Llama 4 Scout). Replaces former Ollama qwen3.5:2b VLM middleware." },
   { name: "clip_index", docs: 1, sizeMB: 0.3, idxCount: 1, category: "media", status: "active",
-    writers: ["push_clip_index_to_mongo.py"], readers: ["/api/visual-search", "/api/visual-tags"], frontend: ["MediaIntelligence"] },
+    writers: ["push_clip_index_to_mongo.py"], readers: ["/api/omni/vis/clip/search", "/api/omni/vis/clip/tags"], frontend: ["MediaIntelligence"] },
   { name: "pipeline_gdino_results", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
-    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/gdino"], frontend: ["MediaIntelligence"] },
+    writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/results/{filename}"], frontend: ["MediaIntelligence"] },
   { name: "pipeline_videomae_results", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
-    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/videomae"], frontend: ["MediaIntelligence"] },
+    writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/results/{filename}"], frontend: ["MediaIntelligence"] },
   { name: "pipeline_timesformer_results", docs: 3, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
-    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/timesformer"], frontend: ["MediaIntelligence"] },
+    writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/results/{filename}"], frontend: ["MediaIntelligence"] },
   { name: "pipeline_minicpm_results", docs: 3, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
-    writers: ["omni_vis_router.py"], readers: ["/api/pipeline/minicpm"], frontend: ["MediaIntelligence"] },
+    writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/results/{filename}"], frontend: ["MediaIntelligence"] },
 
   // ── Knowledge & System ──
   { name: "f1_knowledge", docs: 6395, sizeMB: 89.7, idxCount: 1, category: "system", status: "active",

@@ -37,15 +37,7 @@ export const jolpica = {
   seasons: () => fetchLocal<any>('jolpica/seasons'),
 };
 
-// Pipeline results
-export const pipeline = {
-  gdino: () => fetchLocal<any>('pipeline/gdino'),
-  fused: () => fetchLocal<any>('pipeline/fused'),
-  minicpm: () => fetchLocal<any>('pipeline/minicpm'),
-  videomae: () => fetchLocal<any>('pipeline/videomae'),
-  timesformer: () => fetchLocal<any>('pipeline/timesformer'),
-  videos: () => fetchLocal<any>('pipeline/videos'),
-};
+// Pipeline media results removed — now served by /api/omni/vis/* backend
 
 // Strategy & model data
 export const strategy = {

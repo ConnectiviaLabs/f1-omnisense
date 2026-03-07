@@ -393,3 +393,329 @@ def list_models():
         return {"models": manager.list_loaded()}
     except Exception:
         return {"models": [], "note": "Model manager not initialized"}
+
+
+# ── Media Intelligence endpoints ─────────────────────────────────────────
+
+@router.get("/videos")
+def list_videos():
+    """List all videos from media_videos, sorted by added descending."""
+    from pipeline.chat_server import get_data_db
+
+    db = get_data_db()
+    docs = list(
+        db["media_videos"]
+        .find({}, {"_id": 0})
+        .sort("added", -1)
+    )
+    return {"videos": docs}
+
+
+@router.get("/results/{filename}")
+def get_results(filename: str):
+    """Get all analysis results for a specific video across all pipeline collections."""
+    from pipeline.chat_server import get_data_db
+
+    db = get_data_db()
+
+    # GDino frames
+    gdino_docs = list(
+        db["pipeline_gdino_results"]
+        .find({"filename": filename}, {"_id": 0})
+    )
+    # Flatten frames from all matching docs
+    gdino_frames = []
+    for doc in gdino_docs:
+        gdino_frames.extend(doc.get("frames", []))
+
+    # VideoMAE classification
+    videomae_doc = db["pipeline_videomae_results"].find_one(
+        {"filename": filename}, {"_id": 0}
+    )
+
+    # TimeSformer classification
+    timesformer_doc = db["pipeline_timesformer_results"].find_one(
+        {"filename": filename}, {"_id": 0}
+    )
+
+    # MiniCPM narrations
+    minicpm_doc = db["pipeline_minicpm_results"].find_one(
+        {"filename": filename}, {"_id": 0}
+    )
+
+    # VLM analysis
+    vlm_doc = db["media_vlm_analyses"].find_one(
+        {"filename": filename}, {"_id": 0}
+    )
+
+    return {
+        "filename": filename,
+        "gdino_frames": gdino_frames,
+        "videomae": videomae_doc,
+        "timesformer": timesformer_doc,
+        "minicpm_narrations": minicpm_doc.get("frames", []) if minicpm_doc else [],
+        "vlm_analysis": vlm_doc,
+    }
+
+
+# ── VLM, Upload, CLIP endpoints ─────────────────────────────────────────
+
+class VLMAnalyzeRequest(BaseModel):
+    filename: str
+
+
+@router.post("/vlm-analyze")
+async def vlm_analyze(req: VLMAnalyzeRequest):
+    """Analyze a video with Groq vision LLM (Llama 4 Scout)."""
+    import base64
+    import os
+    import re
+    import json
+    import time
+    from pathlib import Path
+
+    import cv2
+
+    from pipeline.chat_server import get_data_db
+
+    media_dir = Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
+    video_path = media_dir / req.filename
+    if not video_path.exists() or not video_path.is_file():
+        raise HTTPException(404, f"Video not found: {req.filename}")
+
+    # Extract 8 evenly-spaced frames
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise HTTPException(400, "Could not open video file")
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    indices = [int(i * (total_frames - 1) / 7) for i in range(8)]
+    frames_b64: list[str] = []
+    for target_idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        frames_b64.append(base64.b64encode(buf.tobytes()).decode())
+    cap.release()
+
+    if not frames_b64:
+        raise HTTPException(400, "No frames extracted from video")
+
+    # Load GDino detection context
+    db = get_data_db()
+    gdino_doc = db["pipeline_gdino_results"].find_one(
+        {"filename": req.filename}, {"_id": 0}
+    )
+    detection_summary = ""
+    if gdino_doc and gdino_doc.get("frames"):
+        from collections import Counter
+        cat_counts: Counter = Counter()
+        cat_best_score: dict[str, float] = {}
+        for fr in gdino_doc["frames"]:
+            for det in fr.get("detections", []):
+                label = det.get("label") or det.get("class_name", "unknown")
+                score = det.get("confidence") or det.get("score", 0.0)
+                cat_counts[label] += 1
+                if score > cat_best_score.get(label, 0.0):
+                    cat_best_score[label] = score
+        top_cats = cat_counts.most_common(15)
+        lines = [f"  {lab}: {cnt}x (best {cat_best_score[lab]:.2f})" for lab, cnt in top_cats]
+        detection_summary = "GDino detections:\n" + "\n".join(lines)
+
+    # Build prompt
+    prompt = (
+        "You are an F1 video analyst. Analyze these frames from a McLaren F1 video.\n"
+    )
+    if detection_summary:
+        prompt += f"\nObject detection context:\n{detection_summary}\n"
+    prompt += (
+        "\nReturn ONLY valid JSON with this schema:\n"
+        '{"scene":"...","key_objects":[...],"track_conditions":"...",'
+        '"strategic_notes":"...","incidents":[...]}\n'
+    )
+
+    # Build Groq vision request content parts
+    content_parts: list[dict] = [{"type": "text", "text": prompt}]
+    for b64 in frames_b64:
+        content_parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+        })
+
+    from groq import Groq
+
+    t0 = time.time()
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+    resp = client.chat.completions.create(
+        model="llama-4-scout-17b-16e-instruct",
+        messages=[{"role": "user", "content": content_parts}],
+        temperature=0.3,
+        max_completion_tokens=512,
+    )
+    elapsed = round(time.time() - t0, 2)
+
+    raw_text = resp.choices[0].message.content or ""
+    tokens = getattr(resp.usage, "total_tokens", None)
+
+    # Parse JSON from response
+    structured = None
+    try:
+        structured = json.loads(raw_text)
+    except json.JSONDecodeError:
+        m = re.search(r"\{[\s\S]*\}", raw_text)
+        if m:
+            try:
+                structured = json.loads(m.group())
+            except json.JSONDecodeError:
+                pass
+
+    # Upsert into MongoDB
+    from datetime import datetime, timezone
+
+    db["media_vlm_analyses"].update_one(
+        {"filename": req.filename},
+        {"$set": {
+            "filename": req.filename,
+            "analysis": raw_text,
+            "structured": structured,
+            "model": "llama-4-scout-17b-16e-instruct",
+            "frames_analyzed": len(frames_b64),
+            "tokens": tokens,
+            "time_s": elapsed,
+            "updated": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+
+    return {
+        "filename": req.filename,
+        "analysis": raw_text,
+        "structured": structured,
+        "model": "llama-4-scout-17b-16e-instruct",
+        "frames_analyzed": len(frames_b64),
+        "tokens": tokens,
+        "time_s": elapsed,
+    }
+
+
+@router.post("/upload")
+async def upload_video(video: UploadFile = File(...)):
+    """Upload a video file to McMedia and register in MongoDB."""
+    import os
+    import re as _re
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from pipeline.chat_server import get_data_db
+
+    original = video.filename or "upload.mp4"
+    ext = os.path.splitext(original)[1].lower()
+    if ext not in (".mp4", ".webm", ".mov"):
+        raise HTTPException(400, f"Unsupported format: {ext}. Allowed: .mp4, .webm, .mov")
+
+    # Sanitize filename
+    basename = os.path.splitext(original)[0]
+    safe_base = _re.sub(r"[^\w\-.]", "_", basename)
+    safe_filename = f"{safe_base}{ext}"
+
+    media_dir = Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    dest = media_dir / safe_filename
+
+    content = await video.read()
+    with open(dest, "wb") as f:
+        f.write(content)
+
+    size_mb = round(len(content) / (1024 * 1024), 2)
+    now = datetime.now(timezone.utc)
+
+    db = get_data_db()
+    db["media_videos"].update_one(
+        {"filename": safe_filename},
+        {"$set": {
+            "filename": safe_filename,
+            "size_mb": size_mb,
+            "added": now,
+            "analyzed": False,
+        }},
+        upsert=True,
+    )
+
+    return {
+        "filename": safe_filename,
+        "size_mb": size_mb,
+        "added": now.isoformat(),
+        "analyzed": False,
+    }
+
+
+@router.get("/clip/search")
+def clip_search(q: str, k: int = 12):
+    """CLIP text-to-image search across indexed frames."""
+    from pipeline.chat_server import get_clip_index, get_clip_embedder
+
+    try:
+        index = get_clip_index()
+    except FileNotFoundError:
+        raise HTTPException(404, "CLIP index not found")
+
+    embedder = get_clip_embedder()
+    query_vec = np.array(embedder.embed_text(q), dtype=np.float32)
+
+    images = index.get("images", [])
+    if not images:
+        return {"query": q, "results": []}
+
+    # Build matrix of embeddings
+    emb_matrix = np.array(
+        [img["embedding"] for img in images], dtype=np.float32
+    )
+    # Cosine similarity
+    norms_q = np.linalg.norm(query_vec) + 1e-9
+    norms_db = np.linalg.norm(emb_matrix, axis=1) + 1e-9
+    scores = emb_matrix @ query_vec / (norms_db * norms_q)
+
+    top_indices = np.argsort(scores)[::-1][:k]
+    results = []
+    for idx in top_indices:
+        img = images[idx]
+        results.append({
+            "path": img.get("path", ""),
+            "score": round(float(scores[idx]), 4),
+            "auto_tags": img.get("auto_tags", []),
+            "source_video": img.get("source_video", ""),
+            "frame_index": img.get("frame_index", None),
+        })
+
+    return {"query": q, "results": results}
+
+
+@router.get("/clip/tags")
+def clip_tags():
+    """Return all indexed images with tags and a tag summary."""
+    from pipeline.chat_server import get_clip_index
+
+    try:
+        index = get_clip_index()
+    except FileNotFoundError:
+        return {"images": [], "tags": []}
+
+    images = index.get("images", [])
+
+    # Build tag summary: unique labels with max scores
+    tag_max: dict[str, float] = {}
+    for img in images:
+        for tag in img.get("auto_tags", []):
+            label = tag.get("label", "") if isinstance(tag, dict) else str(tag)
+            score = tag.get("score", 0.0) if isinstance(tag, dict) else 0.0
+            if score > tag_max.get(label, 0.0):
+                tag_max[label] = score
+
+    tags_sorted = sorted(
+        [{"label": lab, "max_score": round(sc, 4)} for lab, sc in tag_max.items()],
+        key=lambda t: t["max_score"],
+        reverse=True,
+    )
+
+    return {"images": images, "tags": tags_sorted}

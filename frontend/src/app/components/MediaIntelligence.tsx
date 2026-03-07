@@ -3,8 +3,6 @@ import {
   Brain, Video, Scan, Loader2, Search, Tag, ImageIcon, Film, Sparkles,
   Upload, ChevronDown,
 } from 'lucide-react';
-import { pipeline } from '../api/local';
-
 // ── Interfaces ──
 
 interface GDinoFrame {
@@ -358,7 +356,7 @@ function AnnotatedVideoPlayer({
 
 export function MediaIntelligence() {
   const [gdinoData, setGdinoData] = useState<Record<string, GDinoFrame[]> | null>(null);
-  const [fusedData, setFusedData] = useState<Record<string, GDinoFrame[]> | null>(null);
+  // fusedData removed — gdinoData now loaded per-video from backend
   const [videomaeData, setVideomaeData] = useState<Record<string, VideoModelResult> | null>(null);
   const [timesformerData, setTimesformerData] = useState<Record<string, VideoModelResult> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -388,40 +386,52 @@ export function MediaIntelligence() {
   // Upload
   const [uploadDragging, setUploadDragging] = useState(false);
 
-  // Load pipeline data
+  // Load video list + CLIP tags on mount
   useEffect(() => {
     Promise.allSettled([
-      pipeline.gdino().then(d => setGdinoData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : (d && typeof d === 'object' && !Array.isArray(d) ? d : null))),
-      pipeline.fused().then(d => setFusedData(d?.results?.length ? Object.fromEntries(d.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])) : null)),
-      pipeline.videomae().then(d => {
-        if (d?.results) {
-          const mapped: Record<string, VideoModelResult> = {};
-          for (const r of d.results) {
-            mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
-          }
-          setVideomaeData(mapped);
-        } else { setVideomaeData(d); }
-      }),
-      pipeline.timesformer().then(d => {
-        if (d?.results) {
-          const mapped: Record<string, VideoModelResult> = {};
-          for (const r of d.results) {
-            mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
-          }
-          setTimesformerData(mapped);
-        } else { setTimesformerData(d); }
-      }),
-      pipeline.videos().then(d => setVideos(d?.videos ?? [])),
-      pipeline.minicpm().then(d => setNarrationData(d ?? null)),
+      fetch('/api/omni/vis/videos')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.videos) setVideos(data.videos); }),
+      fetch('/api/omni/vis/clip/tags')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) { setAllTags(data.images); setTopTags(data.tags || []); }
+        }),
     ]).finally(() => setLoading(false));
+  }, []);
 
-    fetch('/api/visual-tags')
+  // Load per-video results when selection changes
+  useEffect(() => {
+    if (!selectedVideo) return;
+    fetch(`/api/omni/vis/results/${encodeURIComponent(selectedVideo)}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) { setAllTags(data.images); setTopTags(data.tags || []); }
+        if (!data) return;
+        // GDino frames
+        if (data.gdino_frames?.length) {
+          setGdinoData(prev => ({ ...prev, [data.filename]: data.gdino_frames }));
+        }
+        // VideoMAE
+        if (data.videomae) {
+          const v = data.videomae;
+          setVideomaeData(prev => ({ ...prev, [data.filename]: { total_frames: v.total_frames, fps: v.fps, inference_time_s: v.inference_time_s ?? 0, top_predictions: v.top_predictions } }));
+        }
+        // TimeSformer
+        if (data.timesformer) {
+          const t = data.timesformer;
+          setTimesformerData(prev => ({ ...prev, [data.filename]: { total_frames: t.total_frames, fps: t.fps, inference_time_s: t.inference_time_s ?? 0, top_predictions: t.top_predictions } }));
+        }
+        // MiniCPM narrations
+        if (data.minicpm_narrations?.length) {
+          setNarrationData(prev => ({ ...prev, [data.filename]: data.minicpm_narrations }));
+        }
+        // VLM analysis (if previously run)
+        if (data.vlm_analysis) {
+          setVlmAnalysis(data.vlm_analysis);
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [selectedVideo]);
 
   // Compute categories from all detection data
   const allFrames = useMemo(() =>
@@ -449,47 +459,18 @@ export function MediaIntelligence() {
     setVlmAnalysis(null);
 
     try {
-      // Step 1: Run GDino
-      await fetch('/api/run-gdino', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename }),
-      });
+      // Step 1: Run GDino via backend
+      const gdinoRes = await fetch(`/api/omni/vis/analyze-video-by-name?filename=${encodeURIComponent(filename)}`);
+      if (gdinoRes.ok) {
+        const gdinoResult = await gdinoRes.json();
+        if (gdinoResult?.frames?.length) {
+          setGdinoData(prev => ({ ...prev, [filename]: gdinoResult.frames }));
+        }
+      }
 
-      // Poll for completion
-      await new Promise<void>((resolve, reject) => {
-        const poll = setInterval(async () => {
-          try {
-            const r = await fetch(`/api/gdino-status?filename=${encodeURIComponent(filename)}`);
-            const data = await r.json();
-            if (data.status === 'done') {
-              clearInterval(poll);
-              // Reload results
-              const fresh = await pipeline.gdino();
-              if (fresh) {
-                if (fresh.results?.length) {
-                  setGdinoData(Object.fromEntries(
-                    fresh.results.filter((r: any) => r.filename && r.frames).map((r: any) => [r.filename, r.frames])
-                  ));
-                } else if (typeof fresh === 'object' && !Array.isArray(fresh)) {
-                  setGdinoData(fresh);
-                }
-              }
-              resolve();
-            } else if (data.status === 'error') {
-              clearInterval(poll);
-              reject(new Error(data.error || 'GDino failed'));
-            }
-          } catch { clearInterval(poll); reject(new Error('Polling failed')); }
-        }, 3000);
-
-        // Timeout after 10 min
-        setTimeout(() => { clearInterval(poll); reject(new Error('Timeout')); }, 600000);
-      });
-
-      // Step 2: VLM analysis
+      // Step 2: VLM analysis via Groq
       setAnalyzeProgress('analyzing');
-      const res = await fetch('/api/vlm-analyze', {
+      const res = await fetch('/api/omni/vis/vlm-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
@@ -506,10 +487,11 @@ export function MediaIntelligence() {
   };
 
   const handleUpload = async (file: File) => {
-    const res = await fetch('/api/upload-video', {
+    const formData = new FormData();
+    formData.append('video', file);
+    const res = await fetch('/api/omni/vis/upload', {
       method: 'POST',
-      headers: { 'X-Filename': file.name },
-      body: file,
+      body: formData,
     });
     if (res.ok) {
       const data = await res.json();
@@ -521,7 +503,7 @@ export function MediaIntelligence() {
     if (!query.trim()) { setClipResults(null); return; }
     setClipSearching(true);
     try {
-      const res = await fetch(`/api/visual-search?q=${encodeURIComponent(query)}&k=12`);
+      const res = await fetch(`/api/omni/vis/clip/search?q=${encodeURIComponent(query)}&k=12`);
       if (res.ok) setClipResults((await res.json()).results);
     } catch { /* */ }
     finally { setClipSearching(false); }
@@ -654,7 +636,7 @@ export function MediaIntelligence() {
 
       {/* ── MAIN CONTENT ── */}
       {selectedVideo && (() => {
-        const resultData = fusedData ?? gdinoData;
+        const resultData = gdinoData;
         const frames = resultData?.[selectedVideo] ?? [];
         const fps = videomaeData?.[selectedVideo]?.fps ?? timesformerData?.[selectedVideo]?.fps ?? 30;
         const hasGdino = frames.length > 0;

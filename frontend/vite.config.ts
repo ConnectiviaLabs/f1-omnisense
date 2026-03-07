@@ -3,7 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'fs'
-import { execFile } from 'child_process'
+// child_process removed — GDino/VLM now handled by backend router
 
 // Plugin to serve local data files as JSON API
 function localDataPlugin() {
@@ -49,12 +49,7 @@ function localDataPlugin() {
           'jolpica/lap_times': 'data/other/jolpica/lap_times.json',
           'jolpica/drivers': 'data/other/jolpica/drivers.json',
           'jolpica/seasons': 'data/other/jolpica/seasons.json',
-          // f1data pipeline results
-          'pipeline/gdino': 'f1data/McMedia/gdino_results/gdino_results.json',
-          'pipeline/fused': 'f1data/McMedia/fused_results/fused_results.json',
-          'pipeline/minicpm': 'f1data/McMedia/minicpm_results/minicpm_results.json',
-          'pipeline/videomae': 'f1data/McMedia/videomae_results/videomae_results.json',
-          'pipeline/timesformer': 'f1data/McMedia/timesformer_results/timesformer_results.json',
+          // pipeline media JSON routes removed — now served by /api/omni/vis/* backend
           // PDF extraction intelligence
           'pipeline/intelligence': 'pipeline/output/intelligence.json',
           // Anomaly detection scores
@@ -266,201 +261,7 @@ function localDataPlugin() {
         res.end(JSON.stringify({ error: 'Not found' }));
       });
 
-      // Run GDino detection pipeline on a single video (spawns Python process)
-      const activeGdinoJobs = new Map<string, { status: string; result?: any; error?: string }>();
-
-      server.middlewares.use('/api/run-gdino', async (req: any, res: any) => {
-        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        let body = '';
-        req.on('data', (chunk: any) => { body += chunk; });
-        req.on('end', () => {
-          try {
-            const { filename } = JSON.parse(body);
-            if (!filename) { res.statusCode = 400; res.end(JSON.stringify({ error: 'filename required' })); return; }
-
-            // Check if already running
-            const existing = activeGdinoJobs.get(filename);
-            if (existing?.status === 'running') {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'running', message: 'Already processing' }));
-              return;
-            }
-
-            const scriptPath = path.join(f1Root, 'f1data/McMedia/test_gdino_local.py');
-            activeGdinoJobs.set(filename, { status: 'running' });
-
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'started', filename }));
-
-            // Spawn async — result available via /api/gdino-status
-            execFile('python3', [scriptPath, filename], {
-              cwd: path.join(f1Root, 'f1data/McMedia'),
-              timeout: 600000, // 10 min max
-              env: { ...process.env, PYTORCH_CUDA_ALLOC_CONF: 'expandable_segments:True' },
-            }, (err: any, stdout: string, stderr: string) => {
-              if (err) {
-                activeGdinoJobs.set(filename, { status: 'error', error: stderr || err.message });
-              } else {
-                activeGdinoJobs.set(filename, { status: 'done', result: stdout });
-              }
-            });
-          } catch (e: any) {
-            res.statusCode = 500;
-            res.end(JSON.stringify({ error: e.message }));
-          }
-        });
-      });
-
-      server.middlewares.use('/api/gdino-status', (req: any, res: any) => {
-        const url = new URL(req.url, 'http://localhost');
-        const filename = url.searchParams.get('filename');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        if (!filename) {
-          // Return all statuses
-          const all: Record<string, any> = {};
-          activeGdinoJobs.forEach((v, k) => { all[k] = v; });
-          res.end(JSON.stringify(all));
-        } else {
-          const job = activeGdinoJobs.get(filename);
-          res.end(JSON.stringify(job || { status: 'idle' }));
-        }
-      });
-
-      // Upload video — raw binary with X-Filename header
-      server.middlewares.use('/api/upload-video', (req: any, res: any) => {
-        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        const filename = req.headers['x-filename'];
-        if (!filename) { res.statusCode = 400; res.end(JSON.stringify({ error: 'X-Filename header required' })); return; }
-        const ext = path.extname(String(filename)).toLowerCase();
-        if (!['.mp4', '.webm', '.mov'].includes(ext)) {
-          res.statusCode = 400; res.end(JSON.stringify({ error: 'Only mp4/webm/mov allowed' })); return;
-        }
-        const safeName = String(filename).replace(/[/\\]/g, '_');
-        const dest = path.join(f1Root, 'f1data/McMedia', safeName);
-        const ws = fs.createWriteStream(dest);
-        req.pipe(ws);
-        ws.on('finish', () => {
-          const stat = fs.statSync(dest);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            filename: safeName,
-            size_mb: Math.round(stat.size / 1024 / 1024 * 100) / 100,
-            added: new Date().toISOString(),
-            analyzed: false,
-          }));
-        });
-        ws.on('error', (err: any) => { res.statusCode = 500; res.end(JSON.stringify({ error: err.message })); });
-      });
-
-      // VLM analysis — sends frames + model context to Ollama qwen3.5:2b
-      server.middlewares.use('/api/vlm-analyze', async (req: any, res: any) => {
-        if (req.method !== 'POST') { res.statusCode = 405; res.end('Method not allowed'); return; }
-        let body = '';
-        req.on('data', (chunk: any) => { body += chunk; });
-        req.on('end', async () => {
-          try {
-            const { filename } = JSON.parse(body);
-            const mcMediaDir = path.join(f1Root, 'f1data/McMedia');
-
-            // Load model results
-            const loadJson = (p: string) => { try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { return {}; } };
-            const gdino = loadJson(path.join(mcMediaDir, 'gdino_results/gdino_results.json'));
-            const fused = loadJson(path.join(mcMediaDir, 'fused_results/fused_results.json'));
-            const videomae = loadJson(path.join(mcMediaDir, 'videomae_results/videomae_results.json'));
-            const timesformer = loadJson(path.join(mcMediaDir, 'timesformer_results/timesformer_results.json'));
-
-            // Get detection frames for this video
-            const gdinoFrames = gdino[filename] || [];
-            const fusedFrames = Array.isArray(fused[filename]) ? fused[filename] : [];
-
-            // Pick up to 8 evenly spaced frame images
-            const frameImages: string[] = [];
-            const frameDir = path.join(mcMediaDir, 'gdino_results');
-            const availableFrames = gdinoFrames.filter((f: any) => f.output_image && fs.existsSync(path.join(frameDir, f.output_image)));
-            const step = Math.max(1, Math.floor(availableFrames.length / 8));
-            const selected = availableFrames.filter((_: any, i: number) => i % step === 0).slice(0, 8);
-
-            for (const frame of selected) {
-              const imgPath = path.join(frameDir, frame.output_image);
-              const imgBuf = fs.readFileSync(imgPath);
-              frameImages.push(imgBuf.toString('base64'));
-            }
-
-            // Summarize detections across all frames
-            const allDets: Record<string, number[]> = {};
-            for (const src of [gdinoFrames, fusedFrames]) {
-              for (const frame of src) {
-                for (const det of (frame.detections || [])) {
-                  if (!allDets[det.category]) allDets[det.category] = [];
-                  allDets[det.category].push(det.score || 0);
-                }
-              }
-            }
-            const detSummary = Object.entries(allDets)
-              .sort((a, b) => Math.max(...b[1]) - Math.max(...a[1]))
-              .slice(0, 15)
-              .map(([cat, scores]) => `  - ${cat}: seen ${scores.length}x, best ${Math.round(Math.max(...scores) * 100)}%, avg ${Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100)}%`)
-              .join('\n');
-
-            // Summarize classifications
-            const classLines: string[] = [];
-            for (const [name, data] of [['VideoMAE', videomae[filename]], ['TimeSformer', timesformer[filename]]] as const) {
-              const preds = (data as any)?.top_predictions?.slice(0, 3) || [];
-              if (preds.length) {
-                classLines.push(`  ${name}: ${preds.map((p: any) => `${p.label} (${Math.round(p.score * 100)}%)`).join(', ')}`);
-              }
-            }
-
-            const prompt = `You are an F1 race strategy engineer at McLaren analyzing video: ${filename}\n\n` +
-              `I'm showing you ${frameImages.length} evenly-spaced frames from this video.\n\n` +
-              `OBJECT DETECTION RESULTS (GroundingDINO + SAM2):\n${detSummary || 'No objects detected.'}\n\n` +
-              `ACTION CLASSIFICATION:\n${classLines.join('\n') || 'No classifications available.'}\n\n` +
-              `Based on these ${frameImages.length} frames and the model results, respond with ONLY a JSON object (no markdown, no code fences):\n\n` +
-              `{"scene":"1-2 sentence description","key_objects":["object1","object2"],"track_conditions":"dry/wet + observations","strategic_notes":"strategic implications","incidents":["any incidents observed"]}`;
-
-            // Call Ollama
-            const ollamaRes = await fetch('http://localhost:11434/api/chat', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'qwen3.5:2b',
-                messages: [{ role: 'user', content: prompt, images: frameImages }],
-                stream: false,
-                options: { temperature: 0.3, num_predict: 512 },
-              }),
-            });
-
-            const ollamaData = await ollamaRes.json();
-            const rawAnalysis = ollamaData.message?.content || '';
-            const tokens = ollamaData.eval_count || 0;
-            const totalDur = (ollamaData.total_duration || 0) / 1e9;
-
-            // Attempt to parse structured JSON from VLM response
-            let structured = null;
-            try {
-              structured = JSON.parse(rawAnalysis);
-            } catch {
-              const jsonMatch = rawAnalysis.match(/\{[\s\S]*\}/);
-              if (jsonMatch) { try { structured = JSON.parse(jsonMatch[0]); } catch {} }
-            }
-
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({
-              analysis: rawAnalysis,
-              structured,
-              tokens,
-              time_s: Math.round(totalDur * 100) / 100,
-              tok_per_s: totalDur > 0 ? Math.round(tokens / totalDur * 10) / 10 : 0,
-              frames_analyzed: frameImages.length,
-              model: 'qwen3.5:2b',
-            }));
-          } catch (e: any) {
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: e.message }));
-          }
-        });
-      });
+      // GDino, VLM, and upload middleware removed — now handled by backend router at /api/omni/vis/*
 
       // Serve media files (images + videos) from McMedia results
       server.middlewares.use('/media', (req: any, res: any, next: any) => {
@@ -954,16 +755,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path: string) => path.replace(/^\/api\/health/, '/health'),
       },
-      '/api/visual-search': {
-        target: 'http://127.0.0.1:8300',
-        changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/visual-search/, '/visual-search'),
-      },
-      '/api/visual-tags': {
-        target: 'http://127.0.0.1:8300',
-        changeOrigin: true,
-        rewrite: (path: string) => path.replace(/^\/api\/visual-tags/, '/visual-tags'),
-      },
+      // visual-search and visual-tags removed — now served by /api/omni/vis/clip/*
       '/api/upload': {
         target: 'http://127.0.0.1:8300',
         changeOrigin: true,
