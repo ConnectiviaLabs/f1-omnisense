@@ -823,6 +823,8 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
   season: number;
 }) {
   const [profile, setProfile] = useState<ConstructorProfile | null>(null);
+  const [forecastKex, setForecastKex] = useState<any>(null);
+  const [forecastKexLoading, setForecastKexLoading] = useState(false);
 
   useEffect(() => {
     fetch(`/api/constructor_profiles?season=${season}&constructor_id=${teamId}`)
@@ -839,12 +841,36 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
     return vehicles.filter(v => teamIdFromName(v.team) === teamId).map(v => v.code);
   }, [profile, vehicles, teamId]);
 
+  // Auto-generate team-level forecast KeX briefing
+  useEffect(() => {
+    if (!profile || forecastKex || forecastKexLoading) return;
+    setForecastKexLoading(true);
+    fetch(`/api/forecast/kex/team/${teamId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: season }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setForecastKex(data); })
+      .catch(() => {})
+      .finally(() => setForecastKexLoading(false));
+  }, [profile, season, teamId]);
+
   if (driverCodes.length === 0) {
     return <div className="text-sm text-muted-foreground py-8 text-center">No driver data for {teamName} to forecast</div>;
   }
 
   return (
     <div className="space-y-4">
+      {/* Team-level Forecast KeX Briefing */}
+      <KexBriefingCard
+        title={`${teamName} Predictive Forecast Intelligence`}
+        icon="sparkles"
+        kex={forecastKex}
+        loading={forecastKexLoading}
+        loadingText="Generating team forecast intelligence…"
+      />
+
       {/* Forecast panels per driver */}
       {driverCodes.map(code => (
         <div key={code} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
