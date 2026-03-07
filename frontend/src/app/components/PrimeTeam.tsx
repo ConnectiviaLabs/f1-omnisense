@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 import { Loader2, TrendingUp, Trophy, Users, Timer, Gauge, Flag, ArrowLeft, GitCompare } from 'lucide-react';
 import { ForecastChart } from './ForecastChart';
+import KexBriefingCard from './KexBriefingCard';
 import { HealthGauge } from './HealthGauge';
 import { StatusBadge } from './StatusBadge';
 import {
@@ -346,6 +347,8 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   const [loading, setLoading] = useState(true);
   const [similarTeams, setSimilarTeams] = useState<SimilarTeam[]>([]);
   const [intraPairs, setIntraPairs] = useState<IntraTeamPair[]>([]);
+  const [telKex, setTelKex] = useState<Record<string, any>>({});
+  const [telKexLoading, setTelKexLoading] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setLoading(true);
@@ -591,6 +594,49 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
           </div>
         </div>
       )}
+
+      {/* ── KeX Car Telemetry Briefings ── */}
+      {(profile.drivers ?? []).length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
+            Car Telemetry Intelligence
+          </h3>
+          {(profile.drivers ?? []).map(d => {
+            const code = d.driver_code;
+            if (!code) return null;
+            const kex = telKex[code] ?? null;
+            const kexLoading = telKexLoading[code] ?? false;
+            return (
+              <div key={code}>
+                <div className="text-[11px] text-muted-foreground mb-1">{code}</div>
+                {!kex && !kexLoading && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTelKexLoading(prev => ({ ...prev, [code]: true }));
+                      fetch(`/api/mccar-telemetry/kex/${code}?year=${season}`, { method: 'POST' })
+                        .then(r => r.ok ? r.json() : null)
+                        .then(data => { if (data) setTelKex(prev => ({ ...prev, [code]: data })); })
+                        .catch(() => {})
+                        .finally(() => setTelKexLoading(prev => ({ ...prev, [code]: false })));
+                    }}
+                    className="text-[11px] text-[#FF8000] hover:text-[#FF9933] transition-colors px-3 py-1.5 rounded-lg border border-[rgba(255,128,0,0.15)] hover:bg-[#FF8000]/5"
+                  >
+                    Generate Telemetry Briefing
+                  </button>
+                )}
+                <KexBriefingCard
+                  title={`${code} Car Telemetry Briefing`}
+                  icon="sparkles"
+                  kex={kex}
+                  loading={kexLoading}
+                  loadingText={`Generating ${code} telemetry briefing…`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -606,6 +652,8 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
     vehicles.filter(v => teamIdFromName(v.team) === teamId),
     [vehicles, teamId]
   );
+  const [anomKex, setAnomKex] = useState<Record<string, any>>({});
+  const [anomKexLoading, setAnomKexLoading] = useState<Record<string, boolean>>({});
 
   if (loading) {
     return (
@@ -757,6 +805,47 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
           </div>
         );
       })()}
+
+      {/* ── KeX Anomaly Briefings ── */}
+      {teamDrivers.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
+            Health &amp; Reliability Intelligence
+          </h3>
+          {teamDrivers.map(v => {
+            const kex = anomKex[v.code] ?? null;
+            const kexLoading = anomKexLoading[v.code] ?? false;
+            return (
+              <div key={v.code}>
+                <div className="text-[11px] text-muted-foreground mb-1">{v.code}</div>
+                {!kex && !kexLoading && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnomKexLoading(prev => ({ ...prev, [v.code]: true }));
+                      fetch(`/api/anomaly/kex/${v.code}`, { method: 'POST' })
+                        .then(r => r.ok ? r.json() : null)
+                        .then(data => { if (data) setAnomKex(prev => ({ ...prev, [v.code]: data })); })
+                        .catch(() => {})
+                        .finally(() => setAnomKexLoading(prev => ({ ...prev, [v.code]: false })));
+                    }}
+                    className="text-[11px] text-[#FF8000] hover:text-[#FF9933] transition-colors px-3 py-1.5 rounded-lg border border-[rgba(255,128,0,0.15)] hover:bg-[#FF8000]/5"
+                  >
+                    Generate Health Briefing
+                  </button>
+                )}
+                <KexBriefingCard
+                  title={`${v.code} Health & Reliability Briefing`}
+                  icon="brain"
+                  kex={kex}
+                  loading={kexLoading}
+                  loadingText={`Generating ${v.code} health briefing…`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
