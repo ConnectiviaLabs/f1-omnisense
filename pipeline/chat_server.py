@@ -72,7 +72,11 @@ class _RewriteMiddleware(BaseHTTPMiddleware):
     _PREFIXES = (
         "/api/openf1/", "/api/jolpica/", "/api/driver_intel/",
         "/api/circuit_intel/", "/api/pipeline/", "/api/constructor_profiles",
-        "/api/mclaren/", "/api/victory/",
+        "/api/mclaren/", "/api/victory/", "/api/anomaly/", "/api/forecast/",
+        "/api/mccar-telemetry/", "/api/mccar-race-telemetry/",
+        "/api/mccar-summary", "/api/mcdriver-summary",
+        "/api/f1data/", "/api/mccar/", "/api/mcdriver/", "/api/mcracecontext/",
+        "/api/strategy/", "/api/team_intel/",
     )
     async def dispatch(self, request: _Request, call_next):
         path = request.scope["path"]
