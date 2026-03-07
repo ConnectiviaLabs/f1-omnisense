@@ -90,9 +90,21 @@ export function AdvantageTrident() {
     fetch(`/api/advantage/crossover/entities?entity_type=${scope}&source=VectorProfiles`)
       .then(r => { if (r.ok) return r.json(); throw new Error('fetch failed'); })
       .then(data => {
-        const ents = (data.entities || []).map((e: { code: string } | string) =>
-          typeof e === 'string' ? e : e.code
-        );
+        const raw = data.entities || [];
+        let ents: string[];
+        if (scope === 'team') {
+          // Extract unique team names from driver entities
+          const teams = new Set<string>();
+          raw.forEach((e: { code: string; team?: string } | string) => {
+            const t = typeof e === 'string' ? '' : e.team || '';
+            if (t) teams.add(t);
+          });
+          ents = [...teams].sort();
+        } else {
+          ents = raw.map((e: { code: string } | string) =>
+            typeof e === 'string' ? e : e.code
+          );
+        }
         setAvailableEntities(ents);
       })
       .catch(() => setAvailableEntities([]))
