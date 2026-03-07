@@ -2,9 +2,9 @@
 
 ## Purpose
 
-A 3-layer knowledge base for competitive intelligence and internal improvement analysis across F1 teams, drivers, and cars. Combines structured metrics with semantic embeddings for both similarity search and structured drill-down.
+A 4-layer knowledge base for competitive intelligence and internal improvement analysis across F1 teams, drivers, cars, and strategy. Combines structured metrics with semantic embeddings for both similarity search and structured drill-down.
 
-## Architecture: 3-Layer Hierarchy
+## Architecture: 4-Layer Hierarchy
 
 ### Layer 1: Driver Profiles
 - **Collection**: `victory_driver_profiles`
@@ -25,11 +25,22 @@ A 3-layer knowledge base for competitive intelligence and internal improvement a
   - `constructor_profiles` — DNF rate, mechanical failures, reliability stats
 - **Output**: Merged metrics + Nomic 768-dim embedding of generated narrative
 
-### Layer 3: Team Knowledge Base
+### Layer 3: Strategy Profiles
+- **Collection**: `victory_strategy_profiles`
+- **Key**: `(driver_code, team, season)`
+- **Sources**:
+  - `opponent_profiles` — undercut aggression, tyre extension bias, stop frequency, first stop timing
+  - `opponent_compound_profiles` — per-compound degradation slopes, consistency, lap times, tyre life
+  - `jolpica_pit_stops` — pit stop count, duration, consistency, timing patterns
+- **Output**: Per-driver strategy metrics (pit strategy, tyre management, compound profiles, pit execution) + Nomic 768-dim embedding of generated narrative
+- **Aggregation**: Individual driver strategies roll up into team-level strategy in the Team KB
+
+### Layer 4: Team Knowledge Base
 - **Collection**: `victory_team_kb`
 - **Key**: `(team, season)`
-- **Sources**: All driver profiles + car profile for that team-season
+- **Sources**: All driver profiles + car profile + strategy profiles for that team-season
 - **Output**: Combined narrative embedding + structured metadata blob (raw metrics for filtering/comparison)
+- **Strategy metadata**: Team-averaged undercut aggression, tyre life, 1-stop frequency + per-driver strategy breakdown
 
 ## Embedding Strategy: Hybrid (Approach 3)
 
@@ -43,9 +54,7 @@ This enables:
 
 ### Narrative Generation
 
-Ollama (qwen3.5:9b) generates a ~200-word summary per profile. Example:
-
-> "McLaren 2024: Two-driver lineup of Norris and Piastri. Norris shows exceptional late-race pace (-0.3s delta) with high throttle smoothness (0.92). Car reliability strong — Power Unit 94% health, zero mechanical DNFs. Brakes show moderate degradation trend..."
+Groq (meta-llama/llama-4-scout-17b-16e-instruct) generates a ~200-word summary per profile. Configurable via `VICTORY_LLM_MODEL` env var. Falls back to raw prompt if Groq unavailable.
 
 The narrative is the embedding input. Structured metadata is stored alongside for drill-down.
 
@@ -64,7 +73,8 @@ Aligns with existing `constructor_profiles` (team+season key) and VectorProfiles
 **Execution flow**:
 1. Build driver profiles — query 4 source collections, merge per (driver_code, team, season), generate narrative, embed, upsert to `victory_driver_profiles`
 2. Build car profiles — query 3 source collections, merge per (team, season), generate narrative, embed, upsert to `victory_car_profiles`
-3. Build team KBs — for each (team, season), pull driver + car profiles, generate combined narrative, embed, store structured metadata, upsert to `victory_team_kb`
+3. Build strategy profiles — query 3 source collections (opponent_profiles, opponent_compound_profiles, jolpica_pit_stops), merge per (driver_code, team, season), generate narrative, embed, upsert to `victory_strategy_profiles`
+4. Build team KBs — for each (team, season), pull driver + car + strategy profiles, generate combined narrative, embed, store structured metadata (including team-aggregated strategy), upsert to `victory_team_kb`
 
 **Idempotent**: Uses upsert on compound key. Re-running rebuilds from latest source data.
 
@@ -76,7 +86,7 @@ Added to `chat_server.py`:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/victory/team/{team}/{season}` | GET | Full team KB with driver + car profiles |
+| `/api/victory/team/{team}/{season}` | GET | Full team KB with driver + car + strategy profiles |
 | `/api/victory/compare` | POST | Compare 2+ teams by cosine similarity + structured diff |
 | `/api/victory/search` | POST | Semantic search across team KBs |
 | `/api/victory/regression/{team}` | GET | Season-over-season diff for internal improvement |
@@ -98,12 +108,9 @@ Added to `chat_server.py`:
 
 ## Use Cases
 
-1. **Competitive intelligence** — "How does McLaren's car reliability compare to Red Bull's?" / "Which team has the strongest late-race driver performance?"
+1. **Competitive intelligence** — "How does McLaren's car reliability compare to Red Bull's?" / "Which team has the strongest late-race driver performance?" / "Who is most aggressive on undercuts?"
 2. **Internal improvement** — "Where did McLaren regress from 2023 to 2024?" / "Which car system needs investment?"
-
-## Tyre Strategy Note
-
-Tyre strategy behavior (compound preferences, stint lengths, degradation slopes) is excluded from car profiles — it belongs in a separate strategy layer.
+3. **Strategy analysis** — "Compare McLaren vs Ferrari tyre management" / "Which driver extends stints longest on hards?" / "Team pit stop consistency rankings"
 
 ## Future Integration
 

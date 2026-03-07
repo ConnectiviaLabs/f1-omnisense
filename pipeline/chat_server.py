@@ -48,6 +48,7 @@ from pipeline.omni_vis_router import router as omni_vis_router
 from pipeline.omni_dapt_router import router as omni_dapt_router
 from pipeline.opponents.server import router as opponents_router, init_profiler_with_db
 from pipeline.updater.server import router as updater_router
+from pipeline.deep_value_router import router as deep_value_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ app.include_router(omni_vis_router)
 app.include_router(omni_dapt_router)
 app.include_router(opponents_router)
 app.include_router(updater_router)
+app.include_router(deep_value_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
@@ -774,6 +776,12 @@ async def victory_team_kb(team: str, season: int):
         {"_id": 0, "embedding": 0},
     )
     kb["car_profile"] = car
+
+    strategies = list(db["victory_strategy_profiles"].find(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    ))
+    kb["strategy_profiles"] = strategies
     return kb
 
 
@@ -921,6 +929,16 @@ def _compute_victory_diff(name_a: str, meta_a: dict, name_b: str, meta_b: dict) 
             delta = round(vb - va, 3) if isinstance(vb, float) else vb - va
             con_diffs.append({"metric": field, name_a: va, name_b: vb, "delta": delta})
     diff["car"]["constructor"] = con_diffs
+
+    # Strategy diff
+    strat_a = meta_a.get("strategy", {})
+    strat_b = meta_b.get("strategy", {})
+    strat_diffs = []
+    for field in ("team_undercut_aggression", "team_avg_tyre_life", "team_one_stop_freq"):
+        va, vb = strat_a.get(field), strat_b.get(field)
+        if va is not None and vb is not None:
+            strat_diffs.append({"metric": field, name_a: va, name_b: vb, "delta": round(vb - va, 3)})
+    diff["strategy"] = strat_diffs
 
     return diff
 

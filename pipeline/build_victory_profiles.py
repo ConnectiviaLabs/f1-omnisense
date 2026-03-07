@@ -1,9 +1,10 @@
 """
-Build VictoryProfiles -- 3-layer knowledge base
+Build VictoryProfiles -- 4-layer knowledge base
 ------------------------------------------------
-Layer 1: victory_driver_profiles  (driver_code, team, season)
-Layer 2: victory_car_profiles     (team, season)
-Layer 3: victory_team_kb          (team, season)
+Layer 1: victory_driver_profiles     (driver_code, team, season)
+Layer 2: victory_car_profiles        (team, season)
+Layer 3: victory_strategy_profiles   (driver_code, team, season)
+Layer 4: victory_team_kb             (team, season) — combines all layers
 
 Usage:
     python pipeline/build_victory_profiles.py
@@ -412,11 +413,235 @@ def build_car_profiles(db, season: int | None, embedder: NomicEmbedder, rebuild:
     return docs
 
 
-# -- Layer 3: Team Knowledge Base --------------------------------------------
+# -- Layer 3: Strategy Profiles -----------------------------------------------
 
-def _team_kb_prompt(team: str, driver_docs: list[dict], car_doc: dict | None) -> str:
+def _fetch_strategy_sources(db, season: int | None) -> dict:
+    """Fetch strategy data: opponent profiles, compound profiles, pit stops."""
+    sources = {}
+
+    # 1. Opponent profiles — per-driver strategy metrics (career-wide, not season-filtered)
+    _STRATEGY_FIELDS = (
+        "undercut_aggression_score", "tyre_extension_bias",
+        "one_stop_freq", "two_stop_freq", "three_stop_freq",
+        "avg_first_stop_lap", "median_first_stop_lap",
+        "early_stop_freq", "late_stop_freq",
+        "avg_tyre_life", "long_stint_capability", "preferred_compound",
+        "stint_endurance_slope", "avg_lap_time_degradation_per_lap",
+        "avg_pit_duration_s", "min_pit_duration_s",
+    )
+    opp_by_code = {}
+    id_to_code = {}  # driver_id -> driver_code mapping
+    for doc in db["opponent_profiles"].find({}, {"_id": 0}):
+        code = doc.get("driver_code")
+        did = doc.get("driver_id")
+        if code:
+            opp_by_code[code] = {k: doc.get(k) for k in _STRATEGY_FIELDS if doc.get(k) is not None}
+        if did and code:
+            id_to_code[did] = code
+    sources["opponent"] = opp_by_code
+    sources["_id_to_code"] = id_to_code
+
+    # 2. Compound profiles — per-driver per-compound tyre behavior
+    compound_by_code: dict[str, list[dict]] = {}
+    for doc in db["opponent_compound_profiles"].find({}, {"_id": 0}):
+        did = doc.get("driver_id", "")
+        code = id_to_code.get(did, did.upper()[:3] if did else "")
+        if not code or len(code) != 3:
+            continue
+        compound_by_code.setdefault(code, []).append({
+            "compound": doc.get("compound"),
+            "total_laps": doc.get("total_laps"),
+            "avg_lap_time_s": doc.get("avg_lap_time_s"),
+            "std_lap_time_s": doc.get("std_lap_time_s"),
+            "avg_tyre_life": doc.get("avg_tyre_life"),
+            "degradation_slope": doc.get("degradation_slope"),
+        })
+    sources["compounds"] = compound_by_code
+
+    # 3. Pit stops aggregated per driver — filtered by season if provided
+    pit_filter = {"season": season} if season else {}
+    pit_by_id: dict[str, list[dict]] = {}
+    for doc in db["jolpica_pit_stops"].find(pit_filter, {"_id": 0}):
+        did = doc.get("driver_id", "")
+        pit_by_id.setdefault(did, []).append(doc)
+
+    # Aggregate pit stats per driver_code
+    pit_by_code = {}
+    for did, stops in pit_by_id.items():
+        code = id_to_code.get(did)
+        if not code:
+            continue
+        durations = [s["duration_s"] for s in stops if s.get("duration_s") and s["duration_s"] < 60]
+        if not durations:
+            continue
+        # Group by (season, round) to count stops per race
+        races: dict[tuple, int] = {}
+        for s in stops:
+            key = (s.get("season"), s.get("round"))
+            races[key] = max(races.get(key, 0), s.get("stop", 1))
+        stops_per_race = list(races.values())
+
+        pit_by_code[code] = {
+            "total_stops": len(durations),
+            "avg_duration_s": round(sum(durations) / len(durations), 2),
+            "best_duration_s": round(min(durations), 2),
+            "pit_consistency_std": round(float(np.std(durations)), 2) if len(durations) > 1 else 0,
+            "avg_stops_per_race": round(sum(stops_per_race) / len(stops_per_race), 2) if stops_per_race else 0,
+            "races_with_pits": len(stops_per_race),
+        }
+    sources["pits"] = pit_by_code
+
+    return sources
+
+
+def _merge_strategy(code: str, team: str, sources: dict) -> dict:
+    """Merge strategy data for one driver."""
+    doc = {"driver_code": code, "team": team}
+
+    opp = sources["opponent"].get(code)
+    if opp:
+        doc["pit_strategy"] = {
+            "undercut_aggression": opp.get("undercut_aggression_score"),
+            "tyre_extension_bias": opp.get("tyre_extension_bias"),
+            "one_stop_freq": opp.get("one_stop_freq"),
+            "two_stop_freq": opp.get("two_stop_freq"),
+            "three_stop_freq": opp.get("three_stop_freq"),
+            "avg_first_stop_lap": opp.get("avg_first_stop_lap"),
+            "early_stop_freq": opp.get("early_stop_freq"),
+            "late_stop_freq": opp.get("late_stop_freq"),
+        }
+        doc["tyre_management"] = {
+            "avg_tyre_life": opp.get("avg_tyre_life"),
+            "long_stint_capability": opp.get("long_stint_capability"),
+            "preferred_compound": opp.get("preferred_compound"),
+            "stint_endurance_slope": opp.get("stint_endurance_slope"),
+            "degradation_per_lap": opp.get("avg_lap_time_degradation_per_lap"),
+        }
+
+    compounds = sources["compounds"].get(code, [])
+    if compounds:
+        # Deduplicate by compound name, keeping highest total_laps
+        best: dict[str, dict] = {}
+        for c in compounds:
+            name = c.get("compound")
+            if not name:
+                continue
+            if name not in best or (c.get("total_laps") or 0) > (best[name].get("total_laps") or 0):
+                best[name] = c
+        deduped = sorted(best.values(), key=lambda c: c.get("total_laps") or 0, reverse=True)
+        doc["compound_profiles"] = deduped[:4]
+
+    pits = sources["pits"].get(code)
+    if pits:
+        doc["pit_execution"] = pits
+
+    doc["sources_found"] = [
+        k for k in ("pit_strategy", "compound_profiles", "pit_execution")
+        if doc.get(k)
+    ]
+    return doc
+
+
+def _strategy_narrative_prompt(doc: dict) -> str:
+    """Build prompt for strategy profile narrative."""
+    code = doc["driver_code"]
+    team = doc.get("team") or "unknown team"
+    parts = [f"Summarize this F1 strategy profile in ~200 words for {code} ({team}):"]
+
+    ps = doc.get("pit_strategy")
+    if ps:
+        parts.append(
+            f"Pit strategy: undercut aggression {_safe(ps.get('undercut_aggression'))}, "
+            f"tyre extension bias {_safe(ps.get('tyre_extension_bias'))}, "
+            f"1-stop freq {_safe(ps.get('one_stop_freq'))}, "
+            f"2-stop freq {_safe(ps.get('two_stop_freq'))}, "
+            f"avg first stop lap {_safe(ps.get('avg_first_stop_lap'), '.1f')}."
+        )
+
+    tm = doc.get("tyre_management")
+    if tm:
+        parts.append(
+            f"Tyre management: avg life {_safe(tm.get('avg_tyre_life'), '.1f')} laps, "
+            f"long stint capability {_safe(tm.get('long_stint_capability'), '.1f')} laps, "
+            f"preferred compound {tm.get('preferred_compound', '?')}, "
+            f"degradation {_safe(tm.get('degradation_per_lap'))} s/lap."
+        )
+
+    comps = doc.get("compound_profiles", [])
+    if comps:
+        comp_strs = [f"{c.get('compound', '?')}: {c.get('total_laps', 0)} laps, "
+                     f"deg slope {_safe(c.get('degradation_slope'))}" for c in comps]
+        parts.append(f"Compound breakdown: {'; '.join(comp_strs)}.")
+
+    pe = doc.get("pit_execution")
+    if pe:
+        parts.append(
+            f"Pit execution: avg {pe.get('avg_duration_s', '?')}s, "
+            f"best {pe.get('best_duration_s', '?')}s, "
+            f"avg {pe.get('avg_stops_per_race', '?')} stops/race."
+        )
+
+    return "\n".join(parts)
+
+
+def build_strategy_profiles(db, season: int | None, embedder: NomicEmbedder,
+                            driver_docs: list[dict], rebuild: bool = False) -> list[dict]:
+    """Build Layer 3: victory_strategy_profiles."""
+    coll = db["victory_strategy_profiles"]
+    print(f"\n[Layer 3] Building strategy profiles (season={season})...")
+
+    sources = _fetch_strategy_sources(db, season)
+
+    # Build strategy docs for drivers that exist in driver_docs
+    driver_teams = {d["driver_code"]: d.get("team", "") for d in driver_docs}
+    codes = sorted(driver_teams.keys())
+    print(f"  Found {len(codes)} drivers with strategy data potential")
+
+    docs = []
+    for code in codes:
+        merged = _merge_strategy(code, driver_teams[code], sources)
+        merged["season"] = season
+
+        if not merged.get("sources_found"):
+            continue  # Skip drivers with no strategy data at all
+
+        prompt = _strategy_narrative_prompt(merged)
+        narrative = _generate_narrative(prompt)
+        merged["narrative"] = narrative
+        docs.append(merged)
+
+    if docs:
+        print(f"  Embedding {len(docs)} strategy narratives...")
+        narratives = [d["narrative"] for d in docs]
+        embeddings = embedder.embed(narratives)
+        for doc, emb in zip(docs, embeddings):
+            doc["embedding"] = emb
+            doc["built_at"] = datetime.now(timezone.utc).isoformat()
+
+        if rebuild:
+            coll.delete_many({"season": season})
+
+        ops = [
+            UpdateOne(
+                {"driver_code": d["driver_code"], "team": d["team"], "season": season},
+                {"$set": d},
+                upsert=True,
+            )
+            for d in docs
+        ]
+        result = coll.bulk_write(ops)
+        print(f"  Upserted {result.upserted_count} new, {result.modified_count} updated")
+
+    coll.create_index([("driver_code", 1), ("team", 1), ("season", 1)], unique=True)
+    return docs
+
+
+# -- Layer 4: Team Knowledge Base --------------------------------------------
+
+def _team_kb_prompt(team: str, driver_docs: list[dict], car_doc: dict | None,
+                    strategy_docs: list[dict] | None = None) -> str:
     """Build prompt for team KB narrative."""
-    parts = [f"Write a comprehensive ~200-word intelligence briefing for {team} combining driver and car analysis:"]
+    parts = [f"Write a comprehensive ~200-word intelligence briefing for {team} combining driver, car, and strategy analysis:"]
 
     for dd in driver_docs:
         code = dd["driver_code"]
@@ -435,14 +660,27 @@ def _team_kb_prompt(team: str, driver_docs: list[dict], car_doc: dict | None) ->
             parts.append(f"Race record: {c.get('total_wins', 0)} wins, "
                           f"DNF rate {_safe(c.get('dnf_rate'), '.2f')}.")
 
+    if strategy_docs:
+        for sd in strategy_docs:
+            code = sd["driver_code"]
+            ps = sd.get("pit_strategy")
+            tm = sd.get("tyre_management")
+            if ps:
+                parts.append(f"Strategy {code}: undercut aggression {_safe(ps.get('undercut_aggression'))}, "
+                              f"1-stop freq {_safe(ps.get('one_stop_freq'))}.")
+            if tm:
+                parts.append(f"Tyre mgmt {code}: avg life {_safe(tm.get('avg_tyre_life'), '.1f')} laps, "
+                              f"preferred {tm.get('preferred_compound', '?')}.")
+
     return "\n".join(parts)
 
 
 def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
-                   driver_docs: list[dict], car_docs: list[dict], rebuild: bool = False) -> list[dict]:
-    """Build Layer 3: victory_team_kb."""
+                   driver_docs: list[dict], car_docs: list[dict],
+                   strategy_docs: list[dict] | None = None, rebuild: bool = False) -> list[dict]:
+    """Build Layer 4: victory_team_kb."""
     coll = db["victory_team_kb"]
-    print(f"\n[Layer 3] Building team knowledge bases (season={season})...")
+    print(f"\n[Layer 4] Building team knowledge bases (season={season})...")
 
     # Group drivers by team
     drivers_by_team: dict[str, list[dict]] = {}
@@ -450,6 +688,13 @@ def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
         team = dd.get("team", "")
         if team:
             drivers_by_team.setdefault(team, []).append(dd)
+
+    # Group strategy by team
+    strategy_by_team: dict[str, list[dict]] = {}
+    for sd in (strategy_docs or []):
+        team = sd.get("team", "")
+        if team:
+            strategy_by_team.setdefault(team, []).append(sd)
 
     # Index car docs by team
     car_by_team = {cd["team"]: cd for cd in car_docs}
@@ -460,6 +705,7 @@ def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
     docs = []
     for team in teams:
         team_drivers = drivers_by_team.get(team, [])
+        team_strategy = strategy_by_team.get(team, [])
         car = car_by_team.get(team)
 
         # Structured metadata: raw metrics for filtering/comparison
@@ -467,6 +713,7 @@ def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
             "driver_count": len(team_drivers),
             "drivers": [],
             "car": {},
+            "strategy": {},
         }
 
         for dd in team_drivers:
@@ -493,8 +740,34 @@ def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
             metadata["car"]["telemetry"] = car.get("telemetry")
             metadata["car"]["constructor"] = car.get("constructor")
 
+        # Aggregate strategy metadata per team
+        if team_strategy:
+            # Average pit strategy across drivers
+            agg_undercut = [s["pit_strategy"]["undercut_aggression"] for s in team_strategy
+                           if s.get("pit_strategy", {}).get("undercut_aggression") is not None]
+            agg_tyre_life = [s["tyre_management"]["avg_tyre_life"] for s in team_strategy
+                            if s.get("tyre_management", {}).get("avg_tyre_life") is not None]
+            agg_one_stop = [s["pit_strategy"]["one_stop_freq"] for s in team_strategy
+                           if s.get("pit_strategy", {}).get("one_stop_freq") is not None]
+
+            metadata["strategy"] = {
+                "team_undercut_aggression": round(sum(agg_undercut) / len(agg_undercut), 3) if agg_undercut else None,
+                "team_avg_tyre_life": round(sum(agg_tyre_life) / len(agg_tyre_life), 1) if agg_tyre_life else None,
+                "team_one_stop_freq": round(sum(agg_one_stop) / len(agg_one_stop), 3) if agg_one_stop else None,
+                "drivers": [
+                    {
+                        "driver_code": s["driver_code"],
+                        "undercut_aggression": s.get("pit_strategy", {}).get("undercut_aggression"),
+                        "tyre_extension_bias": s.get("pit_strategy", {}).get("tyre_extension_bias"),
+                        "avg_tyre_life": s.get("tyre_management", {}).get("avg_tyre_life"),
+                        "preferred_compound": s.get("tyre_management", {}).get("preferred_compound"),
+                    }
+                    for s in team_strategy
+                ],
+            }
+
         # Generate narrative
-        prompt = _team_kb_prompt(team, team_drivers, car)
+        prompt = _team_kb_prompt(team, team_drivers, car, team_strategy)
         narrative = _generate_narrative(prompt)
 
         doc = {
@@ -509,6 +782,8 @@ def build_team_kbs(db, season: int | None, embedder: NomicEmbedder,
             doc["sources_found"].append("drivers")
         if car:
             doc["sources_found"].append("car")
+        if team_strategy:
+            doc["sources_found"].append("strategy")
         docs.append(doc)
 
     if docs:
@@ -549,7 +824,8 @@ def main(season: int | None = None, rebuild: bool = False):
 
     driver_docs = build_driver_profiles(db, season, embedder, rebuild)
     car_docs = build_car_profiles(db, season, embedder, rebuild)
-    team_docs = build_team_kbs(db, season, embedder, driver_docs, car_docs, rebuild)
+    strategy_docs = build_strategy_profiles(db, season, embedder, driver_docs, rebuild)
+    team_docs = build_team_kbs(db, season, embedder, driver_docs, car_docs, strategy_docs, rebuild)
 
     # Log
     db["pipeline_log"].insert_one({
@@ -559,17 +835,19 @@ def main(season: int | None = None, rebuild: bool = False):
         "layers": {
             "driver_profiles": len(driver_docs),
             "car_profiles": len(car_docs),
+            "strategy_profiles": len(strategy_docs),
             "team_kbs": len(team_docs),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
     elapsed = time.time() - t0
-    print(f"\nDone! {len(driver_docs)} drivers, {len(car_docs)} cars, {len(team_docs)} teams ({elapsed:.1f}s)")
+    print(f"\nDone! {len(driver_docs)} drivers, {len(car_docs)} cars, "
+          f"{len(strategy_docs)} strategies, {len(team_docs)} teams ({elapsed:.1f}s)")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Build VictoryProfiles (3-layer knowledge base)")
+    parser = argparse.ArgumentParser(description="Build VictoryProfiles (4-layer knowledge base)")
     parser.add_argument("--season", type=int, default=None, help="Season year (default: all/legacy)")
     parser.add_argument("--rebuild", action="store_true", help="Delete and rebuild for target season")
     args = parser.parse_args()
