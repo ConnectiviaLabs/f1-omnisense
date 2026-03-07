@@ -543,7 +543,7 @@ async def vlm_analyze(req: VLMAnalyzeRequest):
     if not video_path.exists() or not video_path.is_file():
         raise HTTPException(404, f"Video not found: {req.filename}")
 
-    n = max(1, min(req.n_frames, 16))  # clamp 1-16
+    n = max(1, min(req.n_frames, 5))  # clamp 1-5 (Groq vision limit)
 
     # Load GDino detections keyed by frame_index
     db = get_data_db()
