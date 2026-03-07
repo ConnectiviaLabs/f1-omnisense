@@ -302,6 +302,45 @@ Answer based on the context above. Cite regulation IDs and page numbers where ap
 
 # ── Endpoints ────────────────────────────────────────────────────────────
 
+@app.post("/api/fleet/diagnose")
+@app.post("/fleet/diagnose")
+async def fleet_diagnose_proxy(request: Request):
+    """Proxy Gen UI requests to Vite dev server if running, else fallback to plain chat."""
+    import httpx
+    body = await request.body()
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                "http://127.0.0.1:8889/api/fleet/diagnose",
+                content=body,
+                headers={"content-type": "application/json"},
+            )
+        from starlette.responses import Response as _Resp
+        return _Resp(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
+    except Exception:
+        # Vite not running — extract message and fallback to plain chat
+        import json as _json
+        text = ""
+        try:
+            data = _json.loads(body)
+            msgs = data.get("messages", [])
+            last_user = next((m for m in reversed(msgs) if m.get("role") == "user"), None)
+            if last_user:
+                parts = last_user.get("parts", [])
+                text = next((p.get("text", "") for p in parts if p.get("type") == "text"), "")
+            if not text:
+                text = data.get("message", "")
+        except Exception:
+            pass
+        if not text:
+            raise HTTPException(400, "No message found in request")
+        return chat(ChatRequest(message=text))
+
+
 @app.post("/chat", response_model=ChatResponse)
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
