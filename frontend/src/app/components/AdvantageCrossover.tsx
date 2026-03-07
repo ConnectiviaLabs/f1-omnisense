@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Users,
   Shield,
@@ -8,6 +8,10 @@ import {
   Grid3X3,
   ScatterChart as ScatterIcon,
   Brain,
+  GitCompareArrows,
+  X,
+  Send,
+  ArrowRightLeft,
 } from 'lucide-react';
 import {
   ScatterChart,
@@ -72,6 +76,37 @@ interface InsightResult {
   };
 }
 
+interface ComparePair {
+  a: string;
+  b: string;
+  similarity: number;
+  a_metrics: Record<string, number>;
+  b_metrics: Record<string, number>;
+}
+
+interface CompareResult {
+  pairs: ComparePair[];
+  statistics: { avg: number; max: number; min: number };
+  highest_pair: { a: string; b: string; similarity: number };
+  lowest_pair: { a: string; b: string; similarity: number };
+  entities: string[];
+  suggested_questions: string[];
+}
+
+interface CrossInsightResult {
+  insight: string;
+  model_used: string;
+  entities: string[];
+  query: string;
+  correlations_found: { pair: string[]; converging: string[]; diverging: string[] }[];
+  suggested_questions: string[];
+}
+
+interface AvailableEntity {
+  code: string;
+  team: string;
+}
+
 // ── Constants ───────────────────────────────────────────────────────────
 
 const ENTITY_TABS = [
@@ -107,12 +142,66 @@ function simText(score: number): string {
   return 'rgba(144,144,168,0.6)';
 }
 
+function simLabel(score: number): { label: string; color: string } {
+  if (score >= 0.8) return { label: 'High', color: '#05DF72' };
+  if (score >= 0.5) return { label: 'Medium', color: '#FF8000' };
+  return { label: 'Low', color: '#FB2C36' };
+}
+
+/* ── Animated Circular Progress ──────────────────────────────────────── */
+
+function CircularProgress({ value, size = 140 }: { value: number; size?: number }) {
+  const r = (size - 20) / 2;
+  const circ = 2 * Math.PI * r;
+  const { label, color } = simLabel(value);
+  const pct = Math.round(value * 100);
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <svg width={size} height={size} className="transform -rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,128,0,0.08)" strokeWidth={8} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={color} strokeWidth={8} strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - value)}
+          style={{ transition: 'stroke-dashoffset 1s ease-out, stroke 0.3s ease' }}
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center" style={{ width: size, height: size }}>
+        <span className="text-2xl font-bold text-foreground">{pct}%</span>
+        <span className="text-[11px] font-medium" style={{ color }}>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Entity Metric Card ──────────────────────────────────────────────── */
+
+function EntityMetricCard({ code, metrics }: { code: string; metrics: Record<string, number> }) {
+  const entries = Object.entries(metrics).slice(0, 8);
+  return (
+    <div className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+      <div className="text-sm font-semibold text-[#FF8000] mb-3">{code}</div>
+      <div className="space-y-1.5">
+        {entries.map(([k, v]) => (
+          <div key={k} className="flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">{k.replace(/_/g, ' ')}</span>
+            <span className="text-foreground font-mono">{typeof v === 'number' ? v.toFixed(2) : v}</span>
+          </div>
+        ))}
+        {entries.length === 0 && <span className="text-[11px] text-muted-foreground/50">No metrics</span>}
+      </div>
+    </div>
+  );
+}
+
 // ── Component ───────────────────────────────────────────────────────────
 
 export function AdvantageCrossover() {
   const [entityType, setEntityType] = useState('driver');
   const [source, setSource] = useState('VectorProfiles');
-  const [activeView, setActiveView] = useState<'matrix' | 'cluster' | 'insight'>('matrix');
+  const [activeView, setActiveView] = useState<'matrix' | 'cluster' | 'insight' | 'compare'>('matrix');
 
   const [matrixData, setMatrixData] = useState<MatrixResult | null>(null);
   const [clusterData, setClusterData] = useState<ClusterResult | null>(null);
@@ -124,6 +213,17 @@ export function AdvantageCrossover() {
   const [error, setError] = useState('');
   const [nClusters, setNClusters] = useState(4);
   const [building, setBuilding] = useState(false);
+
+  // Compare state
+  const [availableEntities, setAvailableEntities] = useState<AvailableEntity[]>([]);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
+  const [compareData, setCompareData] = useState<CompareResult | null>(null);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [crossInsight, setCrossInsight] = useState<CrossInsightResult | null>(null);
+  const [crossInsightLoading, setCrossInsightLoading] = useState(false);
+  const [crossQuery, setCrossQuery] = useState('');
+  const [entitiesLoading, setEntitiesLoading] = useState(false);
+  const crossInputRef = useRef<HTMLInputElement>(null);
 
   const buildProfiles = useCallback(async () => {
     setBuilding(true);
@@ -203,7 +303,75 @@ export function AdvantageCrossover() {
     }
   }, [entityType]);
 
-  const handleViewChange = (view: 'matrix' | 'cluster' | 'insight') => {
+  const fetchAvailableEntities = useCallback(async () => {
+    setEntitiesLoading(true);
+    try {
+      const res = await fetch(`/api/advantage/crossover/entities?entity_type=${entityType}&source=${source}`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setAvailableEntities(data.entities ?? []);
+    } catch {
+      setAvailableEntities([]);
+    } finally {
+      setEntitiesLoading(false);
+    }
+  }, [entityType, source]);
+
+  const fetchCompare = useCallback(async () => {
+    if (selectedEntities.length < 2) return;
+    setCompareLoading(true);
+    setError('');
+    setCrossInsight(null);
+    setCrossQuery('');
+    try {
+      const res = await fetch('/api/advantage/crossover/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entities: selectedEntities, source }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setCompareData(await res.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Comparison failed');
+    } finally {
+      setCompareLoading(false);
+    }
+  }, [entityType, selectedEntities, source]);
+
+  const fetchCrossInsight = useCallback(async (query: string) => {
+    if (!query.trim() || selectedEntities.length < 2) return;
+    setCrossInsightLoading(true);
+    try {
+      const res = await fetch('/api/advantage/crossover/cross_insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entity_type: entityType, entities: selectedEntities, query: query.trim(), source }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setCrossInsight(await res.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Insight generation failed');
+    } finally {
+      setCrossInsightLoading(false);
+    }
+  }, [entityType, selectedEntities, source]);
+
+  // Fetch entities when switching to compare tab
+  useEffect(() => {
+    if (activeView === 'compare' && availableEntities.length === 0 && !entitiesLoading) {
+      fetchAvailableEntities();
+    }
+  }, [activeView, availableEntities.length, entitiesLoading, fetchAvailableEntities]);
+
+  const toggleEntity = (code: string) => {
+    setSelectedEntities(prev =>
+      prev.includes(code)
+        ? prev.filter(e => e !== code)
+        : prev.length >= 8 ? prev : [...prev, code]
+    );
+  };
+
+  const handleViewChange = (view: 'matrix' | 'cluster' | 'insight' | 'compare') => {
     setActiveView(view);
     if (view === 'matrix' && !matrixData && !matrixLoading) fetchMatrix();
     if (view === 'cluster' && !clusterData && !clusterLoading) fetchCluster();
@@ -218,7 +386,7 @@ export function AdvantageCrossover() {
           {ENTITY_TABS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
-              onClick={() => { setEntityType(value); setMatrixData(null); setClusterData(null); setInsightData(null); }}
+              onClick={() => { setEntityType(value); setMatrixData(null); setClusterData(null); setInsightData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
                 entityType === value
                   ? 'bg-[#FF8000]/15 text-[#FF8000] font-medium'
@@ -234,7 +402,7 @@ export function AdvantageCrossover() {
         {/* Source Selector */}
         <select
           value={source}
-          onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); }}
+          onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
           className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/40 transition-colors"
         >
           {SOURCE_OPTIONS.map(o => (
@@ -277,6 +445,17 @@ export function AdvantageCrossover() {
         >
           <Brain className="w-3.5 h-3.5" />
           AI Insights
+        </button>
+        <button
+          onClick={() => handleViewChange('compare')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
+            activeView === 'compare'
+              ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+              : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <GitCompareArrows className="w-3.5 h-3.5" />
+          Compare
         </button>
       </div>
 
@@ -676,6 +855,208 @@ export function AdvantageCrossover() {
               <p className="text-sm text-muted-foreground">
                 Click "Analyze Patterns" to get LLM-synthesized insights about {entityType} similarity groupings
               </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Compare View ──────────────────────────────────── */}
+      {activeView === 'compare' && (
+        <div className="space-y-4">
+          {/* Entity Selector */}
+          <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-foreground">
+                Select {entityType}s to compare <span className="text-muted-foreground/50 text-[11px]">(2-8)</span>
+              </span>
+              {selectedEntities.length > 0 && (
+                <button onClick={() => setSelectedEntities([])} className="text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                  Clear all
+                </button>
+              )}
+            </div>
+
+            {entitiesLoading ? (
+              <div className="flex items-center gap-2 py-4 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]/50" />
+                <span className="text-[12px] text-muted-foreground">Loading entities...</span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {availableEntities.map(ent => {
+                  const code = typeof ent === 'string' ? ent : ent.code;
+                  const team = typeof ent === 'string' ? '' : ent.team;
+                  const selected = selectedEntities.includes(code);
+                  return (
+                    <button
+                      key={code}
+                      onClick={() => toggleEntity(code)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-all border ${
+                        selected
+                          ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
+                          : 'border-[rgba(255,128,0,0.06)] bg-[#0D1117]/40 text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.15)]'
+                      }`}
+                    >
+                      {code}
+                      {team && <span className="text-[10px] text-muted-foreground/50">{team}</span>}
+                      {selected && <X className="w-3 h-3 ml-0.5 opacity-60" />}
+                    </button>
+                  );
+                })}
+                {availableEntities.length === 0 && !entitiesLoading && (
+                  <span className="text-[12px] text-muted-foreground/50">No entities found for this source</span>
+                )}
+              </div>
+            )}
+
+            {/* Selected chips summary + Compare button */}
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[rgba(255,128,0,0.06)]">
+              <span className="text-[11px] text-muted-foreground">
+                {selectedEntities.length} selected{selectedEntities.length >= 8 && ' (max)'}
+              </span>
+              <button
+                onClick={fetchCompare}
+                disabled={selectedEntities.length < 2 || compareLoading}
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
+              >
+                {compareLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
+                {compareLoading ? 'Comparing...' : 'Compare'}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Two-Entity Layout ─────────────────────────── */}
+          {compareData && selectedEntities.length === 2 && compareData.pairs.length === 1 && (
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-6 items-start">
+              <EntityMetricCard code={compareData.pairs[0].a} metrics={compareData.pairs[0].a_metrics} />
+              <div className="relative flex items-center justify-center pt-4">
+                <CircularProgress value={compareData.pairs[0].similarity} />
+              </div>
+              <EntityMetricCard code={compareData.pairs[0].b} metrics={compareData.pairs[0].b_metrics} />
+            </div>
+          )}
+
+          {/* ── Multi-Entity Layout (3+) ─────────────────── */}
+          {compareData && selectedEntities.length > 2 && (
+            <div className="space-y-4">
+              {/* Stats bar */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Average', value: compareData.statistics.avg, pair: null },
+                  { label: 'Highest', value: compareData.statistics.max, pair: compareData.highest_pair },
+                  { label: 'Lowest', value: compareData.statistics.min, pair: compareData.lowest_pair },
+                ].map(stat => {
+                  const { color } = simLabel(stat.value);
+                  return (
+                    <div key={stat.label} className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-3 text-center">
+                      <div className="text-[11px] text-muted-foreground mb-1">{stat.label}</div>
+                      <div className="text-xl font-bold font-mono" style={{ color }}>{(stat.value * 100).toFixed(1)}%</div>
+                      {stat.pair && (
+                        <div className="text-[10px] text-muted-foreground/60 mt-1">
+                          {stat.pair.a} <span className="opacity-40">↔</span> {stat.pair.b}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pairwise cards */}
+              <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+                <div className="text-sm font-medium text-foreground mb-3">Pairwise Similarity</div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
+                  {compareData.pairs.map((p, i) => {
+                    const { color } = simLabel(p.similarity);
+                    return (
+                      <div key={i} className="rounded-lg border border-[rgba(255,128,0,0.06)] bg-[#0D1117]/40 p-3 flex flex-col items-center gap-1.5">
+                        <div className="flex items-center gap-2 text-[12px]">
+                          <span className="text-foreground font-medium">{p.a}</span>
+                          <span className="text-muted-foreground/30">↔</span>
+                          <span className="text-foreground font-medium">{p.b}</span>
+                        </div>
+                        <span className="text-lg font-bold font-mono" style={{ color }}>
+                          {(p.similarity * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Cross-Entity Intelligence Panel ──────────── */}
+          {compareData && (
+            <div className="rounded-xl border border-[rgba(255,128,0,0.12)] bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-[#FF8000]" />
+                <span className="text-sm font-medium text-[#FF8000]">Cross-Entity Intelligence</span>
+              </div>
+
+              {/* Suggested questions */}
+              {compareData.suggested_questions && compareData.suggested_questions.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {compareData.suggested_questions.map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => { setCrossQuery(q); fetchCrossInsight(q); }}
+                      disabled={crossInsightLoading}
+                      className="text-left px-3 py-2 rounded-lg text-[11px] text-muted-foreground bg-[#0D1117]/40 border border-[rgba(255,128,0,0.06)] hover:border-[rgba(255,128,0,0.2)] hover:text-foreground transition-all disabled:opacity-40"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Custom query input */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={crossInputRef}
+                  type="text"
+                  value={crossQuery}
+                  onChange={e => setCrossQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && crossQuery.trim()) fetchCrossInsight(crossQuery); }}
+                  placeholder={`Ask about ${selectedEntities.join(', ')}...`}
+                  className="flex-1 bg-[#0D1117]/60 border border-[rgba(255,128,0,0.1)] rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/40 transition-colors"
+                />
+                <button
+                  onClick={() => fetchCrossInsight(crossQuery)}
+                  disabled={!crossQuery.trim() || crossInsightLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-[#FF8000]/15 text-[#FF8000] hover:bg-[#FF8000]/25"
+                >
+                  {crossInsightLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {/* Insight display */}
+              {crossInsight && (
+                <div className="space-y-3">
+                  <div className="text-[13px] text-foreground/85 leading-relaxed whitespace-pre-line">
+                    {crossInsight.insight}
+                  </div>
+                  {/* Correlations found */}
+                  {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
+                    <div className="border-t border-[rgba(255,128,0,0.06)] pt-3 space-y-2">
+                      <div className="text-[11px] text-muted-foreground font-medium">Metric Correlations</div>
+                      {crossInsight.correlations_found.slice(0, 4).map((c, i) => (
+                        <div key={i} className="text-[11px] space-y-0.5">
+                          <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
+                          {c.converging.length > 0 && (
+                            <div className="text-[#05DF72]/80 ml-3">Converging: {c.converging.join(', ')}</div>
+                          )}
+                          {c.diverging.length > 0 && (
+                            <div className="text-[#FB2C36]/80 ml-3">Diverging: {c.diverging.join(', ')}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-muted-foreground/40 text-right">
+                    {crossInsight.model_used}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -543,6 +543,11 @@ const DATA = [
   { name: "kex_comparison_briefings", docs: 9, sizeMB: 0.0, idxCount: 1, category: "kex", status: "active",
     writers: ["chat_server.py (POST /api/driver_intel/compare/kex)"], readers: ["chat_server.py (GET cached)"], frontend: ["DriverIntel (compare tab)"] },
 
+  // ── Crossover Intelligence ──
+  { name: "crossover_insights", docs: 0, sizeMB: 0.0, idxCount: 1, category: "intel", status: "active",
+    writers: ["advantage_router.py (POST /crossover/cross_insights)"], readers: ["advantage_router.py"], frontend: ["AdvantageCrossover (Compare tab)"],
+    notes: "Cross-entity LLM insights — pairwise comparison intelligence with metric correlations." },
+
   // ── Media & Vision ──
   { name: "media_videos", docs: 5, sizeMB: 0.0, idxCount: 1, category: "media", status: "active",
     writers: ["omni_vis_router.py"], readers: ["/api/omni/vis/videos", "/api/omni/vis/upload"], frontend: ["MediaIntelligence"] },

@@ -738,3 +738,261 @@ async def crossover_insight(body: CrossoverInsightRequest):
         "count": n,
         "pairs": {"most_similar": most_similar, "most_dissimilar": most_dissimilar},
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  CROSSOVER — Compare + Cross-Entity Intelligence
+# ═══════════════════════════════════════════════════════════════════════
+
+class CrossoverCompareRequest(BaseModel):
+    entity_type: str = "driver"
+    entities: list[str]
+    source: str = "VectorProfiles"
+    season: Optional[int] = None
+
+
+class CrossoverCrossInsightRequest(BaseModel):
+    entity_type: str = "driver"
+    entities: list[str]
+    query: str
+    source: str = "VectorProfiles"
+    season: Optional[int] = None
+
+
+def _generate_suggested_questions(
+    entity_type: str,
+    entities: list[str],
+    highest_pair: dict | None,
+    lowest_pair: dict | None,
+) -> list[str]:
+    """Generate 8 deterministic suggested questions from comparison data."""
+    a_hi = highest_pair["a"] if highest_pair else entities[0]
+    b_hi = highest_pair["b"] if highest_pair else entities[-1]
+    a_lo = lowest_pair["a"] if lowest_pair else entities[-1]
+    b_lo = lowest_pair["b"] if lowest_pair else entities[0]
+    elist = ", ".join(entities[:4]) + ("..." if len(entities) > 4 else "")
+
+    return [
+        f"What makes {a_hi} and {b_hi} so similar?",
+        f"What fundamentally differentiates {a_lo} from {b_lo}?",
+        f"What anomalies exist between {entities[0]} and {entities[-1]}?",
+        f"How do performance trends in {a_hi} correlate with {b_hi}?",
+        f"Which strategic patterns are shared across {elist}?",
+        f"Where does {a_lo} diverge from the group?",
+        f"What {entity_type} traits unite the most similar pair?",
+        f"How would swapping {a_hi}'s approach benefit {b_lo}?",
+    ]
+
+
+def _find_metric_correlations(
+    entity_metrics: dict[str, dict[str, float]],
+    pairs: list[dict],
+) -> list[dict]:
+    """Identify converging/diverging metrics for each pair."""
+    all_vals: dict[str, list[float]] = {}
+    for m in entity_metrics.values():
+        for k, v in m.items():
+            all_vals.setdefault(k, []).append(v)
+    ranges = {k: (max(vs) - min(vs)) if len(vs) > 1 else 1.0 for k, vs in all_vals.items()}
+
+    correlations = []
+    for pair in pairs:
+        a_m = entity_metrics.get(pair["a"], {})
+        b_m = entity_metrics.get(pair["b"], {})
+        converging, diverging = [], []
+        for k in set(a_m) & set(b_m):
+            r = ranges.get(k, 1.0) or 1.0
+            diff = abs(a_m[k] - b_m[k]) / r
+            if diff <= 0.10:
+                converging.append(k)
+            elif diff >= 0.50:
+                diverging.append(k)
+        correlations.append({
+            "pair": [pair["a"], pair["b"]],
+            "converging": converging[:5],
+            "diverging": diverging[:5],
+        })
+    return correlations
+
+
+@router.get("/crossover/entities")
+def crossover_entities(
+    entity_type: str = "driver",
+    source: str = "VectorProfiles",
+    season: int | None = None,
+):
+    """Lightweight endpoint returning available entity labels."""
+    db = _get_db()
+    if source not in COLLECTION_MAP:
+        raise HTTPException(400, f"Unknown source: {source}")
+    conf = COLLECTION_MAP[source]
+    key = conf["key"]
+    filt: dict = {}
+    if season is not None:
+        filt["season"] = season
+    docs = list(db[source].find(filt, {"_id": 0, key: 1, conf["team_key"]: 1}))
+    entities = []
+    seen = set()
+    for d in docs:
+        label = d.get(key, "")
+        if label and label not in seen:
+            seen.add(label)
+            entities.append({"code": label, "team": d.get(conf["team_key"], "")})
+    entities.sort(key=lambda x: x["code"])
+    return {"entities": entities, "entity_type": entity_type, "source": source}
+
+
+@router.post("/crossover/compare")
+def crossover_compare(body: CrossoverCompareRequest):
+    """Pairwise comparison of 2-8 selected entities."""
+    if not (2 <= len(body.entities) <= 8):
+        raise HTTPException(400, "Select 2-8 entities to compare")
+
+    db = _get_db()
+    if body.source not in COLLECTION_MAP:
+        raise HTTPException(400, f"Unknown source: {body.source}")
+
+    labels, teams, matrix = _fetch_embeddings(db, body.source, body.entity_type, body.season)
+    if len(labels) == 0:
+        raise HTTPException(404, "No embeddings found")
+
+    # Filter to requested entities
+    idx_map = {l: i for i, l in enumerate(labels)}
+    valid = [e for e in body.entities if e in idx_map]
+    if len(valid) < 2:
+        raise HTTPException(400, f"Only {len(valid)} of {len(body.entities)} entities found in {body.source}")
+
+    idxs = [idx_map[e] for e in valid]
+    sub = matrix[np.ix_(idxs, idxs)]
+    sim = sub @ sub.T
+
+    # Fetch structured metrics
+    conf = COLLECTION_MAP[body.source]
+    entity_metrics = _fetch_metrics(db, body.source, valid, conf["key"], body.season)
+
+    # Build pairwise results
+    pairs = []
+    for i in range(len(valid)):
+        for j in range(i + 1, len(valid)):
+            pairs.append({
+                "a": valid[i],
+                "b": valid[j],
+                "similarity": float(sim[i, j]),
+                "a_metrics": entity_metrics.get(valid[i], {}),
+                "b_metrics": entity_metrics.get(valid[j], {}),
+            })
+    pairs.sort(key=lambda x: x["similarity"], reverse=True)
+
+    sims = [p["similarity"] for p in pairs]
+    highest = {"a": pairs[0]["a"], "b": pairs[0]["b"], "similarity": pairs[0]["similarity"]} if pairs else None
+    lowest = {"a": pairs[-1]["a"], "b": pairs[-1]["b"], "similarity": pairs[-1]["similarity"]} if pairs else None
+
+    questions = _generate_suggested_questions(body.entity_type, valid, highest, lowest)
+
+    return _sanitize({
+        "pairs": pairs,
+        "statistics": {
+            "avg": float(np.mean(sims)) if sims else 0,
+            "max": float(max(sims)) if sims else 0,
+            "min": float(min(sims)) if sims else 0,
+        },
+        "highest_pair": highest,
+        "lowest_pair": lowest,
+        "entity_type": body.entity_type,
+        "source": body.source,
+        "entities": valid,
+        "suggested_questions": questions,
+    })
+
+
+@router.post("/crossover/cross_insights")
+def crossover_cross_insights(body: CrossoverCrossInsightRequest):
+    """LLM synthesis with entity context + semantic metric correlations."""
+    if len(body.entities) < 2:
+        raise HTTPException(400, "Need at least 2 entities")
+
+    db = _get_db()
+    if body.source not in COLLECTION_MAP:
+        raise HTTPException(400, f"Unknown source: {body.source}")
+
+    labels, teams, matrix = _fetch_embeddings(db, body.source, body.entity_type, body.season)
+    idx_map = {l: i for i, l in enumerate(labels)}
+    valid = [e for e in body.entities if e in idx_map]
+    if len(valid) < 2:
+        raise HTTPException(400, f"Only {len(valid)} entities found")
+
+    # Compute pairwise similarities
+    idxs = [idx_map[e] for e in valid]
+    sub = matrix[np.ix_(idxs, idxs)]
+    sim = sub @ sub.T
+
+    pair_list = []
+    for i in range(len(valid)):
+        for j in range(i + 1, len(valid)):
+            pair_list.append({"a": valid[i], "b": valid[j], "similarity": float(sim[i, j])})
+
+    # Fetch metrics + correlations
+    conf = COLLECTION_MAP[body.source]
+    entity_metrics = _fetch_metrics(db, body.source, valid, conf["key"], body.season)
+    correlations = _find_metric_correlations(entity_metrics, pair_list)
+
+    # Build enhanced prompt
+    metrics_block = "\nENTITY METRICS:"
+    for label in valid:
+        m = entity_metrics.get(label, {})
+        if m:
+            metrics_str = ", ".join(f"{k}={v:.2f}" for k, v in m.items())
+            metrics_block += f"\n  {label}: {metrics_str}"
+
+    sim_block = "\nPAIRWISE SIMILARITY:"
+    for p in pair_list:
+        sim_block += f"\n  {p['a']} ↔ {p['b']}: {p['similarity']:.4f}"
+
+    corr_block = "\nMETRIC CORRELATIONS:"
+    for c in correlations:
+        pair_label = f"{c['pair'][0]} ↔ {c['pair'][1]}"
+        if c["converging"]:
+            corr_block += f"\n  {pair_label} converge on: {', '.join(c['converging'])}"
+        if c["diverging"]:
+            corr_block += f"\n  {pair_label} diverge on: {', '.join(c['diverging'])}"
+
+    prompt = (
+        f"USER QUESTION: {body.query}\n\n"
+        f"CONTEXT: Comparing these F1 {body.entity_type}s: {', '.join(valid)}\n"
+        f"{metrics_block}\n{sim_block}\n{corr_block}\n\n"
+        f"Answer the user's question using the metrics, similarity scores, and correlations above. "
+        f"Cite specific numbers. Be precise and insightful."
+    )
+
+    insight = _llm_synthesize(prompt, TRIDENT_SYSTEM)
+
+    # Store to shared context
+    from datetime import datetime
+    from uuid import uuid4
+    db["crossover_insights"].insert_one({
+        "uid": str(uuid4()),
+        "agent": "cross-entity-analysis",
+        "entities": valid,
+        "query": body.query,
+        "insight": insight,
+        "llm_provider": "groq",
+        "model_used": GROQ_MODEL,
+        "entity_type": body.entity_type,
+        "source": body.source,
+        "generated_at": datetime.utcnow(),
+    })
+
+    # Generate suggested questions for follow-up
+    pair_list.sort(key=lambda x: x["similarity"], reverse=True)
+    highest = pair_list[0] if pair_list else None
+    lowest = pair_list[-1] if pair_list else None
+    questions = _generate_suggested_questions(body.entity_type, valid, highest, lowest)
+
+    return _sanitize({
+        "insight": insight,
+        "model_used": GROQ_MODEL,
+        "entities": valid,
+        "query": body.query,
+        "correlations_found": correlations,
+        "suggested_questions": questions,
+    })
