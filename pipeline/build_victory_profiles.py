@@ -64,16 +64,6 @@ def _safe(val, fmt=".3f", suffix=""):
     return f"{val:{fmt}}{suffix}"
 
 
-def _q_health(v):
-    if v is None:
-        return "unknown"
-    if v >= 80:
-        return "healthy"
-    if v >= 60:
-        return "concerning"
-    return "critical"
-
-
 # -- Layer 1: Driver Profiles ------------------------------------------------
 
 def _fetch_driver_sources(db, season: int | None) -> dict:

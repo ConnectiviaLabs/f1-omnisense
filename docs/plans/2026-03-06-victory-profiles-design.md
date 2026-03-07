@@ -20,7 +20,7 @@ A 3-layer knowledge base for competitive intelligence and internal improvement a
 - **Collection**: `victory_car_profiles`
 - **Key**: `(team, season)`
 - **Sources**:
-  - `anomaly_vehicle_data` — 7 system health scores (Power Unit, Brakes, Drivetrain, Suspension, Thermal, Electronics, Tyre Management), severity, maintenance actions
+  - `anomaly_scores_snapshot` — 7 system health scores (Power Unit, Brakes, Drivetrain, Suspension, Thermal, Electronics, Tyre Management), aggregated by team from driver-level snapshot
   - `telemetry_race_summary` — avg speed, RPM, throttle %, brake %, DRS usage
   - `constructor_profiles` — DNF rate, mechanical failures, reliability stats
 - **Output**: Merged metrics + Nomic 768-dim embedding of generated narrative

@@ -71,7 +71,7 @@ class _RewriteMiddleware(BaseHTTPMiddleware):
     _PREFIXES = (
         "/api/openf1/", "/api/jolpica/", "/api/driver_intel/",
         "/api/circuit_intel/", "/api/pipeline/", "/api/constructor_profiles",
-        "/api/mclaren/",
+        "/api/mclaren/", "/api/victory/",
     )
     async def dispatch(self, request: _Request, call_next):
         path = request.scope["path"]
@@ -747,6 +747,182 @@ async def team_intel_intra(team_name: str, season: int | None = None):
     from pipeline.build_vector_profiles import get_intra_team_similarity
     db = get_data_db()
     return get_intra_team_similarity(team_name, db=db, season=season)
+
+
+# ── VictoryProfiles endpoints ────────────────────────────────────────────
+
+
+@app.get("/api/local/victory/team/{team}/{season}")
+async def victory_team_kb(team: str, season: int):
+    """Full team KB with driver + car profiles."""
+    db = get_data_db()
+    kb = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    )
+    if not kb:
+        raise HTTPException(404, f"No VictoryProfile for {team} {season}")
+
+    drivers = list(db["victory_driver_profiles"].find(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    ))
+    kb["driver_profiles"] = drivers
+
+    car = db["victory_car_profiles"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    )
+    kb["car_profile"] = car
+    return kb
+
+
+@app.post("/api/local/victory/compare")
+async def victory_compare(body: dict):
+    """Compare 2+ teams by cosine similarity + structured diff.
+
+    Body: {"teams": ["McLaren", "Red Bull Racing"], "season": 2024}
+    """
+    teams = body.get("teams", [])
+    season = body.get("season")
+    if len(teams) < 2:
+        raise HTTPException(400, "Provide at least 2 teams to compare")
+
+    db = get_data_db()
+    team_data = {}
+    for team in teams:
+        doc = db["victory_team_kb"].find_one(
+            {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+            {"_id": 0},
+        )
+        if doc:
+            team_data[doc["team"]] = doc
+
+    if len(team_data) < 2:
+        raise HTTPException(404, f"Need 2+ teams with profiles. Found: {list(team_data.keys())}")
+
+    team_names = list(team_data.keys())
+    similarities = []
+    for i in range(len(team_names)):
+        for j in range(i + 1, len(team_names)):
+            v1 = np.array(team_data[team_names[i]]["embedding"])
+            v2 = np.array(team_data[team_names[j]]["embedding"])
+            score = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-10))
+            similarities.append({
+                "team_a": team_names[i], "team_b": team_names[j],
+                "similarity": round(score, 4),
+            })
+
+    diffs = []
+    for i in range(len(team_names)):
+        for j in range(i + 1, len(team_names)):
+            meta_a = team_data[team_names[i]].get("metadata", {})
+            meta_b = team_data[team_names[j]].get("metadata", {})
+            diffs.append(_compute_victory_diff(team_names[i], meta_a, team_names[j], meta_b))
+
+    return {"teams": team_names, "season": season, "similarities": similarities, "diffs": diffs}
+
+
+@app.post("/api/local/victory/search")
+async def victory_search(body: dict):
+    """Semantic search across team KBs.
+
+    Body: {"query": "teams with strong brakes", "season": 2024, "k": 5}
+    """
+    query = body.get("query", "")
+    season = body.get("season")
+    k = body.get("k", 5)
+    if not query:
+        raise HTTPException(400, "Provide a query string")
+
+    db = get_data_db()
+    from pipeline.embeddings import NomicEmbedder
+    embedder = NomicEmbedder()
+    query_vec = np.array(embedder.embed_query(query))
+
+    s_filter = {"season": season} if season is not None else {}
+    results = []
+    for doc in db["victory_team_kb"].find(s_filter, {"_id": 0}):
+        if "embedding" not in doc:
+            continue
+        vec = np.array(doc["embedding"])
+        score = float(np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec) + 1e-10))
+        results.append({
+            "team": doc["team"], "season": doc.get("season"),
+            "score": round(score, 4),
+            "narrative": doc.get("narrative", "")[:300],
+            "metadata": doc.get("metadata"),
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return {"query": query, "results": results[:k]}
+
+
+@app.get("/api/local/victory/regression/{team}")
+async def victory_regression(team: str, season_a: int = 2023, season_b: int = 2024):
+    """Season-over-season diff for internal improvement analysis."""
+    db = get_data_db()
+
+    kb_a = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season_a},
+        {"_id": 0, "embedding": 0},
+    )
+    kb_b = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season_b},
+        {"_id": 0, "embedding": 0},
+    )
+
+    if not kb_a or not kb_b:
+        missing = []
+        if not kb_a:
+            missing.append(str(season_a))
+        if not kb_b:
+            missing.append(str(season_b))
+        raise HTTPException(404, f"Missing {team} profile for season(s): {', '.join(missing)}")
+
+    diff = _compute_victory_diff(
+        f"{team} {season_a}", kb_a.get("metadata", {}),
+        f"{team} {season_b}", kb_b.get("metadata", {}),
+    )
+    return {
+        "team": team, "season_a": season_a, "season_b": season_b,
+        "diff": diff,
+        "narrative_a": kb_a.get("narrative", ""),
+        "narrative_b": kb_b.get("narrative", ""),
+    }
+
+
+def _compute_victory_diff(name_a: str, meta_a: dict, name_b: str, meta_b: dict) -> dict:
+    """Compute structured diff between two team metadata blobs."""
+    diff = {"teams": [name_a, name_b], "car": {}, "drivers": {}}
+
+    car_a = meta_a.get("car", {})
+    car_b = meta_b.get("car", {})
+
+    # Health systems diff
+    sys_a = (car_a.get("health") or {}).get("systems", {})
+    sys_b = (car_b.get("health") or {}).get("systems", {})
+    all_systems = sorted(set(list(sys_a.keys()) + list(sys_b.keys())))
+    system_diffs = []
+    for sys_name in all_systems:
+        va, vb = sys_a.get(sys_name), sys_b.get(sys_name)
+        if va is not None and vb is not None:
+            system_diffs.append({"system": sys_name, name_a: va, name_b: vb, "delta": round(vb - va, 1)})
+    diff["car"]["systems"] = system_diffs
+
+    # Constructor stats diff
+    con_a = car_a.get("constructor") or {}
+    con_b = car_b.get("constructor") or {}
+    con_diffs = []
+    for field in ("total_wins", "total_podiums", "dnf_rate", "avg_finish_position",
+                  "avg_pit_duration_s", "q3_rate"):
+        va, vb = con_a.get(field), con_b.get(field)
+        if va is not None and vb is not None:
+            delta = round(vb - va, 3) if isinstance(vb, float) else vb - va
+            con_diffs.append({"metric": field, name_a: va, name_b: vb, "delta": delta})
+    diff["car"]["constructor"] = con_diffs
+
+    return diff
 
 
 def _extract_summary(text: str, max_chars: int = 300) -> str:
