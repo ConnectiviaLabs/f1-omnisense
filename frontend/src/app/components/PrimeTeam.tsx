@@ -614,7 +614,11 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
                     type="button"
                     onClick={() => {
                       setTelKexLoading(prev => ({ ...prev, [code]: true }));
-                      fetch(`/api/mccar-telemetry/kex/${code}?year=${season}`, { method: 'POST' })
+                      fetch(`/api/mccar-telemetry/kex/${code}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ year: season }),
+                      })
                         .then(r => r.ok ? r.json() : null)
                         .then(data => { if (data) setTelKex(prev => ({ ...prev, [code]: data })); })
                         .catch(() => {})
