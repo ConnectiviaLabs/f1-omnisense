@@ -462,17 +462,77 @@ def get_results(filename: str):
 
 class VLMAnalyzeRequest(BaseModel):
     filename: str
+    n_frames: int = 8
+
+
+def _det_label(det: dict) -> str:
+    """Extract label from either GDino format (category/class_name)."""
+    return det.get("category") or det.get("class_name") or det.get("label") or "object"
+
+
+def _det_score(det: dict) -> float:
+    """Extract score from either GDino format (score/confidence)."""
+    return det.get("score") or det.get("confidence") or 0.0
+
+
+def _draw_annotations(frame, detections: list[dict]):
+    """Draw GDino bounding boxes and labels onto a raw video frame.
+
+    Handles both detection formats:
+      Format A: {category, score, bbox} — absolute pixel coords
+      Format B: {class_name, confidence, bbox, class_id} — absolute pixel coords
+    """
+    import cv2
+
+    h, w = frame.shape[:2]
+    for det in detections:
+        bbox = det.get("bbox", [])
+        if len(bbox) != 4:
+            continue
+        label = _det_label(det)
+        score = _det_score(det)
+
+        x1, y1, x2, y2 = [float(v) for v in bbox]
+        # Normalised coords (all values 0-1) → scale to pixels
+        if max(x1, y1, x2, y2) <= 1.0:
+            x1, y1, x2, y2 = x1 * w, y1 * h, x2 * w, y2 * h
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+
+        # Clamp to frame bounds
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w - 1, x2), min(h - 1, y2)
+
+        color = (0, 165, 255)  # orange BGR
+        thickness = max(2, min(h, w) // 300)  # scale with resolution
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
+
+        text = f"{label} {score:.0%}"
+        font_scale = max(0.4, min(h, w) / 1200)
+        (tw, th_text), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
+        # Label background — above the box, or below if near top edge
+        label_y = y1 - 4 if y1 > th_text + 8 else y2 + th_text + 4
+        bg_y1 = label_y - th_text - 4
+        bg_y2 = label_y + 4
+        cv2.rectangle(frame, (x1, bg_y1), (x1 + tw + 6, bg_y2), color, -1)
+        cv2.putText(frame, text, (x1 + 3, label_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), 1, cv2.LINE_AA)
+    return frame
 
 
 @router.post("/vlm-analyze")
 async def vlm_analyze(req: VLMAnalyzeRequest):
-    """Analyze a video with Groq vision LLM (Llama 4 Scout)."""
+    """Extract N frames with GDino annotations drawn on, send to Groq vision.
+
+    Strategy: if GDino data exists, sample N frames from the GDino-analysed
+    frame indices (so annotations are guaranteed to match). Otherwise fall back
+    to evenly-spaced raw frames from the video.
+    """
     import base64
     import os
     import re
     import json
     import time
     from pathlib import Path
+    from collections import Counter
 
     import cv2
 
@@ -483,18 +543,55 @@ async def vlm_analyze(req: VLMAnalyzeRequest):
     if not video_path.exists() or not video_path.is_file():
         raise HTTPException(404, f"Video not found: {req.filename}")
 
-    # Extract 8 evenly-spaced frames
+    n = max(1, min(req.n_frames, 16))  # clamp 1-16
+
+    # Load GDino detections keyed by frame_index
+    db = get_data_db()
+    gdino_doc = db["pipeline_gdino_results"].find_one(
+        {"filename": req.filename}, {"_id": 0}
+    )
+    gdino_frames: list[dict] = []
+    det_by_frame: dict[int, list[dict]] = {}
+    if gdino_doc and gdino_doc.get("frames"):
+        gdino_frames = gdino_doc["frames"]
+        for fr in gdino_frames:
+            fidx = fr.get("frame_index")
+            if fidx is not None:
+                det_by_frame[fidx] = fr.get("detections", [])
+
+    # Decide which frame indices to extract
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise HTTPException(400, "Could not open video file")
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    indices = [int(i * (total_frames - 1) / 7) for i in range(8)]
+
+    if det_by_frame:
+        # Sample N from the GDino-analysed frame indices (evenly spaced)
+        sorted_gdino_idxs = sorted(det_by_frame.keys())
+        if len(sorted_gdino_idxs) <= n:
+            target_indices = sorted_gdino_idxs
+        else:
+            step = len(sorted_gdino_idxs) / n
+            target_indices = [sorted_gdino_idxs[int(i * step)] for i in range(n)]
+    else:
+        # No GDino data — evenly space through the video
+        target_indices = [int(i * (total_frames - 1) / max(n - 1, 1)) for i in range(n)]
+
+    # Extract frames and draw annotations
     frames_b64: list[str] = []
-    for target_idx in indices:
+    annotation_count = 0
+    for target_idx in target_indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, target_idx)
         ret, frame = cap.read()
         if not ret:
             continue
+
+        # Draw annotations if this frame has GDino detections
+        dets = det_by_frame.get(target_idx, [])
+        if dets:
+            frame = _draw_annotations(frame, dets)
+            annotation_count += len(dets)
+
         _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         frames_b64.append(base64.b64encode(buf.tobytes()).decode())
     cap.release()
@@ -502,40 +599,45 @@ async def vlm_analyze(req: VLMAnalyzeRequest):
     if not frames_b64:
         raise HTTPException(400, "No frames extracted from video")
 
-    # Load GDino detection context
-    db = get_data_db()
-    gdino_doc = db["pipeline_gdino_results"].find_one(
-        {"filename": req.filename}, {"_id": 0}
-    )
+    # Build detection summary for text context
     detection_summary = ""
-    if gdino_doc and gdino_doc.get("frames"):
-        from collections import Counter
+    if det_by_frame:
         cat_counts: Counter = Counter()
-        cat_best_score: dict[str, float] = {}
-        for fr in gdino_doc["frames"]:
-            for det in fr.get("detections", []):
-                label = det.get("label") or det.get("class_name", "unknown")
-                score = det.get("confidence") or det.get("score", 0.0)
+        cat_best: dict[str, float] = {}
+        for dets in det_by_frame.values():
+            for det in dets:
+                label = _det_label(det)
+                score = _det_score(det)
                 cat_counts[label] += 1
-                if score > cat_best_score.get(label, 0.0):
-                    cat_best_score[label] = score
-        top_cats = cat_counts.most_common(15)
-        lines = [f"  {lab}: {cnt}x (best {cat_best_score[lab]:.2f})" for lab, cnt in top_cats]
-        detection_summary = "GDino detections:\n" + "\n".join(lines)
+                if score > cat_best.get(label, 0.0):
+                    cat_best[label] = score
+        lines = [f"  {lab}: {cnt}x (best {cat_best[lab]:.0%})" for lab, cnt in cat_counts.most_common(15)]
+        detection_summary = "GDino detections (bounding boxes drawn on frames):\n" + "\n".join(lines)
 
     # Build prompt
+    has_annotations = annotation_count > 0
     prompt = (
-        "You are an F1 video analyst. Analyze these frames from a McLaren F1 video.\n"
+        f"You are an F1 video analyst at McLaren. I'm showing you {len(frames_b64)} frames "
+        f"sampled from: {req.filename}\n\n"
     )
+    if has_annotations:
+        prompt += (
+            f"These frames have GroundingDINO object detection annotations drawn on them — "
+            f"orange bounding boxes with labels and confidence scores. "
+            f"{annotation_count} detections total across the frames shown.\n\n"
+        )
     if detection_summary:
-        prompt += f"\nObject detection context:\n{detection_summary}\n"
+        prompt += f"{detection_summary}\n\n"
     prompt += (
-        "\nReturn ONLY valid JSON with this schema:\n"
-        '{"scene":"...","key_objects":[...],"track_conditions":"...",'
-        '"strategic_notes":"...","incidents":[...]}\n'
+        "Analyze what you see in these frames. Return ONLY valid JSON (no markdown fences):\n"
+        '{"scene":"2-3 sentence description of the video content and what is happening",'
+        '"key_objects":["important objects/elements visible in the frames"],'
+        '"track_conditions":"dry/wet/mixed, surface condition, visibility",'
+        '"strategic_notes":"any tactical or strategic implications for race engineering",'
+        '"incidents":["any notable events, incidents, or anomalies observed"]}\n'
     )
 
-    # Build Groq vision request content parts
+    # Build Groq vision request
     content_parts: list[dict] = [{"type": "text", "text": prompt}]
     for b64 in frames_b64:
         content_parts.append({
@@ -548,10 +650,10 @@ async def vlm_analyze(req: VLMAnalyzeRequest):
     t0 = time.time()
     client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
     resp = client.chat.completions.create(
-        model="llama-4-scout-17b-16e-instruct",
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
         messages=[{"role": "user", "content": content_parts}],
         temperature=0.3,
-        max_completion_tokens=512,
+        max_completion_tokens=600,
     )
     elapsed = round(time.time() - t0, 2)
 
@@ -573,30 +675,24 @@ async def vlm_analyze(req: VLMAnalyzeRequest):
     # Upsert into MongoDB
     from datetime import datetime, timezone
 
-    db["media_vlm_analyses"].update_one(
-        {"filename": req.filename},
-        {"$set": {
-            "filename": req.filename,
-            "analysis": raw_text,
-            "structured": structured,
-            "model": "llama-4-scout-17b-16e-instruct",
-            "frames_analyzed": len(frames_b64),
-            "tokens": tokens,
-            "time_s": elapsed,
-            "updated": datetime.now(timezone.utc),
-        }},
-        upsert=True,
-    )
-
-    return {
+    result = {
         "filename": req.filename,
         "analysis": raw_text,
         "structured": structured,
-        "model": "llama-4-scout-17b-16e-instruct",
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
         "frames_analyzed": len(frames_b64),
+        "annotations_drawn": annotation_count,
         "tokens": tokens,
         "time_s": elapsed,
     }
+
+    db["media_vlm_analyses"].update_one(
+        {"filename": req.filename},
+        {"$set": {**result, "updated": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+
+    return result
 
 
 @router.post("/upload")

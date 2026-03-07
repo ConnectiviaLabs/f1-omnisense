@@ -651,19 +651,9 @@ export function MediaIntelligence() {
 
             {/* LEFT — Video Player + Controls (col-span-8) */}
             <div className="col-span-8 space-y-3">
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-                <AnnotatedVideoPlayer
-                  key={selectedVideo}
-                  videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
-                  frames={frames}
-                  fps={fps}
-                  narrations={narrationData?.[selectedVideo] ?? undefined}
-                  confidenceThreshold={confidenceThreshold}
-                  activeCategories={activeCategories}
-                />
-
-                {/* Controls bar */}
-                <div className="mt-3 pt-3 border-t border-[rgba(255,128,0,0.08)] flex items-center gap-4 flex-wrap">
+              {/* Controls bar — above player so it's always visible */}
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+                <div className="flex items-center gap-4 flex-wrap">
                   {/* Analyze button */}
                   <button
                     type="button"
@@ -722,9 +712,22 @@ export function MediaIntelligence() {
 
                 {analyzeProgress === 'error' && (
                   <div className="mt-2 text-[11px] text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
-                    Analysis failed. Check that Ollama is running and the GDino script is available.
+                    Analysis failed. Check that the backend server is running on port 8300.
                   </div>
                 )}
+              </div>
+
+              {/* Video Player */}
+              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <AnnotatedVideoPlayer
+                  key={selectedVideo}
+                  videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
+                  frames={frames}
+                  fps={fps}
+                  narrations={narrationData?.[selectedVideo] ?? undefined}
+                  confidenceThreshold={confidenceThreshold}
+                  activeCategories={activeCategories}
+                />
               </div>
             </div>
 

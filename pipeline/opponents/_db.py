@@ -25,6 +25,6 @@ def get_db() -> Database:
     """Return the marip_f1 database, reusing a single client."""
     global _client
     if _client is None:
-        uri = os.environ["MONGODB_URI"]
+        uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
         _client = MongoClient(uri)
     return _client[DB_NAME]
