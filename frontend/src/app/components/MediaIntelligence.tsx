@@ -460,7 +460,11 @@ export function MediaIntelligence() {
 
     try {
       // Step 1: Run GDino via backend
-      const gdinoRes = await fetch(`/api/omni/vis/analyze-video-by-name?filename=${encodeURIComponent(filename)}`);
+      const gdinoRes = await fetch('/api/omni/vis/analyze-video-by-name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
       if (gdinoRes.ok) {
         const gdinoResult = await gdinoRes.json();
         if (gdinoResult?.frames?.length) {
