@@ -6,6 +6,7 @@ Crossover: Entity similarity matrix and clustering using VectorProfiles / Victor
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -92,6 +93,85 @@ class TridentGenerateRequest(BaseModel):
     force: bool = False
 
 
+def _gather_structured_context(db, scope: str, entity: str | None) -> str:
+    """Pull structured metrics from Victory collections for comparative reasoning."""
+    parts = []
+
+    if scope == "grid" or scope == "team":
+        # Team-level comparison table from victory_team_kb
+        filt: dict = {}
+        if scope == "team" and entity:
+            filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
+        teams = list(db["victory_team_kb"].find(filt, {"_id": 0, "embedding": 0, "narrative": 0}).limit(13))
+        if teams:
+            parts.append("TEAM PERFORMANCE COMPARISON:")
+            for t in teams:
+                meta = t.get("metadata", {})
+                car = meta.get("car", {})
+                con = car.get("constructor", {}) if isinstance(car, dict) else {}
+                telem = car.get("telemetry", {}) if isinstance(car, dict) else {}
+                health = car.get("health", {}) if isinstance(car, dict) else {}
+                strat = meta.get("strategy", {})
+                parts.append(
+                    f"  {t.get('team')}: wins={con.get('total_wins', '?')}, "
+                    f"podiums={con.get('total_podiums', '?')}, points={con.get('total_points', '?')}, "
+                    f"avg_finish={con.get('avg_finish_position', '?')}, "
+                    f"dnf_rate={con.get('dnf_rate', '?')}, "
+                    f"avg_speed={telem.get('avg_speed', '?')}kph, "
+                    f"overall_health={health.get('overall_health', '?')}%, "
+                    f"undercut_aggression={strat.get('team_undercut_aggression', '?')}, "
+                    f"one_stop_freq={strat.get('team_one_stop_freq', '?')}, "
+                    f"avg_tyre_life={strat.get('team_avg_tyre_life', '?')} laps"
+                )
+
+    if scope == "driver" and entity:
+        # Driver strategy profile
+        sp = db["victory_strategy_profiles"].find_one(
+            {"driver_code": entity.upper()}, {"_id": 0, "embedding": 0, "narrative": 0}
+        )
+        if sp:
+            ps = sp.get("pit_strategy", {})
+            pe = sp.get("pit_execution", {})
+            parts.append(f"DRIVER STRATEGY ({entity.upper()}):")
+            parts.append(
+                f"  undercut_aggression={ps.get('undercut_aggression', '?')}, "
+                f"tyre_extension_bias={ps.get('tyre_extension_bias', '?')}, "
+                f"one_stop_freq={ps.get('one_stop_freq', '?'):.3f}, "
+                f"avg_first_stop_lap={ps.get('avg_first_stop_lap', '?')}, "
+                f"pit_stops={pe.get('total_stops', '?')}, "
+                f"avg_pit_duration={pe.get('avg_duration_s', '?')}s, "
+                f"best_pit={pe.get('best_duration_s', '?')}s"
+            )
+            comps = sp.get("compound_profiles", [])
+            if comps:
+                parts.append("  Compound profiles:")
+                for c in comps:
+                    parts.append(
+                        f"    {c['compound']}: laps={c.get('total_laps', '?')}, "
+                        f"avg_lap={c.get('avg_lap_time_s', 0):.2f}s, "
+                        f"tyre_life={c.get('avg_tyre_life', 0):.1f} laps"
+                    )
+
+        # Compare vs grid (top 5 rivals)
+        rivals = list(db["victory_strategy_profiles"].find(
+            {"driver_code": {"$ne": entity.upper()}},
+            {"_id": 0, "embedding": 0, "narrative": 0, "compound_profiles": 0}
+        ).limit(5))
+        if rivals:
+            parts.append(f"RIVAL STRATEGY COMPARISON (vs {entity.upper()}):")
+            for r in rivals:
+                rps = r.get("pit_strategy", {})
+                rpe = r.get("pit_execution", {})
+                parts.append(
+                    f"  {r.get('driver_code')}/{r.get('team')}: "
+                    f"undercut={rps.get('undercut_aggression', '?')}, "
+                    f"one_stop={rps.get('one_stop_freq', '?'):.3f}, "
+                    f"avg_pit={rpe.get('avg_duration_s', '?')}s"
+                )
+
+    return "\n\n".join(parts) if parts else ""
+
+
 def _gather_kex_data(db, scope: str, entity: str | None) -> str:
     """Gather KeX briefing data for Key Insights section."""
     parts = []
@@ -124,7 +204,7 @@ def _gather_anomaly_data(db, scope: str, entity: str | None) -> str:
     if scope == "driver" and entity:
         drivers = [d for d in drivers if d.get("driver_code", "").upper() == entity.upper()]
     elif scope == "team" and entity:
-        drivers = [d for d in drivers if entity.lower() in (d.get("team", "") or "").lower()]
+        drivers = [d for d in drivers if (d.get("team", "") or "").lower() == entity.lower()]
 
     for d in drivers[:10]:
         code = d.get("driver_code", "?")
@@ -160,7 +240,7 @@ def _gather_forecast_data(db, scope: str, entity: str | None) -> str:
     if scope == "driver" and entity:
         filt["driver_code"] = entity.upper()
     elif scope == "team" and entity:
-        filt["team"] = {"$regex": entity, "$options": "i"}
+        filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
 
     for doc in db["telemetry_race_summary"].find(filt, {"_id": 0}).sort("year", -1).limit(20):
         code = doc.get("driver_code", "?")
@@ -170,6 +250,26 @@ def _gather_forecast_data(db, scope: str, entity: str | None) -> str:
                    if isinstance(v, (int, float)) and k not in ("year", "_id")}
         top_metrics = dict(list(metrics.items())[:6])
         parts.append(f"[{code} {race} {year}] {top_metrics}")
+
+    # Forecast briefings
+    brief_filt = {}
+    if scope == "driver" and entity:
+        brief_filt["driver_code"] = entity.upper()
+    for doc in db["kex_forecast_briefings"].find(brief_filt, {"_id": 0}).limit(5):
+        text = doc.get("text") or doc.get("summary", "")
+        if text:
+            parts.append(f"[Forecast Brief: {doc.get('driver_code', '?')}] {text[:300]}")
+
+    # Car telemetry briefings
+    car_filt = {}
+    if scope == "driver" and entity:
+        car_filt["driver_code"] = entity.upper()
+    elif scope == "team" and entity:
+        car_filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
+    for doc in db["kex_car_telemetry_briefings"].find(car_filt, {"_id": 0}).limit(5):
+        text = doc.get("text") or doc.get("summary", "")
+        if text:
+            parts.append(f"[Car Telemetry Brief: {doc.get('driver_code', doc.get('team', '?'))}] {text[:300]}")
 
     return "\n\n".join(parts) if parts else "No forecast/trend data available."
 
@@ -194,41 +294,52 @@ async def trident_generate(body: TridentGenerateRequest):
 
     t0 = time.time()
 
-    # Gather raw data
+    # Gather raw data + structured metrics
+    structured = _gather_structured_context(db, scope, entity)
     kex_raw = _gather_kex_data(db, scope, entity)
     anomaly_raw = _gather_anomaly_data(db, scope, entity)
     forecast_raw = _gather_forecast_data(db, scope, entity)
 
-    scope_label = f"the entire F1 grid" if scope == "grid" else f"{entity}"
+    scope_label = "the entire F1 grid" if scope == "grid" else f"{entity}"
+    metrics_block = f"\n\nSTRUCTURED METRICS:\n{structured}" if structured else ""
 
-    # Synthesize 3 content sections
-    key_insights = _llm_synthesize(
+    # Build prompts for the 3 content sections — each gets structured metrics for comparative reasoning
+    key_insights_prompt = (
         f"Based on the following KeX briefings and driver intelligence for {scope_label}, "
-        f"write 3-5 key insights about current performance patterns:\n\n{kex_raw}",
-        TRIDENT_SYSTEM,
+        f"write 3-5 key insights about current performance patterns. "
+        f"Use the structured metrics to make specific numerical comparisons "
+        f"(e.g. 'McLaren's undercut aggression of 0.70 vs Red Bull's 0.45 means...').\n\n"
+        f"{kex_raw}{metrics_block}"
+    )
+    anomaly_prompt = (
+        f"Based on the following anomaly detection data and car health metrics for {scope_label}, "
+        f"identify 3-5 significant anomaly patterns and health trends. "
+        f"Reference specific system health scores and compare across teams/drivers where possible.\n\n"
+        f"{anomaly_raw}{metrics_block}"
+    )
+    forecast_prompt = (
+        f"Based on the following telemetry trends and strategy data for {scope_label}, "
+        f"identify 3-5 forecast signals and predicted performance trends. "
+        f"Use the structured strategy and telemetry metrics to support predictions with data.\n\n"
+        f"{forecast_raw}{metrics_block}"
     )
 
-    anomaly_patterns = _llm_synthesize(
-        f"Based on the following anomaly detection data for {scope_label}, "
-        f"identify 3-5 significant anomaly patterns and health trends:\n\n{anomaly_raw}",
-        TRIDENT_SYSTEM,
+    # Synthesize 3 content sections in parallel
+    key_insights, anomaly_patterns, forecast_signals = await asyncio.gather(
+        asyncio.to_thread(_llm_synthesize, key_insights_prompt, TRIDENT_SYSTEM),
+        asyncio.to_thread(_llm_synthesize, anomaly_prompt, TRIDENT_SYSTEM),
+        asyncio.to_thread(_llm_synthesize, forecast_prompt, TRIDENT_SYSTEM),
     )
 
-    forecast_signals = _llm_synthesize(
-        f"Based on the following telemetry trends and race data for {scope_label}, "
-        f"identify 3-5 forecast signals and predicted performance trends:\n\n{forecast_raw}",
-        TRIDENT_SYSTEM,
-    )
-
-    # Synthesize recommendations from the 3 sections
-    recommendations = _llm_synthesize(
+    # Synthesize recommendations sequentially (depends on the 3 sections above)
+    recommendations_prompt = (
         f"Based on these three intelligence pillars for {scope_label}, "
         f"provide 3-5 actionable strategic recommendations:\n\n"
         f"KEY INSIGHTS:\n{key_insights}\n\n"
         f"ANOMALY PATTERNS:\n{anomaly_patterns}\n\n"
-        f"FORECAST SIGNALS:\n{forecast_signals}",
-        TRIDENT_SYSTEM,
+        f"FORECAST SIGNALS:\n{forecast_signals}"
     )
+    recommendations = await asyncio.to_thread(_llm_synthesize, recommendations_prompt, TRIDENT_SYSTEM)
 
     gen_time = round(time.time() - t0, 2)
     report_id = f"trident_{scope}_{entity or 'all'}_{int(now)}"
@@ -312,6 +423,89 @@ COLLECTION_MAP = {
     "victory_team_kb": {"key": "team", "team_key": "team", "embed_key": "embedding"},
 }
 
+# Metric paths to extract from each source for feature attribution
+METRIC_PATHS = {
+    "VectorProfiles": {
+        "throttle_smoothness": "metrics.throttle_smoothness",
+        "late_race_pace": "metrics.late_race_pace",
+        "top_speed": "metrics.top_speed",
+        "consistency": "metrics.consistency",
+        "overtake_success_rate": "metrics.overtake_success_rate",
+        "defensive_rating": "metrics.defensive_rating",
+    },
+    "victory_driver_profiles": {
+        "overall_health": "health.overall_health",
+        "power_unit": "health.systems.Power Unit",
+        "brakes": "health.systems.Brakes",
+        "drivetrain": "health.systems.Drivetrain",
+        "suspension": "health.systems.Suspension",
+        "thermal": "health.systems.Thermal",
+        "electronics": "health.systems.Electronics",
+        "tyre_mgmt": "health.systems.Tyre Management",
+    },
+    "victory_car_profiles": {
+        "overall_health": "health.overall_health",
+        "avg_speed": "telemetry.avg_speed",
+        "avg_throttle": "telemetry.avg_throttle",
+        "brake_pct": "telemetry.brake_pct",
+        "total_wins": "constructor.total_wins",
+        "total_points": "constructor.total_points",
+        "avg_finish": "constructor.avg_finish_position",
+        "dnf_rate": "constructor.dnf_rate",
+        "power_unit": "health.systems.Power Unit",
+        "brakes": "health.systems.Brakes",
+        "suspension": "health.systems.Suspension",
+        "thermal": "health.systems.Thermal",
+    },
+    "victory_team_kb": {
+        "overall_health": "metadata.car.health.overall_health",
+        "avg_speed": "metadata.car.telemetry.avg_speed",
+        "total_wins": "metadata.car.constructor.total_wins",
+        "total_points": "metadata.car.constructor.total_points",
+        "avg_finish": "metadata.car.constructor.avg_finish_position",
+        "dnf_rate": "metadata.car.constructor.dnf_rate",
+        "undercut_aggression": "metadata.strategy.team_undercut_aggression",
+        "one_stop_freq": "metadata.strategy.team_one_stop_freq",
+        "avg_tyre_life": "metadata.strategy.team_avg_tyre_life",
+    },
+}
+
+
+def _extract_nested(doc: dict, path: str):
+    """Extract a value from a nested dict using dot-notation path."""
+    parts = path.split(".")
+    current = doc
+    for p in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(p)
+    return current if isinstance(current, (int, float)) else None
+
+
+def _fetch_metrics(db, source: str, labels: list[str], key_field: str, season: int | None) -> dict[str, dict[str, float]]:
+    """Fetch structured metrics for each entity label. Returns {label: {metric: value}}."""
+    paths = METRIC_PATHS.get(source, {})
+    if not paths:
+        return {}
+
+    filt: dict = {}
+    if season is not None:
+        filt["season"] = season
+
+    docs = list(db[source].find(filt, {"_id": 0, "embedding": 0, "narrative": 0}))
+    doc_map = {d.get(key_field, "?"): d for d in docs}
+
+    result = {}
+    for label in labels:
+        doc = doc_map.get(label, {})
+        metrics = {}
+        for name, path in paths.items():
+            val = _extract_nested(doc, path)
+            if val is not None:
+                metrics[name] = float(val)
+        result[label] = metrics
+    return result
+
 
 class CrossoverMatrixRequest(BaseModel):
     entity_type: str = "driver"
@@ -330,6 +524,7 @@ class CrossoverInsightRequest(BaseModel):
     entity_type: str = "driver"
     entities: list[str] = []
     season: Optional[int] = None
+    source: str = "VectorProfiles"
 
 
 def _fetch_embeddings(db, source: str, entity_type: str, season: int | None) -> tuple[list[str], list[str], np.ndarray]:
@@ -340,6 +535,10 @@ def _fetch_embeddings(db, source: str, entity_type: str, season: int | None) -> 
     conf = COLLECTION_MAP.get(source)
     if not conf:
         raise HTTPException(400, f"Unknown source: {source}")
+
+    # Validate entity_type against source
+    if source in ("victory_car_profiles", "victory_team_kb") and entity_type not in ("team", "car"):
+        raise HTTPException(400, f"Source {source} does not support entity_type '{entity_type}'")
 
     filt: dict = {}
     if season is not None:
@@ -428,16 +627,51 @@ async def crossover_cluster(body: CrossoverClusterRequest):
         }
         entities.append(entry)
 
+    # Fetch structured metrics for feature attribution
+    conf = COLLECTION_MAP[body.source]
+    entity_metrics = _fetch_metrics(db, body.source, labels, conf["key"], body.season)
+
     clusters = []
     for c in range(n_clusters):
         members = [labels[i] for i in range(n) if cluster_labels[i] == c]
         centroid = kmeans.cluster_centers_[c].tolist()
         clusters.append({"id": c, "members": members, "centroid": centroid})
 
+    # Compute per-cluster metric averages and find discriminating features
+    cluster_profiles: list[dict] = []
+    all_metric_names = set()
+    for c_info in clusters:
+        member_metrics = [entity_metrics.get(m, {}) for m in c_info["members"]]
+        avg_metrics: dict[str, float] = {}
+        for mm in member_metrics:
+            for k, v in mm.items():
+                all_metric_names.add(k)
+                avg_metrics.setdefault(k, []).append(v)  # type: ignore
+        avg_metrics = {k: float(np.mean(v)) for k, v in avg_metrics.items()}  # type: ignore
+        cluster_profiles.append(avg_metrics)
+
+    # Discriminating features: highest variance of cluster means across clusters
+    discriminators: list[dict] = []
+    for metric in all_metric_names:
+        cluster_means = [cp.get(metric) for cp in cluster_profiles if metric in cp]
+        if len(cluster_means) >= 2:
+            spread = float(np.std(cluster_means))
+            mean_val = float(np.mean(cluster_means))
+            # Normalize spread by mean to get relative discrimination power
+            rel_spread = spread / abs(mean_val) if mean_val != 0 else spread
+            discriminators.append({
+                "metric": metric,
+                "spread": round(rel_spread, 4),
+                "cluster_values": {f"C{i}": round(cp.get(metric, 0), 2) for i, cp in enumerate(cluster_profiles)},
+            })
+    discriminators.sort(key=lambda x: x["spread"], reverse=True)
+
     return _sanitize({
         "entity_type": body.entity_type,
         "entities": entities,
         "clusters": clusters,
+        "cluster_profiles": cluster_profiles,
+        "discriminators": discriminators[:10],  # top 10 discriminating features
         "explained_variance": pca.explained_variance_ratio_.tolist(),
         "source": body.source,
     })
@@ -447,7 +681,7 @@ async def crossover_cluster(body: CrossoverClusterRequest):
 async def crossover_insight(body: CrossoverInsightRequest):
     """LLM synthesis of cross-entity similarity patterns."""
     db = _get_db()
-    labels, teams, matrix = _fetch_embeddings(db, "VectorProfiles", body.entity_type, body.season)
+    labels, teams, matrix = _fetch_embeddings(db, body.source, body.entity_type, body.season)
 
     # Filter to requested entities if specified
     if body.entities:
@@ -472,16 +706,27 @@ async def crossover_insight(body: CrossoverInsightRequest):
     most_similar = [{"a": p[0], "b": p[1], "score": round(p[2], 4)} for p in pairs[:5]]
     most_dissimilar = [{"a": p[0], "b": p[1], "score": round(p[2], 4)} for p in pairs[-5:]]
 
+    # Fetch structured metrics so the LLM can explain WHY pairs are similar/different
+    conf = COLLECTION_MAP[body.source]
+    entity_metrics = _fetch_metrics(db, body.source, labels, conf["key"], body.season)
+
+    metrics_block = "\nSTRUCTURED METRICS PER ENTITY:"
+    for label in labels:
+        m = entity_metrics.get(label, {})
+        if m:
+            metrics_str = ", ".join(f"{k}={v:.2f}" for k, v in m.items())
+            metrics_block += f"\n  {label}: {metrics_str}"
+
     prompt = (
         f"Analyze these F1 {body.entity_type} similarity patterns:\n\n"
         f"MOST SIMILAR PAIRS:\n"
         + "\n".join(f"  {p['a']} ↔ {p['b']}: {p['score']}" for p in most_similar)
         + f"\n\nMOST DISSIMILAR PAIRS:\n"
         + "\n".join(f"  {p['a']} ↔ {p['b']}: {p['score']}" for p in most_dissimilar)
-        + f"\n\nAll {body.entity_type}s analyzed: {', '.join(labels)}"
-        + f"\n\nExplain the groupings: why are certain {body.entity_type}s similar? "
-        f"What driving style, performance, or strategic characteristics do they share? "
-        f"What makes the outliers distinct?"
+        + f"\n{metrics_block}"
+        + f"\n\nUsing the structured metrics above, explain specifically which metrics drive the similarity/dissimilarity. "
+        f"For each pair, identify the 2-3 metrics where they converge (similar) or diverge (dissimilar). "
+        f"Be precise — cite the actual numbers."
     )
 
     insight = _llm_synthesize(prompt, TRIDENT_SYSTEM)

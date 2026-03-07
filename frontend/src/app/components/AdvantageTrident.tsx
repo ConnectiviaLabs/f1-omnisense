@@ -86,7 +86,7 @@ export function AdvantageTrident() {
     fetch(`/api/advantage/trident/latest?scope=grid`)
       .then(r => { if (r.ok) return r.json(); throw new Error('none'); })
       .then(setReport)
-      .catch(() => {});
+      .catch(err => { console.error('Failed to load latest report:', err); });
   }, []);
 
   const generate = async (force = false) => {
@@ -117,7 +117,7 @@ export function AdvantageTrident() {
     try {
       const res = await fetch(`/api/advantage/trident/history?scope=${scope}&limit=20`);
       if (res.ok) setHistory(await res.json());
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to load history:', err); }
     setHistoryLoading(false);
   };
 
@@ -134,7 +134,7 @@ export function AdvantageTrident() {
     try {
       const res = await fetch(`/api/advantage/trident/report/${id}`);
       if (res.ok) setExpandedReport(await res.json());
-    } catch { /* ignore */ }
+    } catch (err) { console.error('Failed to load report:', err); }
   };
 
   const staleness = useMemo(() => {

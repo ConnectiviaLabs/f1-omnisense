@@ -45,10 +45,18 @@ interface ClusterInfo {
   centroid: number[];
 }
 
+interface Discriminator {
+  metric: string;
+  spread: number;
+  cluster_values: Record<string, number>;
+}
+
 interface ClusterResult {
   entity_type: string;
   entities: ClusterEntity[];
   clusters: ClusterInfo[];
+  cluster_profiles: Record<string, number>[];
+  discriminators: Discriminator[];
   explained_variance: number[];
   source: string;
 }
@@ -114,6 +122,7 @@ export function AdvantageCrossover() {
   const [clusterLoading, setClusterLoading] = useState(false);
   const [insightLoading, setInsightLoading] = useState(false);
   const [error, setError] = useState('');
+  const [nClusters, setNClusters] = useState(4);
 
   const fetchMatrix = useCallback(async () => {
     setMatrixLoading(true);
@@ -140,7 +149,7 @@ export function AdvantageCrossover() {
       const res = await fetch('/api/advantage/crossover/cluster', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entity_type: entityType, source, n_clusters: 4 }),
+        body: JSON.stringify({ entity_type: entityType, source, n_clusters: nClusters }),
       });
       if (!res.ok) throw new Error(await res.text());
       setClusterData(await res.json());
@@ -149,7 +158,7 @@ export function AdvantageCrossover() {
     } finally {
       setClusterLoading(false);
     }
-  }, [entityType, source]);
+  }, [entityType, source, nClusters]);
 
   const fetchInsight = useCallback(async () => {
     setInsightLoading(true);
@@ -340,13 +349,27 @@ export function AdvantageCrossover() {
         <div>
           {!clusterData && !clusterLoading && (
             <div className="flex flex-col items-center justify-center py-16">
-              <button
-                onClick={fetchCluster}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
-              >
-                <ScatterIcon className="w-4 h-4" />
-                Compute Clusters
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={fetchCluster}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
+                >
+                  <ScatterIcon className="w-4 h-4" />
+                  Compute Clusters
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Clusters:</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={8}
+                    value={nClusters}
+                    onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
+                    title="Number of clusters"
+                    className="w-14 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                  />
+                </div>
+              </div>
               <p className="text-[12px] text-muted-foreground/50 mt-3">
                 PCA 3D projection + KMeans clustering
               </p>
@@ -367,6 +390,25 @@ export function AdvantageCrossover() {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-foreground font-medium">PCA Projection</span>
                   <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 mr-2">
+                      <span className="text-[11px] text-muted-foreground">Clusters:</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={8}
+                        value={nClusters}
+                        onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
+                        title="Number of clusters"
+                        className="w-14 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={fetchCluster}
+                        className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Refresh
+                      </button>
+                    </div>
                     {clusterData.clusters.map(c => (
                       <div key={c.id} className="flex items-center gap-1.5 text-[11px]">
                         <div className="w-2.5 h-2.5 rounded-full" style={{ background: CLUSTER_COLORS[c.id % CLUSTER_COLORS.length] }} />
@@ -433,42 +475,95 @@ export function AdvantageCrossover() {
                 </div>
               </div>
 
-              {/* Cluster Members */}
+              {/* Cluster Members + Avg Metrics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                {clusterData.clusters.map(c => (
-                  <div
-                    key={c.id}
-                    className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-3"
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ background: CLUSTER_COLORS[c.id % CLUSTER_COLORS.length] }}
-                      />
-                      <span className="text-[12px] font-medium text-foreground">
-                        Cluster {c.id}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground ml-auto">
-                        {c.members.length} members
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {c.members.map(m => (
-                        <span
-                          key={m}
-                          className="text-[11px] px-2 py-0.5 rounded-md"
-                          style={{
-                            background: `${CLUSTER_COLORS[c.id % CLUSTER_COLORS.length]}15`,
-                            color: CLUSTER_COLORS[c.id % CLUSTER_COLORS.length],
-                          }}
-                        >
-                          {m}
+                {clusterData.clusters.map((c, ci) => {
+                  const profile = clusterData.cluster_profiles?.[ci] || {};
+                  const profileEntries = Object.entries(profile).slice(0, 6);
+                  return (
+                    <div
+                      key={c.id}
+                      className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-3"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ background: CLUSTER_COLORS[c.id % CLUSTER_COLORS.length] }}
+                        />
+                        <span className="text-[12px] font-medium text-foreground">
+                          Cluster {c.id}
                         </span>
-                      ))}
+                        <span className="text-[11px] text-muted-foreground ml-auto">
+                          {c.members.length} members
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {c.members.map(m => (
+                          <span
+                            key={m}
+                            className="text-[11px] px-2 py-0.5 rounded-md"
+                            style={{
+                              background: `${CLUSTER_COLORS[c.id % CLUSTER_COLORS.length]}15`,
+                              color: CLUSTER_COLORS[c.id % CLUSTER_COLORS.length],
+                            }}
+                          >
+                            {m}
+                          </span>
+                        ))}
+                      </div>
+                      {profileEntries.length > 0 && (
+                        <div className="border-t border-[rgba(255,128,0,0.06)] pt-2 mt-1 space-y-1">
+                          {profileEntries.map(([k, v]) => (
+                            <div key={k} className="flex items-center justify-between text-[10px]">
+                              <span className="text-muted-foreground/70">{k.replace(/_/g, ' ')}</span>
+                              <span className="text-foreground/80 font-mono">{typeof v === 'number' ? v.toFixed(1) : v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              {/* Discriminating Features — what separates these clusters */}
+              {clusterData.discriminators && clusterData.discriminators.length > 0 && (
+                <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+                  <div className="text-sm font-medium text-foreground mb-3">
+                    What Separates These Clusters
+                  </div>
+                  <div className="space-y-2">
+                    {clusterData.discriminators.slice(0, 6).map(d => (
+                      <div key={d.metric} className="flex items-center gap-3">
+                        <span className="text-[12px] text-foreground/80 w-36 shrink-0">{d.metric.replace(/_/g, ' ')}</span>
+                        <div className="flex items-center gap-2 flex-1">
+                          {Object.entries(d.cluster_values).map(([cLabel, val]) => {
+                            const cIdx = parseInt(cLabel.replace('C', ''));
+                            return (
+                              <div key={cLabel} className="flex items-center gap-1">
+                                <div className="w-2 h-2 rounded-full" style={{ background: CLUSTER_COLORS[cIdx % CLUSTER_COLORS.length] }} />
+                                <span className="text-[11px] font-mono text-foreground/70">{val}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="w-16 bg-[#0D1117]/60 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-[#FF8000]"
+                            style={{ width: `${Math.min(100, d.spread * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground/50 w-12 text-right font-mono">
+                          {(d.spread * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/40 mt-2">
+                    Spread = relative variance of cluster means — higher = more discriminating
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
