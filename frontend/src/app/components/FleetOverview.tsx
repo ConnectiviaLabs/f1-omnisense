@@ -1,22 +1,113 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  AlertTriangle, CheckCircle2, XCircle, Activity,
-  CircleDot, Shield, TrendingUp, TrendingDown, Minus, Cpu,
-  Plus, X, Car, Save, Upload, Box, Loader2, Sparkles, Gauge,
-} from 'lucide-react';
-import {
-  ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ReferenceLine,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
 } from 'recharts';
-import KexBriefingCard from './KexBriefingCard';
-import { getCarTelemetryKex, getForecastKex, getAnomalyKex, type CarTelemetryKex, type ForecastKex } from '../api/driverIntel';
-import * as model3dApi from '../api/model3d';
-import type { Job } from '../api/model3d';
 import {
-  type HealthLevel, type VehicleData, type FeatureForecast,
+  AlertTriangle, CheckCircle2, XCircle, Activity,
+  CircleDot, Shield, TrendingUp, TrendingDown, Minus, Fuel,
+  X, Loader2, Sparkles, Gauge, ChevronRight,
+} from 'lucide-react';
+import KexBriefingCard from './KexBriefingCard';
+import { ForecastChart } from './ForecastChart';
+import { HealthGauge } from './HealthGauge';
+import { getCarTelemetryKex, getAnomalyKex, type CarTelemetryKex } from '../api/driverIntel';
+import {
+  type HealthLevel, type VehicleData,
   mapLevel, levelColor, levelBg,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
+
+/* ── Team colors & logos (match DriverIntel) ── */
+const teamColors: Record<string, string> = {
+  'Red Bull': '#3671C6', 'Red Bull Racing': '#3671C6', 'McLaren': '#FF8000', 'Ferrari': '#E8002D',
+  'Mercedes': '#27F4D2', 'Aston Martin': '#229971', 'Alpine': '#FF87BC', 'Alpine F1 Team': '#FF87BC',
+  'Williams': '#64C4FF', 'RB': '#6692FF', 'RB F1 Team': '#6692FF', 'Racing Bulls': '#6692FF',
+  'Kick Sauber': '#52E252', 'Sauber': '#52E252', 'Alfa Romeo': '#C92D4B',
+  'Haas F1 Team': '#B6BABD', 'Haas': '#B6BABD',
+  'AlphaTauri': '#6692FF', 'Toro Rosso': '#469BFF',
+};
+const F1_CDN = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026';
+const TEAM_LOGOS: Record<string, string> = {
+  red_bull: `${F1_CDN}/redbullracing/2026redbullracinglogowhite.webp`,
+  mclaren: `${F1_CDN}/mclaren/2026mclarenlogowhite.webp`,
+  ferrari: `${F1_CDN}/ferrari/2026ferrarilogowhite.webp`,
+  mercedes: `${F1_CDN}/mercedes/2026mercedeslogowhite.webp`,
+  aston_martin: `${F1_CDN}/astonmartin/2026astonmartinlogowhite.webp`,
+  alpine: `${F1_CDN}/alpine/2026alpinelogowhite.webp`,
+  williams: `${F1_CDN}/williams/2026williamslogowhite.webp`,
+  rb: `${F1_CDN}/racingbulls/2026racingbullslogowhite.webp`,
+  sauber: `${F1_CDN}/audi/2026audilogowhite.webp`,
+  haas: `${F1_CDN}/haasf1team/2026haasf1teamlogowhite.webp`,
+};
+const TEAM_NAME_TO_LOGO: Record<string, string> = {
+  'Red Bull': 'red_bull', 'Red Bull Racing': 'red_bull', 'McLaren': 'mclaren', 'Ferrari': 'ferrari',
+  'Mercedes': 'mercedes', 'Aston Martin': 'aston_martin', 'Alpine': 'alpine', 'Alpine F1 Team': 'alpine',
+  'Williams': 'williams', 'RB': 'rb', 'RB F1 Team': 'rb', 'Racing Bulls': 'rb',
+  'Kick Sauber': 'sauber', 'Sauber': 'sauber', 'Alfa Romeo': 'sauber',
+  'Haas F1 Team': 'haas', 'Haas': 'haas', 'AlphaTauri': 'rb', 'Toro Rosso': 'rb',
+};
+
+function getHealthTrend(vehicle: VehicleData): 'up' | 'down' | 'stable' {
+  if (!vehicle.races || vehicle.races.length < 2) return 'stable';
+  const recent = vehicle.races.slice(-3);
+  const avgHealth = (race: typeof recent[0]) => {
+    const vals = Object.values(race.systems).map(s => s.health);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  };
+  const first = avgHealth(recent[0]);
+  const last = avgHealth(recent[recent.length - 1]);
+  const diff = last - first;
+  if (diff > 3) return 'up';
+  if (diff < -3) return 'down';
+  return 'stable';
+}
+
+const TrendIcon = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
+  if (trend === 'up') return <TrendingUp className="w-3 h-3 text-green-400" />;
+  if (trend === 'down') return <TrendingDown className="w-3 h-3 text-red-400" />;
+  return <Minus className="w-3 h-3 text-muted-foreground/50" />;
+};
+
+/* ── Tyre compound colors ── */
+const COMPOUND_COLORS: Record<string, string> = {
+  SOFT: '#FF3333', MEDIUM: '#FFD700', HARD: '#CCCCCC',
+  INTERMEDIATE: '#00CC44', WET: '#0088FF',
+};
+
+/* ── Race telemetry summary type ── */
+interface RaceTelemetry {
+  race: string;
+  avgSpeed: number;
+  topSpeed: number;
+  avgRPM: number;
+  maxRPM: number;
+  avgThrottle: number;
+  brakePct: number;
+  drsPct: number;
+  compounds: string[];
+}
+
+/* ── OmniHealth component type ── */
+interface OmniComponent {
+  component: string;
+  health_pct: number;
+  severity: string;
+  action: string;
+  confidence?: number;
+}
+
+/* ── Stint type ── */
+interface StintData {
+  driver_acronym: string;
+  meeting_name: string;
+  compound: string;
+  stint_number: number;
+  lap_start: number;
+  lap_end: number;
+  stint_laps: number;
+  tyre_age_at_start: number;
+}
 
 function MaintenanceBadge({ action }: { action?: string }) {
   const info = MAINTENANCE_LABELS[action ?? 'none'] ?? MAINTENANCE_LABELS.none;
@@ -71,73 +162,30 @@ const TEAM_CAR_MODEL: Record<string, { label: string; url: string }> = {
 };
 const DEFAULT_CAR_MODEL = { label: 'MCL39', url: '/models/mcl39.glb' };
 
-// NOTE: Car3DViewer standalone section removed from fleet grid view.
-// ModelGen3D (AI 3D generation) can be re-enabled in a settings/admin panel.
-
-// ─── Registered vehicle type ────────────────────────────────────────
-interface RegisteredVehicle {
-  model: string;
-  driverName: string;
-  driverNumber: number;
-  driverCode: string;
-  teamName: string;
-  chassisId: string;
-  engineSpec: string;
-  season: number;
-  notes: string;
-  createdAt: string;
-}
-
-const EMPTY_FORM: Omit<RegisteredVehicle, 'createdAt'> = {
-  model: '', driverName: '', driverNumber: 0, driverCode: '',
-  teamName: 'McLaren', chassisId: '', engineSpec: '', season: new Date().getFullYear(), notes: '',
-};
-
 // ─── Component ──────────────────────────────────────────────────────
 interface FleetOverviewProps {
   prefetchedVehicles: VehicleData[];
-  prefetchedForecasts: Record<string, FeatureForecast[]>;
   prefetchLoading: boolean;
-  /** Which pillar tab is active (used by PrimeCar). Phase 2 will filter sections. */
+  /** Which pillar tab is active (driven by sidebar). */
   defaultSection?: 'telemetry' | 'anomaly' | 'forecast';
 }
 
 type FleetTab = 'telemetry' | 'anomaly' | 'forecast';
 
-const TAB_CONFIG: { id: FleetTab; label: string; icon: React.ElementType }[] = [
-  { id: 'telemetry', label: 'Telemetry', icon: Gauge },
-  { id: 'anomaly', label: 'Anomaly Detection', icon: AlertTriangle },
-  { id: 'forecast', label: 'Forecasting', icon: TrendingUp },
-];
-
-export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetchLoading, defaultSection }: FleetOverviewProps) {
+export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSection }: FleetOverviewProps) {
   const [vehicles, setVehicles] = useState<VehicleData[]>([]);
   const [selectedCar, setSelectedCar] = useState<VehicleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [liveSource, setLiveSource] = useState<'cached' | 'live' | null>(null);
 
-  // Tab state — syncs with sidebar pillar selection
-  const [activeTab, setActiveTab] = useState<FleetTab>(defaultSection ?? 'telemetry');
-  useEffect(() => { if (defaultSection) setActiveTab(defaultSection as FleetTab); }, [defaultSection]);
+  // Active pillar — driven by sidebar
+  const activeTab: FleetTab = (defaultSection as FleetTab) ?? 'telemetry';
 
   // Per-tab KeX state (lazy-loaded)
   const [anomalyKex, setAnomalyKex] = useState<any>(null);
   const [anomalyKexLoading, setAnomalyKexLoading] = useState(false);
   const [telemetryKex, setTelemetryKex] = useState<CarTelemetryKex | null>(null);
   const [telemetryKexLoading, setTelemetryKexLoading] = useState(false);
-  const [forecastKex, setForecastKex] = useState<ForecastKex | null>(null);
-  const [forecastKexLoading, setForecastKexLoading] = useState(false);
-
-  // Registration state
-  const [showRegister, setShowRegister] = useState(false);
-  const [regForm, setRegForm] = useState(EMPTY_FORM);
-  const [registeredVehicles, setRegisteredVehicles] = useState<RegisteredVehicle[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [regError, setRegError] = useState('');
-
-  // Use pre-fetched forecasts keyed by driver code
-  const forecasts = selectedCar ? (prefetchedForecasts[selectedCar.code] ?? []) : [];
-  const forecastLoading = selectedCar ? !(selectedCar.code in prefetchedForecasts) : false;
 
   // Driver profile stats (fetched on driver select)
   interface DriverStats {
@@ -164,7 +212,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     ]).then(([standingsRes, resultsRes, markersRes, overtakeRes]) => {
       const stats: DriverStats = {};
 
-      // Latest season standings
       if (standingsRes.status === 'fulfilled') {
         const all = standingsRes.value as any[];
         const driverStandings = all
@@ -179,7 +226,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
         }
       }
 
-      // Race results — compute career stats for latest season
       if (resultsRes.status === 'fulfilled') {
         const all = resultsRes.value as any[];
         const driverResults = all.filter((r: any) => r.driver_code === code);
@@ -199,7 +245,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
         if (finishes.length) stats.avgFinish = +(finishes.reduce((a: number, b: number) => a + b, 0) / finishes.length).toFixed(1);
       }
 
-      // Performance markers
       if (markersRes.status === 'fulfilled') {
         const arr = markersRes.value as any[];
         if (arr.length) {
@@ -213,7 +258,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
         }
       }
 
-      // Overtake profile
       if (overtakeRes.status === 'fulfilled') {
         const arr = overtakeRes.value as any[];
         if (arr.length) {
@@ -228,108 +272,45 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     }).finally(() => setStatsLoading(false));
   }, [selectedCar]);
 
-  // 3D generation state (inside Register Car modal)
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [gen3dProvider, setGen3dProvider] = useState<'hunyuan' | 'meshy'>('hunyuan');
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [activeJob, setActiveJob] = useState<Job | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  // ── Race telemetry trends (mccar-summary) ──
+  const [raceTelemetry, setRaceTelemetry] = useState<RaceTelemetry[]>([]);
   useEffect(() => {
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, []);
+    if (!selectedCar) { setRaceTelemetry([]); return; }
+    fetch(`/api/mccar-summary/2024/${selectedCar.code}`) // TODO: parameterize season when 2025 data available
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setRaceTelemetry(Array.isArray(data) ? data : []))
+      .catch(() => setRaceTelemetry([]));
+  }, [selectedCar?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleFile = useCallback((file: File) => {
-    setImageFile(file);
-    setImagePreview(URL.createObjectURL(file));
-  }, []);
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) handleFile(file);
-  }, [handleFile]);
-
-  // Fetch registered vehicles
+  // ── OmniHealth detailed assessment ──
+  const [omniComponents, setOmniComponents] = useState<OmniComponent[]>([]);
+  const [omniLoading, setOmniLoading] = useState(false);
   useEffect(() => {
-    fetch('/api/fleet-vehicles')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setRegisteredVehicles(data); })
-      .catch(() => {});
-  }, []);
+    if (!selectedCar || activeTab !== 'anomaly') { setOmniComponents([]); return; }
+    setOmniLoading(true);
+    fetch(`/api/omni/health/assess/${selectedCar.code}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setOmniComponents(data?.components ?? []))
+      .catch(() => setOmniComponents([]))
+      .finally(() => setOmniLoading(false));
+  }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startGen3dPolling = (jobId: string) => {
-    pollRef.current = setInterval(async () => {
-      try {
-        const updated = await model3dApi.getJobStatus(jobId);
-        setActiveJob(updated);
-        if (updated.status === 'completed' || updated.status === 'failed') {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      } catch { /* ignore poll errors */ }
-    }, 3000);
-  };
-
-  const handleRegister = async () => {
-    if (!regForm.model || !regForm.driverName || !regForm.driverNumber || !regForm.driverCode) {
-      setRegError('Model, driver name, number, and code are required.');
-      return;
-    }
-    setSubmitting(true);
-    setRegError('');
-    try {
-      const res = await fetch('/api/fleet-vehicles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(regForm),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Registration failed');
-      }
-      const created = await res.json();
-      setRegisteredVehicles(prev => [created, ...prev]);
-
-      // If reference image was uploaded, trigger 3D generation
-      if (imageFile) {
-        try {
-          const genName = regForm.model.replace(/[^a-zA-Z0-9_-]/g, '_') || 'car_model';
-          const result = await model3dApi.submitGeneration({
-            image: imageFile,
-            model_name: genName,
-            provider: gen3dProvider,
-            enable_pbr: true,
-          });
-          const job: Job = {
-            job_id: result.job_id,
-            model_name: result.model_name,
-            provider: result.provider,
-            status: 'queued',
-            progress: 0,
-            glb_url: null,
-            error: null,
-            created_at: new Date().toISOString(),
-            completed_at: null,
-          };
-          setActiveJob(job);
-          startGen3dPolling(result.job_id);
-        } catch { /* 3D gen is optional, don't block registration */ }
-      }
-
-      setRegForm(EMPTY_FORM);
-      setImageFile(null);
-      setImagePreview(null);
-      setShowRegister(false);
-    } catch (e: any) {
-      setRegError(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // ── Tyre stints (last race from race telemetry) ──
+  const [stints, setStints] = useState<StintData[]>([]);
+  const lastRaceName = raceTelemetry.length > 0 ? raceTelemetry[raceTelemetry.length - 1].race : null;
+  useEffect(() => {
+    if (!selectedCar || !lastRaceName) { setStints([]); return; }
+    const meetingName = lastRaceName + ' Grand Prix';
+    fetch(`/api/mccar-race-stints/2024/${encodeURIComponent(meetingName)}`) // TODO: parameterize season
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        const all = Array.isArray(data) ? data : [];
+        setStints(all.filter((s: StintData) =>
+          s.driver_acronym === selectedCar.code && s.meeting_name === meetingName
+        ));
+      })
+      .catch(() => setStints([]));
+  }, [selectedCar?.code, lastRaceName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use pre-fetched anomaly vehicles from App
   useEffect(() => {
@@ -355,7 +336,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
           const live = data.drivers.find((d: any) => d.code === v.code);
           if (!live || live.error || !live.components) return v;
 
-          // Merge live OmniHealth components into existing SystemHealth shape
           const liveSystemMap = new Map<string, any>();
           for (const comp of live.components) {
             liveSystemMap.set(comp.component, comp);
@@ -408,18 +388,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
       .finally(() => setTelemetryKexLoading(false));
   }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    setForecastKex(null);
-    if (!selectedCar || activeTab !== 'forecast') return;
-    setForecastKexLoading(true);
-    getForecastKex(selectedCar.code)
-      .then(setForecastKex)
-      .catch(() => setForecastKex(null))
-      .finally(() => setForecastKexLoading(false));
-  }, [selectedCar?.code, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Race-by-race trend from anomaly data
-  // Extract available years from the selected car's race history
   const trendYears = useMemo(() => {
     if (!selectedCar) return [];
     const years = new Set<number>();
@@ -432,7 +401,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
 
   const [trendYear, setTrendYear] = useState<number | null>(null);
 
-  // Reset year filter when driver changes (default to latest year)
   useEffect(() => {
     setTrendYear(trendYears[0] ?? null);
   }, [trendYears]);
@@ -450,7 +418,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
       .map(r => {
         const systems = r.systems;
 
-        // Collect maintenance actions across all systems for this race
         const actions = Object.values(systems)
           .map(s => s.maintenance_action)
           .filter((a): a is string => !!a && a !== 'none');
@@ -496,6 +463,8 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
     );
   }
 
+  const healthColor = (h: number) => h >= 75 ? '#22c55e' : h >= 50 ? '#FF8000' : '#ef4444';
+
   return (
     <div className="space-y-4">
       {/* Fleet status bar */}
@@ -523,140 +492,171 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             </div>
           );
         })}
-        <button
-          type="button"
-          onClick={() => setShowRegister(true)}
-          className="ml-auto flex items-center gap-1.5 bg-[#FF8000] hover:bg-[#FF8000]/80 text-black text-[12px] font-medium rounded-lg px-3 py-2 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Register Car
-        </button>
       </div>
 
-      {/* ── McLaren Drivers — full cards ── */}
-      {mclarenVehicles.length > 0 && (
+      {/* McLaren Drivers — collapse when a car is selected */}
+      {!selectedCar && mclarenVehicles.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {mclarenVehicles.map(v => {
-            const isSelected = selectedCar?.code === v.code;
+          {mclarenVehicles.map((v, i) => {
+            const color = teamColors[v.team] || '#FF8000';
+            const logoKey = TEAM_NAME_TO_LOGO[v.team];
+            const logoUrl = logoKey ? TEAM_LOGOS[logoKey] : null;
+            const carModel = TEAM_CAR_MODEL[v.team] ?? DEFAULT_CAR_MODEL;
+            const trend = getHealthTrend(v);
+            const critCount = v.systems.filter(s => s.level === 'critical').length;
+            const warnCount = v.systems.filter(s => s.level === 'warning').length;
+            const topAction = v.systems
+              .map(s => s.maintenanceAction)
+              .filter((a): a is string => !!a && a !== 'none')[0];
             return (
-              <button
+              <motion.button
                 key={v.code || v.number}
-                onClick={() => setSelectedCar(isSelected ? null : v)}
-                className={`text-left bg-[#1A1F2E] rounded-xl border p-5 transition-all group ${
-                  isSelected
-                    ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30 shadow-[0_0_20px_rgba(255,128,0,0.1)]'
-                    : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.3)]'
-                }`}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, delay: i * 0.05 }}
+                onClick={() => setSelectedCar(v)}
+                className="text-left rounded-xl transition-all group relative overflow-hidden bg-[#1A1F2E] border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
               >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold font-mono bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/40">
-                      #{v.number}
+                <div className="absolute top-0 left-0 bottom-0 w-[4px] rounded-l-xl" style={{ background: color }} />
+                <div className="p-5 pl-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {logoUrl && <img src={logoUrl} alt={v.team} className="h-5 w-5 object-contain shrink-0" />}
+                      <span className="text-[12px] font-medium tracking-wide truncate" style={{ color }}>{v.team}</span>
+                      <span className="text-[10px] text-muted-foreground/60 font-mono">{carModel.label}</span>
                     </div>
-                    <div>
-                      <div className="text-sm font-medium text-[#FF8000]">{v.driver}</div>
-                      <div className="text-[12px] text-muted-foreground">{v.team} &middot; {v.lastRace}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-mono font-bold" style={{ color: levelColor(v.level) }}>
-                      {v.overallHealth}%
-                    </div>
-                    <div className="text-[11px] uppercase tracking-wider" style={{ color: levelColor(v.level) }}>
-                      {v.level}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <TrendIcon trend={trend} />
+                      <HealthGauge value={v.overallHealth} size={38} showLabel={false} strokeWidth={3} />
                     </div>
                   </div>
-                </div>
-                <div className="h-2 bg-[#0D1117] rounded-full overflow-hidden mb-4">
-                  <div
-                    className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${v.overallHealth}%`, background: `linear-gradient(90deg, ${levelColor(v.level)}, ${levelColor(v.level)}88)` }}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {v.systems.map(sys => {
-                    const Icon = sys.icon;
-                    return (
-                      <div key={sys.name} className="bg-[#0D1117] rounded-lg p-2">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Icon className="w-2.5 h-2.5" style={{ color: levelColor(sys.level) }} />
-                          <span className="text-[10px] text-muted-foreground truncate">{sys.name}</span>
+
+                  <div className="flex items-center gap-2">
+                    {v.number > 0 && (
+                      <span className="text-[22px] font-black font-mono leading-none opacity-25" style={{ color }}>{v.number}</span>
+                    )}
+                    <div className="text-[17px] text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors">
+                      {v.driver}
+                    </div>
+                  </div>
+
+                  {/* Car health summary */}
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[11px]">
+                    <span className="font-mono font-bold" style={{ color: levelColor(v.level) }}>{v.overallHealth}%</span>
+                    <span className="uppercase text-[10px] tracking-wider font-medium" style={{ color: levelColor(v.level) }}>{v.level}</span>
+                  </div>
+
+                  {/* Car status indicators */}
+                  <div className="flex items-center gap-2.5 mt-2 text-[11px] text-muted-foreground">
+                    {critCount > 0 && <span className="font-mono text-red-400">{critCount} critical</span>}
+                    {warnCount > 0 && <span className="font-mono text-[#FF8000]">{warnCount} warning</span>}
+                    {critCount === 0 && warnCount === 0 && <span className="font-mono text-green-400">All systems nominal</span>}
+                    {topAction && <MaintenanceBadge action={topAction} />}
+                  </div>
+
+                  <div className="mt-3 space-y-1">
+                    {v.systems.map(sys => (
+                      <div key={sys.name} className="flex items-center gap-1.5">
+                        <span className="text-[9px] w-12 text-muted-foreground/70 truncate">{sys.name}</span>
+                        <div className="flex-1 h-1.5 bg-[#222838] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
                         </div>
-                        <div className="h-1 bg-[#222838] rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
-                        </div>
-                        <div className="text-[11px] font-mono mt-0.5" style={{ color: levelColor(sys.level) }}>{sys.health}%</div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+
+                  <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 absolute bottom-3 right-3 group-hover:text-[#FF8000]/60 transition-colors" />
                 </div>
-              </button>
+              </motion.button>
             );
           })}
         </div>
       )}
 
-      {/* ── Grid: all other drivers as compact rows ── */}
-      {otherVehicles.length > 0 && (
-        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-[rgba(255,128,0,0.08)] flex items-center justify-between">
-            <span className="text-[12px] font-medium text-muted-foreground">All Drivers</span>
+      {/* All other drivers — hidden when a car is selected */}
+      {otherVehicles.length > 0 && !selectedCar && (
+        <>
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">All Drivers</span>
             <span className="text-[10px] text-muted-foreground">{otherVehicles.length} drivers</span>
           </div>
-          <div className="max-h-[400px] overflow-y-auto">
-            {otherVehicles.map(v => {
-              const isSelected = selectedCar?.code === v.code;
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+            {otherVehicles.map((v, i) => {
+              const color = teamColors[v.team] || '#666';
+              const logoKey = TEAM_NAME_TO_LOGO[v.team];
+              const logoUrl = logoKey ? TEAM_LOGOS[logoKey] : null;
+              const carModel = TEAM_CAR_MODEL[v.team] ?? DEFAULT_CAR_MODEL;
+              const trend = getHealthTrend(v);
+              const critCount = v.systems.filter(s => s.level === 'critical').length;
+              const warnCount = v.systems.filter(s => s.level === 'warning').length;
               return (
-                <button
+                <motion.button
                   key={v.code || v.number}
-                  onClick={() => setSelectedCar(isSelected ? null : v)}
-                  className={`w-full text-left flex items-center gap-3 px-4 py-2.5 border-b border-[rgba(255,128,0,0.04)] transition-colors ${
-                    isSelected
-                      ? 'bg-[#FF8000]/5 border-l-2 border-l-[#FF8000]'
-                      : 'hover:bg-[rgba(255,128,0,0.02)]'
-                  }`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.4) }}
+                  onClick={() => setSelectedCar(v)}
+                  className="text-left rounded-xl transition-all group relative overflow-hidden bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] hover:border-[rgba(255,128,0,0.25)]"
                 >
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold font-mono shrink-0"
-                    style={{ background: levelBg(v.level), color: levelColor(v.level), border: `1px solid ${levelColor(v.level)}22` }}>
-                    #{v.number}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[12px] font-medium ${isSelected ? 'text-[#FF8000]' : 'text-foreground'}`}>{v.driver}</span>
-                      <span className="text-[10px] text-muted-foreground truncate">{v.team}</span>
+                  <div className="absolute top-0 left-0 bottom-0 w-[2px] rounded-l-xl" style={{ background: color }} />
+                  <div className="p-2.5 pl-3.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1 min-w-0">
+                        {logoUrl && <img src={logoUrl} alt={v.team} className="h-3.5 w-3.5 object-contain shrink-0" />}
+                        <span className="text-[9px] font-medium tracking-wide truncate" style={{ color }}>{v.team}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <TrendIcon trend={trend} />
+                        <HealthGauge value={v.overallHealth} size={26} showLabel={false} strokeWidth={2.5} />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {v.number > 0 && (
+                        <span className="text-[14px] font-black font-mono leading-none opacity-25" style={{ color }}>{v.number}</span>
+                      )}
+                      <div>
+                        <div className="text-[12px] text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors">
+                          {v.driver}
+                        </div>
+                        <div className="text-[8px] text-muted-foreground/60 font-mono">{carModel.label}</div>
+                      </div>
+                    </div>
+
+                    {/* Car health + status */}
+                    <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                      <span className="font-mono font-bold" style={{ color: levelColor(v.level) }}>{v.overallHealth}%</span>
+                      <span className="uppercase text-[8px] tracking-wider" style={{ color: levelColor(v.level) }}>{v.level}</span>
+                      {critCount > 0 && <span className="font-mono text-red-400">{critCount}C</span>}
+                      {warnCount > 0 && <span className="font-mono text-[#FF8000]">{warnCount}W</span>}
+                    </div>
+
+                    <div className="mt-2 space-y-0.5">
+                      {v.systems.map(sys => (
+                        <div key={sys.name} className="flex items-center gap-1">
+                          <span className="text-[7px] w-8 text-muted-foreground/70 truncate">{sys.name}</span>
+                          <div className="flex-1 h-[3px] bg-[#222838] rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  {/* Mini system bars */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    {v.systems.map(sys => (
-                      <div key={sys.name} className="flex items-center gap-1" title={`${sys.name}: ${sys.health}%`}>
-                        <div className="w-12 h-1.5 bg-[#0D1117] rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="w-12 text-right shrink-0">
-                    <span className="text-[12px] font-mono font-semibold" style={{ color: levelColor(v.level) }}>
-                      {v.overallHealth}%
-                    </span>
-                  </div>
-                </button>
+                </motion.button>
               );
             })}
           </div>
-        </div>
+        </>
       )}
 
-      {/* ─── Driver Detail Panel — shown when a driver is selected ─── */}
+      {/* Driver Detail Panel — shown when a driver is selected */}
       {selectedCar && (() => {
         const carModel = TEAM_CAR_MODEL[selectedCar.team] ?? DEFAULT_CAR_MODEL;
         const s = driverStats;
-        const healthColor = (h: number) => h >= 75 ? '#22c55e' : h >= 50 ? '#FF8000' : '#ef4444';
 
         return (
         <div className="space-y-4">
-          {/* ── Driver Profile Header ── */}
+          {/* Driver Profile Header */}
           <div className="bg-[#1A1F2E] rounded-xl border border-[#FF8000]/20 overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
             <div className="px-5 py-4 flex items-center justify-between">
@@ -728,24 +728,6 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             )}
           </div>
 
-          {/* ── Tab Navigation ── */}
-          <div className="flex items-center gap-1 bg-[#0D1117]/60 p-1 rounded-xl w-fit border border-[rgba(255,128,0,0.06)]">
-            {TAB_CONFIG.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setActiveTab(t.id)}
-                className={`relative text-[13px] px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-medium ${
-                  activeTab === t.id
-                    ? 'bg-[#FF8000]/10 text-[#FF8000]'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-[#1A1F2E]/60'
-                }`}
-              >
-                <t.icon className="w-3.5 h-3.5" />
-                {t.label}
-              </button>
-            ))}
-          </div>
-
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -756,7 +738,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
               className="space-y-4"
             >
 
-          {/* ════════════ TELEMETRY TAB ════════════ */}
+          {/* TELEMETRY TAB */}
           {activeTab === 'telemetry' && (<>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* 3D Car Viewer — 2/3 */}
@@ -782,6 +764,56 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
                   title={`3D — ${carModel.label}`}
                 />
               </div>
+
+              {/* Race-by-Race Telemetry Trends — full width stacked under 3D model */}
+              {raceTelemetry.length > 1 && (
+                <div className="mt-3 space-y-2">
+                  {([
+                    { key: 'avgSpeed', label: 'Avg Speed', unit: 'km/h', color: '#FF8000' },
+                    { key: 'avgThrottle', label: 'Throttle', unit: '%', color: '#22c55e' },
+                    { key: 'brakePct', label: 'Brake', unit: '%', color: '#ef4444' },
+                  ] as const).map(({ key, label, unit, color }) => (
+                    <div key={key} className="bg-[#0D1117] rounded-lg p-2">
+                      <ResponsiveContainer width="100%" height={85}>
+                        <AreaChart data={raceTelemetry} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
+                          <defs>
+                            <linearGradient id={`grad-${key}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+                              <stop offset="100%" stopColor={color} stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="race" hide />
+                          <YAxis hide domain={['dataMin - 2', 'dataMax + 2']} />
+                          <Tooltip
+                            contentStyle={{ background: '#161B22', border: '1px solid #30363D', borderRadius: 8, fontSize: 10 }}
+                            formatter={(v: number) => [`${v.toFixed(1)} ${unit}`, label]}
+                            labelFormatter={(l: string) => l}
+                          />
+                          <Area type="monotone" dataKey={key} stroke={color} strokeWidth={1.5} fill={`url(#grad-${key})`} dot={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[9px] text-muted-foreground">{label}</span>
+                        <span className="text-[10px] font-mono font-semibold" style={{ color }}>
+                          {raceTelemetry[raceTelemetry.length - 1][key].toFixed(1)}{unit}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Summary stats row */}
+                  <div className="flex flex-wrap gap-3 mt-1 text-[10px]">
+                    {(() => {
+                      const latest = raceTelemetry[raceTelemetry.length - 1];
+                      return <>
+                        <div><span className="text-muted-foreground">Top Speed </span><span className="font-mono font-semibold text-foreground">{latest.topSpeed} km/h</span></div>
+                        <div><span className="text-muted-foreground">RPM </span><span className="font-mono font-semibold text-foreground">{Math.round(latest.avgRPM)}/{Math.round(latest.maxRPM)}</span></div>
+                        <div><span className="text-muted-foreground">DRS </span><span className="font-mono font-semibold text-foreground">{latest.drsPct.toFixed(1)}%</span></div>
+                        <span className="text-muted-foreground/50">({raceTelemetry.length} races)</span>
+                      </>;
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Driver Performance Card — 1/3 */}
@@ -905,6 +937,69 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
             </div>
           </div>
 
+
+          {/* Tyre Strategy — last race */}
+          {stints.length > 0 && lastRaceName && (() => {
+            const sorted = [...stints].sort((a, b) => a.stint_number - b.stint_number);
+            const totalLaps = sorted.reduce((s, t) => s + t.stint_laps, 0);
+            return (
+            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
+                  <Fuel className="w-3.5 h-3.5 text-[#FF8000]" />
+                  Tyre Strategy — {lastRaceName}
+                </h3>
+                <span className="text-[10px] text-muted-foreground font-mono">{totalLaps} laps</span>
+              </div>
+              {/* Timeline bar */}
+              <div className="flex items-center gap-1 h-14 rounded-lg overflow-hidden bg-[#0D1117] mb-4">
+                {sorted.map(st => {
+                  const pct = (st.stint_laps / totalLaps) * 100;
+                  const color = COMPOUND_COLORS[st.compound] ?? '#6b7280';
+                  return (
+                    <div
+                      key={st.stint_number}
+                      className="h-full flex flex-col items-center justify-center gap-0.5 font-mono"
+                      style={{ width: `${pct}%`, background: `${color}20`, borderLeft: st.stint_number > sorted[0].stint_number ? `2px solid ${color}60` : 'none' }}
+                    >
+                      <span className="text-[12px] font-bold" style={{ color }}>{st.compound}</span>
+                      <span className="text-[10px] text-muted-foreground">{st.stint_laps} laps</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Stint detail cards */}
+              <div className={`grid gap-2 ${sorted.length <= 3 ? 'grid-cols-' + sorted.length : 'grid-cols-2 md:grid-cols-4'}`}>
+                {sorted.map(st => {
+                  const color = COMPOUND_COLORS[st.compound] ?? '#6b7280';
+                  return (
+                    <div key={st.stint_number} className="bg-[#0D1117] rounded-lg p-3 border" style={{ borderColor: `${color}30` }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-3 h-3 rounded-full" style={{ background: color }} />
+                        <span className="text-[11px] font-semibold text-foreground">Stint {st.stint_number}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground">Compound</span>
+                          <span className="font-mono font-bold" style={{ color }}>{st.compound}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground">Laps</span>
+                          <span className="font-mono font-semibold text-foreground">{st.lap_start}–{st.lap_end} ({st.stint_laps})</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground">Tyre Age</span>
+                          <span className="font-mono font-semibold text-foreground">{st.tyre_age_at_start > 0 ? `${st.tyre_age_at_start} laps used` : 'New'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })()}
+
           <KexBriefingCard
             title="WISE Telemetry Briefing"
             icon="brain"
@@ -914,8 +1009,131 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
           />
           </>)}
 
-          {/* ════════════ ANOMALY TAB ════════════ */}
+          {/* ANOMALY TAB */}
           {activeTab === 'anomaly' && (<>
+          {/* 3D Stress Model */}
+          <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
+                {carModel.label} — Anomaly Stress Map
+              </h3>
+              <div className="flex gap-3">
+                {(['nominal', 'warning', 'critical'] as HealthLevel[]).map(l => (
+                  <div key={l} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{ background: levelColor(l) }} />
+                    <span className="text-[10px] text-muted-foreground capitalize">{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
+              <iframe
+                src={`/glb_viewer.html?url=${carModel.url}&title=${encodeURIComponent(carModel.label)}&stress=${encodeURIComponent(JSON.stringify(selectedCar.systems.map(sys => ({ name: sys.name, health: sys.health, level: sys.level, metrics: sys.metrics }))))}`}
+                className="w-full h-[400px] border-0 bg-[#0D1117]"
+                title={`3D Anomaly — ${carModel.label}`}
+              />
+            </div>
+          </div>
+          {/* System Detail Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {selectedCar.systems.map(sys => {
+              const MaintenanceInfo = MAINTENANCE_LABELS[sys.maintenanceAction ?? 'none'] ?? MAINTENANCE_LABELS.none;
+              const MIcon = MaintenanceInfo.icon;
+              return (
+                <div key={sys.name} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
+                    <span className="text-[11px] font-mono" style={{ color: levelColor(sys.level) }}>
+                      {sys.health.toFixed(0)}%
+                    </span>
+                  </div>
+                  {/* Health bar */}
+                  <div className="w-full h-1.5 rounded-full bg-[#0D1117] mb-2">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
+                  </div>
+                  {/* Severity distribution */}
+                  {sys.severityProbabilities && (
+                    <div className="mb-2">
+                      <SeverityBar probabilities={sys.severityProbabilities} />
+                    </div>
+                  )}
+                  {/* Maintenance badge */}
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium w-fit"
+                    style={{ background: `${MaintenanceInfo.color}15`, color: MaintenanceInfo.color, border: `1px solid ${MaintenanceInfo.color}25` }}>
+                    <MIcon className="w-2.5 h-2.5" />
+                    {MaintenanceInfo.label}
+                  </div>
+                  {/* Top SHAP features */}
+                  {sys.metrics.length > 0 && (
+                    <div className="mt-2 space-y-0.5">
+                      {sys.metrics.slice(0, 3).map((m, i) => (
+                        <div key={i} className="flex items-center justify-between text-[10px]">
+                          <span className="text-muted-foreground truncate mr-2">{m.label}</span>
+                          <span className="font-mono text-foreground">{m.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Model consensus */}
+                  <div className="mt-2 text-[9px] text-muted-foreground">
+                    {sys.voteCount}/{sys.totalModels} models agree
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* OmniHealth Component Assessment */}
+          {omniComponents.length > 0 && (
+            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+              <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
+                <Shield className="w-3 h-3 text-[#FF8000]" />
+                OmniHealth Assessment
+                <span className="text-[10px] text-muted-foreground font-normal ml-auto">Live diagnostic</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {omniComponents.map(comp => {
+                  const sevColor = comp.severity === 'critical' ? '#ef4444'
+                    : comp.severity === 'high' ? '#f97316'
+                    : comp.severity === 'medium' ? '#eab308'
+                    : '#22c55e';
+                  return (
+                    <div key={comp.component} className="bg-[#0D1117] rounded-lg p-3 border border-[rgba(255,128,0,0.06)]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-medium text-foreground">{comp.component}</span>
+                        <span className="text-[11px] font-mono font-bold" style={{ color: sevColor }}>
+                          {comp.health_pct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-[#1A1F2E] mb-2">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${comp.health_pct}%`, background: sevColor }} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+                          style={{ background: `${sevColor}15`, color: sevColor, border: `1px solid ${sevColor}25` }}>
+                          {comp.severity}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">{comp.action.replace(/_/g, ' ')}</span>
+                      </div>
+                      {comp.confidence != null && (
+                        <div className="mt-1.5 text-[9px] text-muted-foreground">
+                          Confidence: <span className="font-mono text-foreground">{(comp.confidence * 100).toFixed(0)}%</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {omniLoading && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2 justify-center">
+              <Loader2 className="w-3 h-3 animate-spin text-[#FF8000]" /> Loading OmniHealth assessment...
+            </div>
+          )}
+
+          {/* Season Health Trend Table */}
           {trendData.length > 0 && (
             <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
               <div className="flex items-center justify-between mb-2">
@@ -1004,404 +1222,17 @@ export function FleetOverview({ prefetchedVehicles, prefetchedForecasts, prefetc
           />
           </>)}
 
-          {/* ════════════ FORECAST TAB ════════════ */}
-          {activeTab === 'forecast' && (<>
-          {forecastLoading && (
-            <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF8000]" />
-              Forecasting anomaly features...
-            </div>
+          {/* FORECAST TAB */}
+          {activeTab === 'forecast' && (
+            <ForecastChart driverCode={selectedCar.code} />
           )}
-          {forecasts.length > 0 && (
-            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
-              <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
-                <TrendingUp className="w-3 h-3 text-[#FF8000]" />
-                Feature Forecasts
-                <span className="text-[10px] text-muted-foreground font-normal ml-1">Critical/High anomaly drivers</span>
-              </h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {forecasts.map(fc => {
-                  const label = fc.column
-                    .replace(/_mean$/, '')
-                    .replace(/([A-Z])/g, ' $1')
-                    .replace(/^[\s]/, '')
-                    .replace(/I(\d)/, '(I$1)')
-                    .replace(/_/g, ' ')
-                    .trim();
-
-                  const TrendIcon = fc.trend_direction === 'rising' ? TrendingUp
-                    : fc.trend_direction === 'falling' ? TrendingDown : Minus;
-                  const trendColor = fc.trend_direction === 'rising' ? '#22c55e'
-                    : fc.trend_direction === 'falling' ? '#ef4444' : '#6b7280';
-
-                  const historyData = (fc.history ?? []).map((v, i) => ({
-                    step: fc.history_timestamps?.[i] ?? `H${i}`,
-                    actual: v, value: null as number | null,
-                    lower: null as number | null, upper: null as number | null,
-                  }));
-                  const bridgeStep = fc.history?.length
-                    ? { step: 'now', actual: fc.history[fc.history.length - 1], value: fc.data[0]?.value ?? null, lower: null as number | null, upper: null as number | null }
-                    : null;
-                  const forecastData = fc.data.map(d => ({
-                    step: d.step, actual: null as number | null,
-                    value: d.value, lower: d.lower, upper: d.upper,
-                  }));
-                  const chartData = [...historyData, ...(bridgeStep ? [bridgeStep] : []), ...forecastData];
-
-                  return (
-                    <div key={fc.column} className="bg-[#0D1117] rounded-lg p-3 border border-[rgba(255,128,0,0.08)]">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-medium text-foreground">{label}</span>
-                          <TrendIcon className="w-3 h-3" style={{ color: trendColor }} />
-                          {fc.trend_pct != null && (
-                            <span className="text-[9px] font-mono font-semibold px-1 py-0.5 rounded"
-                              style={{ color: trendColor, background: `${trendColor}15` }}>
-                              {fc.trend_pct > 0 ? '+' : ''}{fc.trend_pct.toFixed(1)}%
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {fc.risk_flag && (
-                            <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">Risk</span>
-                          )}
-                          <span className="text-[9px] text-muted-foreground font-mono uppercase">{fc.method}</span>
-                        </div>
-                      </div>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
-                          <defs>
-                            <linearGradient id={`fc-${fc.column}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#FF8000" stopOpacity={0.3} />
-                              <stop offset="100%" stopColor="#FF8000" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <XAxis dataKey="step" tick={{ fontSize: 8, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fontSize: 8, fill: '#6b7280' }} axisLine={false} tickLine={false} width={40} />
-                          <Tooltip
-                            contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,128,0,0.2)', borderRadius: 8, fontSize: 11 }}
-                            labelStyle={{ color: '#9ca3af' }}
-                            formatter={(v: any, name: string) => v != null ? [Number(v).toFixed(2), name] : ['-', name]}
-                          />
-                          <ReferenceLine x="now" stroke="rgba(255,128,0,0.4)" strokeDasharray="4 3" label={{ value: 'now', position: 'top', fontSize: 8, fill: '#FF8000' }} />
-                          <Area type="monotone" dataKey="upper" stroke="none" fill="#FF8000" fillOpacity={0.06} name="Upper" connectNulls={false} />
-                          <Area type="monotone" dataKey="lower" stroke="none" fill="#0D1117" fillOpacity={1} name="Lower" connectNulls={false} />
-                          <Area type="monotone" dataKey="value" stroke="#FF8000" fill={`url(#fc-${fc.column})`} strokeWidth={1.5} dot={false} name="Forecast" connectNulls={false} />
-                          <Line type="monotone" dataKey="actual" stroke="#6b7280" strokeWidth={1.5} strokeDasharray="4 2" dot={{ r: 2, fill: '#6b7280' }} name="Actual" connectNulls />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                      <div className="flex items-center gap-3 mt-1.5 text-[9px] text-muted-foreground font-mono">
-                        {fc.mae != null && <span>MAE {fc.mae.toFixed(2)}</span>}
-                        {fc.rmse != null && <span>RMSE {fc.rmse.toFixed(2)}</span>}
-                        {fc.volatility != null && (
-                          <span style={{ color: fc.volatility > 0.2 ? '#FF8000' : undefined }}>Vol {(fc.volatility * 100).toFixed(0)}%</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <KexBriefingCard
-            title="WISE Forecast Briefing"
-            icon="sparkles"
-            kex={forecastKex}
-            loading={forecastKexLoading}
-            loadingText="Generating predictive maintenance forecast\u2026"
-          />
-          </>)}
 
             </motion.div>
           </AnimatePresence>
 
-
         </div>
         );
       })()}
-
-      {/* ─── Registered Vehicles ─────────────────────────────────────── */}
-      {registeredVehicles.length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-            <Car className="w-3.5 h-3.5 text-[#FF8000]" />
-            Registered Vehicles
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {registeredVehicles.map((rv, i) => (
-              <div key={i} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 border border-[#FF8000]/20 flex items-center justify-center text-[12px] font-bold font-mono text-[#FF8000]">
-                      #{rv.driverNumber}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-foreground">{rv.driverName}</div>
-                      <div className="text-[11px] text-muted-foreground">{rv.teamName} {rv.model}</div>
-                    </div>
-                  </div>
-                  <span className="text-[10px] text-muted-foreground bg-[#0D1117] px-2 py-0.5 rounded font-mono">{rv.driverCode}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] mt-2">
-                  {rv.chassisId && (
-                    <><span className="text-muted-foreground">Chassis</span><span className="text-foreground font-mono">{rv.chassisId}</span></>
-                  )}
-                  {rv.engineSpec && (
-                    <><span className="text-muted-foreground">Engine</span><span className="text-foreground font-mono">{rv.engineSpec}</span></>
-                  )}
-                  <span className="text-muted-foreground">Season</span><span className="text-foreground font-mono">{rv.season}</span>
-                </div>
-                {rv.notes && (
-                  <p className="text-[11px] text-muted-foreground mt-2 italic border-t border-[rgba(255,128,0,0.06)] pt-2">{rv.notes}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 3D Generation Progress (shown after registration with image) */}
-      {activeJob && (
-        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-              {activeJob.status === 'completed' ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-              ) : activeJob.status === 'failed' ? (
-                <XCircle className="w-3.5 h-3.5 text-red-400" />
-              ) : (
-                <Loader2 className="w-3.5 h-3.5 text-[#FF8000] animate-spin" />
-              )}
-              3D Generation: {activeJob.model_name}
-            </h3>
-            <span className="text-[12px] px-2 py-0.5 rounded-full bg-[#FF8000]/10 text-[#FF8000]">
-              {activeJob.provider}
-            </span>
-          </div>
-          <div className="h-1.5 bg-[#0D1117] rounded-full overflow-hidden mb-2">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${activeJob.progress}%`,
-                background: activeJob.status === 'failed' ? '#ef4444' : '#FF8000',
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-muted-foreground">
-              {activeJob.status === 'queued' ? 'Queued...' : activeJob.status === 'generating' ? 'Generating 3D...' : activeJob.status === 'completed' ? 'Complete' : activeJob.status === 'failed' ? 'Failed' : activeJob.status}
-            </span>
-            <span className="text-muted-foreground">{activeJob.progress}%</span>
-          </div>
-          {activeJob.error && <p className="text-[12px] text-red-400 mt-2">{activeJob.error}</p>}
-          {activeJob.status === 'completed' && activeJob.glb_url && (
-            <a
-              href={activeJob.glb_url}
-              download
-              className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg text-[12px] bg-[#FF8000]/10 text-[#FF8000] border border-[#FF8000]/20 hover:bg-[#FF8000]/20 transition-all"
-            >
-              Download GLB
-            </a>
-          )}
-        </div>
-      )}
-
-      {/* ─── Registration Modal ───────────────────────────────────────── */}
-      {showRegister && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.2)] rounded-2xl w-full max-w-lg mx-4 shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,128,0,0.12)]">
-              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Car className="w-4 h-4 text-[#FF8000]" />
-                Register New Car
-              </h2>
-              <button type="button" title="Close" onClick={() => { setShowRegister(false); setRegError(''); }} className="text-muted-foreground hover:text-foreground">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Form */}
-            <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
-              {regError && (
-                <div className="text-[12px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
-                  {regError}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Car Model *</span>
-                  <input
-                    type="text" placeholder="MCL38"
-                    value={regForm.model} onChange={e => setRegForm(f => ({ ...f, model: e.target.value }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Team Name</span>
-                  <input
-                    type="text" placeholder="McLaren"
-                    value={regForm.teamName} onChange={e => setRegForm(f => ({ ...f, teamName: e.target.value }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Driver Name *</span>
-                  <input
-                    type="text" placeholder="Lando Norris"
-                    value={regForm.driverName} onChange={e => setRegForm(f => ({ ...f, driverName: e.target.value }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Number *</span>
-                  <input
-                    type="number" placeholder="4"
-                    value={regForm.driverNumber || ''} onChange={e => setRegForm(f => ({ ...f, driverNumber: Number(e.target.value) }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Code *</span>
-                  <input
-                    type="text" placeholder="NOR" maxLength={3}
-                    value={regForm.driverCode} onChange={e => setRegForm(f => ({ ...f, driverCode: e.target.value.toUpperCase() }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50 uppercase"
-                  />
-                </label>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Chassis ID</span>
-                  <input
-                    type="text" placeholder="MCL38-001"
-                    value={regForm.chassisId} onChange={e => setRegForm(f => ({ ...f, chassisId: e.target.value }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[11px] text-muted-foreground">Season</span>
-                  <input
-                    type="number" placeholder="2024"
-                    value={regForm.season} onChange={e => setRegForm(f => ({ ...f, season: Number(e.target.value) }))}
-                    className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                  />
-                </label>
-              </div>
-
-              <label className="space-y-1 block">
-                <span className="text-[11px] text-muted-foreground">Engine Spec</span>
-                <input
-                  type="text" placeholder="Mercedes-AMG F1 M14"
-                  value={regForm.engineSpec} onChange={e => setRegForm(f => ({ ...f, engineSpec: e.target.value }))}
-                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50"
-                />
-              </label>
-
-              <label className="space-y-1 block">
-                <span className="text-[11px] text-muted-foreground">Notes</span>
-                <textarea
-                  rows={2} placeholder="Additional notes..."
-                  value={regForm.notes} onChange={e => setRegForm(f => ({ ...f, notes: e.target.value }))}
-                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/50 resize-none"
-                />
-              </label>
-
-              {/* 3D Reference Image */}
-              <div className="pt-3 border-t border-[rgba(255,128,0,0.08)]">
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1.5 mb-2">
-                  <Upload className="w-3 h-3 text-[#FF8000]" />
-                  Reference Image (optional — generates 3D model)
-                </span>
-                <div
-                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                  onDragLeave={() => setIsDragOver(false)}
-                  onDrop={onDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
-                    isDragOver
-                      ? 'border-[#FF8000] bg-[#FF8000]/5'
-                      : imagePreview
-                        ? 'border-[rgba(255,128,0,0.2)] bg-[#0D1117]'
-                        : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.3)] bg-[#0D1117]'
-                  }`}
-                >
-                  {imagePreview ? (
-                    <img src={imagePreview} alt="Preview" className="max-h-32 mx-auto rounded-lg object-contain" />
-                  ) : (
-                    <div className="space-y-1">
-                      <Box className="w-6 h-6 mx-auto text-muted-foreground" />
-                      <p className="text-[12px] text-muted-foreground">Drop an F1 car image or click to browse</p>
-                      <p className="text-[11px] text-muted-foreground/50">PNG, JPG up to 10MB</p>
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    aria-label="Upload reference image"
-                    className="hidden"
-                    onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]); }}
-                  />
-                </div>
-
-                {imagePreview && (
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setGen3dProvider('hunyuan')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] border transition-all ${
-                        gen3dProvider === 'hunyuan'
-                          ? 'bg-[#3b82f6]/10 border-[#3b82f6]/30 text-[#3b82f6]'
-                          : 'bg-transparent border-[rgba(255,128,0,0.12)] text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Cpu className="w-3 h-3" /> Hunyuan3D (Free)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGen3dProvider('meshy')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] border transition-all ${
-                        gen3dProvider === 'meshy'
-                          ? 'bg-[#FF8000]/10 border-[#FF8000]/30 text-[#FF8000]'
-                          : 'bg-transparent border-[rgba(255,128,0,0.12)] text-muted-foreground hover:text-foreground'
-                      }`}
-                    >
-                      <Sparkles className="w-3 h-3" /> Meshy.ai (Pro)
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[rgba(255,128,0,0.12)]">
-              <button
-                type="button"
-                onClick={() => { setShowRegister(false); setRegError(''); setImageFile(null); setImagePreview(null); }}
-                className="px-4 py-2 text-[12px] text-muted-foreground hover:text-foreground rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleRegister}
-                disabled={submitting}
-                className="flex items-center gap-1.5 px-4 py-2 bg-[#FF8000] hover:bg-[#FF8000]/80 disabled:opacity-50 text-black text-[12px] font-medium rounded-lg transition-colors"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {submitting ? 'Registering...' : 'Register'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

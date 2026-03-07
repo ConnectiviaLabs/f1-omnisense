@@ -48,7 +48,7 @@ from pipeline.omni_vis_router import router as omni_vis_router
 from pipeline.omni_dapt_router import router as omni_dapt_router
 from pipeline.opponents.server import router as opponents_router, init_profiler_with_db
 from pipeline.updater.server import router as updater_router
-from pipeline.deep_value_router import router as deep_value_router
+from pipeline.advantage_router import router as advantage_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ app.include_router(omni_vis_router)
 app.include_router(omni_dapt_router)
 app.include_router(opponents_router)
 app.include_router(updater_router)
-app.include_router(deep_value_router)
+app.include_router(advantage_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None

@@ -13,7 +13,7 @@ from omnianalytics._types import ForecastResult
 
 logger = logging.getLogger(__name__)
 
-HISTORY_TAIL = 5  # number of recent actual values to include for context
+HISTORY_PCT = 0.15  # show 15% of the driver's race history for context, focus on forecast
 
 
 # ── Heuristics ────────────────────────────────────────────────────────────
@@ -47,11 +47,12 @@ def _enrich_heuristics(result: ForecastResult, raw_series: np.ndarray) -> Foreca
     if result.trend_direction == "falling" and result.volatility and result.volatility > 0.15:
         result.risk_flag = True
 
-    # Historical tail
-    tail = raw_series[-HISTORY_TAIL:] if len(raw_series) >= HISTORY_TAIL else raw_series
-    result.history = [round(float(v), 4) for v in tail]
+    # Historical tail — show 15% of the driver's races
     n = len(raw_series)
-    result.history_timestamps = [str(n - len(tail) + i) for i in range(len(tail))]
+    tail_len = max(5, int(n * HISTORY_PCT))  # at least 5 points
+    tail = raw_series[-tail_len:]
+    result.history = [round(float(v), 4) for v in tail]
+    result.history_timestamps = [str(n - tail_len + i) for i in range(tail_len)]
 
     return result
 
@@ -284,6 +285,83 @@ def forecast_lightgbm(
     return _enrich_heuristics(r, y)
 
 
+def forecast_sf(
+    series: pd.Series,
+    *,
+    horizon: int = 10,
+    timestamps: Optional[List[str]] = None,
+) -> ForecastResult:
+    """StatsForecast AutoETS + AutoARIMA + AutoTheta ensemble — fast and accurate."""
+    try:
+        from statsforecast import StatsForecast
+        from statsforecast.models import AutoETS, AutoARIMA, AutoTheta
+    except ImportError:
+        logger.info("statsforecast not installed, falling back to ets")
+        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
+
+    values = series.dropna().values.astype(float)
+    if len(values) < 5:
+        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+
+    try:
+        # StatsForecast expects a DataFrame with unique_id, ds, y
+        sf_df = pd.DataFrame({
+            "unique_id": "driver",
+            "ds": pd.RangeIndex(len(values)),
+            "y": values,
+        })
+
+        models = [AutoETS(season_length=1), AutoARIMA(season_length=1)]
+        if len(values) >= 10:
+            models.append(AutoTheta(season_length=1))
+
+        sf = StatsForecast(models=models, freq=1, n_jobs=1)
+        sf.fit(sf_df)
+        forecast_df = sf.predict(h=horizon, level=[95])
+
+        # Average across models for ensemble prediction
+        model_cols = [c for c in forecast_df.columns if not c.startswith("ds") and "-lo-" not in c and "-hi-" not in c and c != "unique_id"]
+        lo_cols = [c for c in forecast_df.columns if "-lo-95" in c]
+        hi_cols = [c for c in forecast_df.columns if "-hi-95" in c]
+
+        predictions = forecast_df[model_cols].mean(axis=1).values
+        lower = forecast_df[lo_cols].mean(axis=1).values if lo_cols else predictions
+        upper = forecast_df[hi_cols].mean(axis=1).values if hi_cols else predictions
+
+        # In-sample fitted values for MAE/RMSE
+        fitted_df = sf.fitted_[0] if hasattr(sf, 'fitted_') else None
+        if fitted_df is not None and len(fitted_df) > 0:
+            fitted_col = model_cols[0] if model_cols else None
+            if fitted_col and fitted_col in fitted_df.columns:
+                in_sample = fitted_df[fitted_col].values
+                residuals = values[:len(in_sample)] - in_sample
+                mae = float(np.mean(np.abs(residuals)))
+                rmse = float(np.sqrt(np.mean(residuals ** 2)))
+            else:
+                mae = rmse = None
+        else:
+            # Fallback: compute from cross-val-like residual estimate
+            mae = rmse = None
+
+        ts = timestamps or [str(i) for i in range(len(values), len(values) + horizon)]
+
+        r = ForecastResult(
+            column=series.name or "",
+            method="statsforecast",
+            horizon=horizon,
+            timestamps=ts,
+            values=[round(float(v), 4) for v in predictions],
+            lower_bound=[round(float(v), 4) for v in lower],
+            upper_bound=[round(float(v), 4) for v in upper],
+            mae=round(mae, 4) if mae is not None else None,
+            rmse=round(rmse, 4) if rmse is not None else None,
+        )
+        return _enrich_heuristics(r, values)
+    except Exception as e:
+        logger.warning("StatsForecast failed (%s), falling back to ETS", e)
+        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
+
+
 # ── Main dispatch ─────────────────────────────────────────────────────────
 
 def forecast(
@@ -322,6 +400,8 @@ def forecast(
         return forecast_linear(series, horizon=horizon, timestamps=timestamps)
     elif method == "ets":
         return forecast_ets(series, horizon=horizon, timestamps=timestamps)
+    elif method == "statsforecast" or method == "sf":
+        return forecast_sf(series, horizon=horizon, timestamps=timestamps)
     elif method == "lightgbm":
         feature_cols = [c for c in dataset.profile.metric_cols if c != column]
         if feature_cols:
@@ -330,8 +410,8 @@ def forecast(
             )
         return forecast_linear(series, horizon=horizon, timestamps=timestamps)
     else:
-        # auto: ETS first (fast), falls back to linear internally
-        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
+        # auto: StatsForecast ensemble (AutoETS + AutoARIMA + AutoTheta), falls back to ETS/linear
+        return forecast_sf(series, horizon=horizon, timestamps=timestamps)
 
 
 def forecast_anomaly_features(

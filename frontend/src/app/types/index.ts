@@ -405,4 +405,4 @@ export interface JolpicaSprintResult {
 }
 
 // View types
-export type ViewType = 'home' | 'dashboard' | 'car' | 'driver' | 'schedule' | 'prime-driver' | 'prime-car' | 'prime-team' | 'prime-strategy' | 'deep-value-trident' | 'deep-value-crossover' | 'ai-insights' | 'regulations' | 'media' | 'chat';
+export type ViewType = 'home' | 'dashboard' | 'car' | 'driver' | 'schedule' | 'prime-driver' | 'prime-car' | 'prime-team' | 'prime-strategy' | 'advantage-trident' | 'advantage-crossover' | 'ai-insights' | 'regulations' | 'media' | 'chat';

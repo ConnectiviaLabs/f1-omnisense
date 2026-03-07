@@ -977,7 +977,7 @@ export default defineConfig({
         target: 'http://127.0.0.1:8300',
         changeOrigin: true,
       },
-      '/api/deep-value': {
+      '/api/advantage': {
         target: 'http://127.0.0.1:8300',
         changeOrigin: true,
       },

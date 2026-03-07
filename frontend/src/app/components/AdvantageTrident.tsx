@@ -69,7 +69,7 @@ const SCOPE_OPTIONS = [
 
 // ── Component ───────────────────────────────────────────────────────────
 
-export function DeepValueTrident() {
+export function AdvantageTrident() {
   const [activeTab, setActiveTab] = useState<'agent' | 'history'>('agent');
   const [scope, setScope] = useState('grid');
   const [entity, setEntity] = useState('');
@@ -83,7 +83,7 @@ export function DeepValueTrident() {
 
   // Load latest report on mount
   useEffect(() => {
-    fetch(`/api/deep-value/trident/latest?scope=grid`)
+    fetch(`/api/advantage/trident/latest?scope=grid`)
       .then(r => { if (r.ok) return r.json(); throw new Error('none'); })
       .then(setReport)
       .catch(() => {});
@@ -93,7 +93,7 @@ export function DeepValueTrident() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/deep-value/trident/generate', {
+      const res = await fetch('/api/advantage/trident/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -115,7 +115,7 @@ export function DeepValueTrident() {
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
-      const res = await fetch(`/api/deep-value/trident/history?scope=${scope}&limit=20`);
+      const res = await fetch(`/api/advantage/trident/history?scope=${scope}&limit=20`);
       if (res.ok) setHistory(await res.json());
     } catch { /* ignore */ }
     setHistoryLoading(false);
@@ -132,7 +132,7 @@ export function DeepValueTrident() {
     }
     setExpandedHistoryId(id);
     try {
-      const res = await fetch(`/api/deep-value/trident/report/${id}`);
+      const res = await fetch(`/api/advantage/trident/report/${id}`);
       if (res.ok) setExpandedReport(await res.json());
     } catch { /* ignore */ }
   };

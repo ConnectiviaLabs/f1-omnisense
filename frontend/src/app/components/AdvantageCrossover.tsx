@@ -101,7 +101,7 @@ function simText(score: number): string {
 
 // ── Component ───────────────────────────────────────────────────────────
 
-export function DeepValueCrossover() {
+export function AdvantageCrossover() {
   const [entityType, setEntityType] = useState('driver');
   const [source, setSource] = useState('VectorProfiles');
   const [activeView, setActiveView] = useState<'matrix' | 'cluster' | 'insight'>('matrix');
@@ -119,7 +119,7 @@ export function DeepValueCrossover() {
     setMatrixLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/deep-value/crossover/matrix', {
+      const res = await fetch('/api/advantage/crossover/matrix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, source }),
@@ -137,7 +137,7 @@ export function DeepValueCrossover() {
     setClusterLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/deep-value/crossover/cluster', {
+      const res = await fetch('/api/advantage/crossover/cluster', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, source, n_clusters: 4 }),
@@ -155,7 +155,7 @@ export function DeepValueCrossover() {
     setInsightLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/deep-value/crossover/insight', {
+      const res = await fetch('/api/advantage/crossover/insight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType }),

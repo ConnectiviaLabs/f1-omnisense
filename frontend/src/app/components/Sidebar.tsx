@@ -65,9 +65,9 @@ const STRATEGY_ITEMS: SubItem[] = [
   { id: 'season-analytics', label: 'Season Analytics', icon: BarChart3 },
 ];
 
-const DEEP_VALUE_ITEMS: NavItem[] = [
-  { id: 'deep-value-trident', label: 'Trident', icon: Layers },
-  { id: 'deep-value-crossover', label: 'Crossover', icon: GitCompare },
+const ADVANTAGE_ITEMS: NavItem[] = [
+  { id: 'advantage-trident', label: 'Trident', icon: Layers },
+  { id: 'advantage-crossover', label: 'Crossover', icon: GitCompare },
 ];
 
 const KNOWLEDGE_ITEMS: NavItem[] = [
@@ -192,11 +192,11 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
           </div>
         )}
 
-        {/* Deep Value — Prime only */}
+        {/* Advantage — Prime only */}
         {isPrime && (
           <div className="mb-1">
-            <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">DEEP VALUE</div>
-            {DEEP_VALUE_ITEMS.map(({ id, label, icon: Icon }) => (
+            <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">ADVANTAGE</div>
+            {ADVANTAGE_ITEMS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => onViewChange(id)}

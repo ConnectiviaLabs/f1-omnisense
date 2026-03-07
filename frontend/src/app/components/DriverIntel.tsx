@@ -238,6 +238,7 @@ export function DriverIntel({ showTabBar = true, prefetchedVehicles }: { showTab
 function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) => void; anomalyVehicles: VehicleData[] }) {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [standings, setStandings] = useState<Record<string, { position: number; points: number }>>({});
+  const [perfMarkers, setPerfMarkers] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('name');
@@ -248,6 +249,17 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
       setDrivers(data.drivers || []);
       setLoading(false);
     }).catch(() => setLoading(false));
+
+    // Fetch driver performance markers for card stats
+    fetch('/api/driver_intel/performance_markers')
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (!Array.isArray(data)) return;
+        const map: Record<string, any> = {};
+        data.forEach(m => { if (m.Driver) map[m.Driver] = m; });
+        setPerfMarkers(map);
+      })
+      .catch(() => {});
 
     fetch('/api/jolpica/driver_standings')
       .then(r => r.json())
@@ -401,6 +413,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
           const color = teamColors[team] || '#666';
           const standing = standings[dCode];
           const trend = getHealthTrend(vehicle);
+          const perf = perfMarkers[dCode];
           return (
             <motion.button
               key={d.driver_id}
@@ -457,17 +470,29 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
                   {d.wins != null && d.wins > 0 && <span className="font-mono text-[#FF8000]">{d.wins}W</span>}
                 </div>
 
-                {/* System health bars */}
-                {vehicle && (
-                  <div className="mt-3 space-y-1">
-                    {vehicle.systems.map(sys => (
-                      <div key={sys.name} className="flex items-center gap-1.5">
-                        <span className={`text-muted-foreground/70 truncate ${isMcLaren ? 'text-[9px] w-12' : 'text-[8px] w-10'}`}>{sys.name}</span>
-                        <div className={`flex-1 bg-[#222838] rounded-full overflow-hidden ${isMcLaren ? 'h-1.5' : 'h-1'}`}>
-                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
-                        </div>
+                {/* Driver performance stats */}
+                {perf && (
+                  <div className={`mt-3 flex flex-wrap gap-x-3 gap-y-1 ${isMcLaren ? 'text-[11px]' : 'text-[10px]'}`}>
+                    {perf.avg_top_speed_kmh != null && (
+                      <div><span className="text-muted-foreground/60">Top Spd </span><span className="font-mono font-semibold text-foreground">{Math.round(perf.avg_top_speed_kmh)}</span></div>
+                    )}
+                    {perf.throttle_smoothness != null && (
+                      <div><span className="text-muted-foreground/60">Throttle </span><span className="font-mono font-semibold text-foreground">{perf.throttle_smoothness.toFixed(2)}</span></div>
+                    )}
+                    {perf.lap_time_consistency_std != null && (
+                      <div><span className="text-muted-foreground/60">Consistency </span><span className="font-mono font-semibold text-foreground">{perf.lap_time_consistency_std.toFixed(2)}s</span></div>
+                    )}
+                    {perf.late_race_delta_s != null && (
+                      <div>
+                        <span className="text-muted-foreground/60">Late Race </span>
+                        <span className={`font-mono font-semibold ${perf.late_race_delta_s < 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {perf.late_race_delta_s > 0 ? '+' : ''}{perf.late_race_delta_s.toFixed(2)}s
+                        </span>
                       </div>
-                    ))}
+                    )}
+                    {perf.total_race_laps != null && (
+                      <div><span className="text-muted-foreground/60">Laps </span><span className="font-mono font-semibold text-foreground">{perf.total_race_laps}</span></div>
+                    )}
                   </div>
                 )}
 

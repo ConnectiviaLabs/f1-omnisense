@@ -10,16 +10,14 @@ import {
   parseAnomalyDrivers, levelColor,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
-import type { FeatureForecast } from './anomalyHelpers';
 import type { Pillar } from './Sidebar';
 
 interface PrimeDriverProps {
   prefetchedVehicles?: VehicleData[];
-  prefetchedForecasts?: Record<string, FeatureForecast[]>;
   activePillar: Pillar;
 }
 
-export function PrimeDriver({ prefetchedVehicles, prefetchedForecasts, activePillar }: PrimeDriverProps) {
+export function PrimeDriver({ prefetchedVehicles, activePillar }: PrimeDriverProps) {
   const [vehicles, setVehicles] = useState<VehicleData[]>(prefetchedVehicles ?? []);
   const [loading, setLoading] = useState(!prefetchedVehicles);
   const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
@@ -42,7 +40,7 @@ export function PrimeDriver({ prefetchedVehicles, prefetchedForecasts, activePil
     <div className="space-y-4">
       {activePillar === 'telemetry' && <DriverIntel showTabBar={false} prefetchedVehicles={vehicles} />}
       {activePillar === 'anomaly' && <DriverAnomalyView vehicles={vehicles} loading={loading} search={search} setSearch={setSearch} selectedDriver={selectedDriver} setSelectedDriver={setSelectedDriver} />}
-      {activePillar === 'forecast' && <DriverForecastView vehicles={vehicles} loading={loading} selectedDriver={selectedDriver} setSelectedDriver={setSelectedDriver} prefetchedForecasts={prefetchedForecasts} />}
+      {activePillar === 'forecast' && <DriverForecastView vehicles={vehicles} loading={loading} selectedDriver={selectedDriver} setSelectedDriver={setSelectedDriver} />}
     </div>
   );
 }
@@ -281,12 +279,11 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
 
 /* ─── Forecast View ─── */
 
-function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriver, prefetchedForecasts }: {
+function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriver }: {
   vehicles: VehicleData[];
   loading: boolean;
   selectedDriver: string | null;
   setSelectedDriver: (d: string | null) => void;
-  prefetchedForecasts?: Record<string, FeatureForecast[]>;
 }) {
   if (loading) {
     return (
@@ -323,10 +320,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
             <TrendingUp className="w-3 h-3 text-[#FF8000]" />
             Feature Forecasts — {effectiveDriver}
           </h3>
-          <ForecastChart
-            driverCode={effectiveDriver}
-            prefetchedForecasts={prefetchedForecasts?.[effectiveDriver]}
-          />
+          <ForecastChart driverCode={effectiveDriver} />
         </div>
       )}
     </div>

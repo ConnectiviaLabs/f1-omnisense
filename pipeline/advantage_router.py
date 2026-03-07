@@ -1,4 +1,4 @@
-"""Deep Value router — Trident convergence reports + Crossover entity similarity.
+"""Advantage router — Trident convergence reports + Crossover entity similarity.
 
 Trident: On-demand 4-section reports synthesized from KeX, anomaly, and forecast data.
 Crossover: Entity similarity matrix and clustering using VectorProfiles / VictoryProfiles embeddings.
@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/deep-value", tags=["DeepValue"])
+router = APIRouter(prefix="/api/advantage", tags=["Advantage"])
 
 GROQ_MODEL = os.getenv("GROQ_REASONING_MODEL", "llama-3.3-70b-versatile")
 STALE_SECONDS = 1800  # 30 minutes

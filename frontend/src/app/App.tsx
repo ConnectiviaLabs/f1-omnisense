@@ -13,8 +13,8 @@ import { AIInsights } from './components/AIInsights';
 import { Regulations } from './components/Regulations';
 import { MediaIntelligence } from './components/MediaIntelligence';
 import { Chatbot } from './components/Chatbot';
-import { DeepValueTrident } from './components/DeepValueTrident';
-import { DeepValueCrossover } from './components/DeepValueCrossover';
+import { AdvantageTrident } from './components/AdvantageTrident';
+import { AdvantageCrossover } from './components/AdvantageCrossover';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 import type { Pillar, StrategyTab } from './components/Sidebar';
@@ -33,8 +33,8 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   'prime-car': { title: 'Car Intelligence', subtitle: 'Predictive maintenance, anomaly detection & fleet health monitoring' },
   'prime-team': { title: 'Team Intelligence', subtitle: 'Constructor performance, fleet anomalies & forecasting across all 10 teams' },
   'prime-strategy': { title: 'Strategy Intelligence', subtitle: 'Race strategy, circuit analysis & season analytics' },
-  'deep-value-trident': { title: 'Trident', subtitle: 'Convergence reports synthesized from KeX, anomalies & forecasts' },
-  'deep-value-crossover': { title: 'Crossover', subtitle: 'Entity similarity across drivers, teams & cars' },
+  'advantage-trident': { title: 'Trident', subtitle: 'Convergence reports synthesized from KeX, anomalies & forecasts' },
+  'advantage-crossover': { title: 'Crossover', subtitle: 'Entity similarity across drivers, teams & cars' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
@@ -54,10 +54,10 @@ export default function App() {
   // Remember last platform for Knowledge views (so sidebar stays correct)
   useEffect(() => {
     if (RACE_DAY_VIEWS.has(activeView)) setLastPlatform('race-day');
-    else if (activeView.startsWith('prime-') || activeView.startsWith('deep-value-')) setLastPlatform('prime');
+    else if (activeView.startsWith('prime-') || activeView.startsWith('advantage-')) setLastPlatform('prime');
   }, [activeView]);
 
-  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-') || activeView.startsWith('deep-value-')
+  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-') || activeView.startsWith('advantage-')
     ? platform
     : lastPlatform;
 
@@ -88,8 +88,8 @@ export default function App() {
       case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchLoading={fleetLoading} activePillar={activePillar} />;
       case 'prime-team': return <PrimeTeam prefetchedVehicles={fleetVehicles} activePillar={activePillar} />;
       case 'prime-strategy': return <PrimeStrategy activeTab={activeStrategyTab} />;
-      case 'deep-value-trident': return <DeepValueTrident />;
-      case 'deep-value-crossover': return <DeepValueCrossover />;
+      case 'advantage-trident': return <AdvantageTrident />;
+      case 'advantage-crossover': return <AdvantageCrossover />;
       case 'ai-insights': return <AIInsights />;
       case 'regulations': return <Regulations />;
       case 'media': return <MediaIntelligence />;
