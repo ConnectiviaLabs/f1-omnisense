@@ -545,7 +545,7 @@ Race-by-race (last ${recentRaces.length}):\n${raceLines}`);
                   title: z.string().describe('Metric name, e.g. "Current Health" or "Peak RPM"'),
                   value: z.string().describe('Display value with unit, e.g. "65%" or "12,400 RPM"'),
                   trend: z.enum(['up', 'down', 'stable']).describe('Trend direction relative to previous races'),
-                  severity: z.enum(['nominal', 'warning', 'critical']).describe('Health severity level'),
+                  severity: z.enum(['nominal', 'warning', 'critical', 'info', 'low', 'medium', 'high']).describe('Health severity: use "nominal", "warning", or "critical"'),
                   subtitle: z.string().optional().describe('Brief context, e.g. "Down 13% since Abu Dhabi"'),
                 }),
               }),

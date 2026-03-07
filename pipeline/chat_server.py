@@ -311,7 +311,7 @@ async def fleet_diagnose_proxy(request: Request):
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
-                "http://127.0.0.1:8889/api/fleet/diagnose",
+                f"http://127.0.0.1:{os.getenv('VITE_PORT', '8889')}/api/fleet/diagnose",
                 content=body,
                 headers={"content-type": "application/json"},
             )
