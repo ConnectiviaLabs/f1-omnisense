@@ -80,6 +80,19 @@ export function AdvantageTrident() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [expandedReport, setExpandedReport] = useState<TridentReport | null>(null);
+  const [availableEntities, setAvailableEntities] = useState<string[]>([]);
+  const [entitiesLoading, setEntitiesLoading] = useState(false);
+
+  // Fetch available entities when scope changes to driver/team
+  useEffect(() => {
+    if (scope === 'grid') { setAvailableEntities([]); return; }
+    setEntitiesLoading(true);
+    fetch(`/api/advantage/crossover/entities?entity_type=${scope}&source=VectorProfiles`)
+      .then(r => { if (r.ok) return r.json(); throw new Error('fetch failed'); })
+      .then(data => setAvailableEntities(data.entities || []))
+      .catch(() => setAvailableEntities([]))
+      .finally(() => setEntitiesLoading(false));
+  }, [scope]);
 
   // Load latest report on mount
   useEffect(() => {
@@ -194,16 +207,39 @@ export function AdvantageTrident() {
         </div>
       </div>
 
-      {/* Entity Input (when scoped to driver/team) */}
+      {/* Entity Selector (when scoped to driver/team) */}
       {scope !== 'grid' && (
-        <div className="flex items-center gap-3">
-          <input
-            type="text"
-            value={entity}
-            onChange={e => setEntity(e.target.value)}
-            placeholder={scope === 'driver' ? 'Driver code (e.g. NOR)' : 'Team name (e.g. McLaren)'}
-            className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 w-64 focus:outline-none focus:border-[#FF8000]/40 transition-colors"
-          />
+        <div className="space-y-2">
+          <span className="text-[11px] text-muted-foreground/60 tracking-wide">
+            Select {scope === 'driver' ? 'a driver' : 'a team'}
+          </span>
+          {entitiesLoading ? (
+            <div className="flex items-center gap-2 py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF8000]/50" />
+              <span className="text-[11px] text-muted-foreground">Loading entities…</span>
+            </div>
+          ) : availableEntities.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground/50 py-2">No entities available</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {availableEntities.map(ent => {
+                const selected = entity === ent;
+                return (
+                  <button
+                    key={ent}
+                    onClick={() => setEntity(selected ? '' : ent)}
+                    className={`px-3 py-1.5 rounded-lg text-[12px] tracking-wide transition-all border ${
+                      selected
+                        ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
+                        : 'border-[rgba(255,128,0,0.08)] bg-[#1A1F2E] text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
+                    }`}
+                  >
+                    {ent}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

@@ -455,37 +455,6 @@ export function AIInsights() {
             </div>
           </div>
 
-          {/* Pipeline Architecture */}
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-            <h4 className="text-[12px] text-muted-foreground tracking-widest mb-3">EXTRACTION PIPELINE</h4>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-cyan-400" />
-                <span className="text-muted-foreground">Model:</span>
-                <span className="text-foreground">Groq Llama 4 Maverick</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF8000]" />
-                <span className="text-muted-foreground">Pass 1:</span>
-                <span className="text-foreground">Document Overview</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-400" />
-                <span className="text-muted-foreground">Pass 2:</span>
-                <span className="text-foreground">Equipment & Tags</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
-                <span className="text-muted-foreground">Pass 3:</span>
-                <span className="text-foreground">Specifications & Rules</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-400" />
-                <span className="text-muted-foreground">Storage:</span>
-                <span className="text-foreground">MongoDB Atlas Vector DB</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
