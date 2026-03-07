@@ -32,6 +32,68 @@ function useSimpleChat() {
     setError(null);
 
     try {
+      // Try Gen UI endpoint first (Vite dev middleware handles streaming + tools)
+      const genRes = await fetch('/api/fleet/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          messages: [...messages, userMsg].map(m => ({
+            id: m.id, role: m.role, parts: m.parts,
+          })),
+        }),
+      });
+
+      if (genRes.ok) {
+        // Gen UI available — parse AI SDK data stream
+        setStatus('streaming');
+        const reader = genRes.body?.getReader();
+        const decoder = new TextDecoder();
+        let textParts: string[] = [];
+        let toolParts: UIMessagePart[] = [];
+        if (reader) {
+          let buffer = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+              if (line.startsWith('0:')) {
+                try { textParts.push(JSON.parse(line.slice(2))); } catch { /* skip */ }
+              } else if (line.startsWith('9:')) {
+                // Tool call result
+                try {
+                  const arr = JSON.parse(line.slice(2));
+                  for (const tc of arr) {
+                    toolParts.push({
+                      type: `tool-${tc.toolName}`,
+                      toolName: tc.toolName,
+                      input: tc.args,
+                      output: tc.result,
+                      state: 'result',
+                    });
+                  }
+                } catch { /* skip */ }
+              }
+            }
+          }
+        }
+        const parts: UIMessagePart[] = [
+          ...toolParts,
+          ...(textParts.length ? [{ type: 'text', text: textParts.join('') }] : []),
+        ];
+        if (parts.length) {
+          setMessages(prev => [...prev, {
+            id: crypto.randomUUID(), role: 'assistant', parts,
+          }]);
+        }
+        setStatus('ready');
+        return;
+      }
+
+      // Fallback: plain /api/chat (Python backend — no Gen UI)
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -42,18 +104,16 @@ function useSimpleChat() {
         throw new Error(body || `Chat failed (${res.status})`);
       }
       const data = await res.json();
-      const assistantMsg: UIMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'assistant',
         parts: [{ type: 'text', text: data.answer ?? data.text ?? '' }],
-      };
-      setMessages(prev => [...prev, assistantMsg]);
+      }]);
     } catch (e: any) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
       setStatus('ready');
     }
-  }, []);
+  }, [messages]);
 
   return { messages, setMessages, sendMessage, status, error, clearError };
 }
