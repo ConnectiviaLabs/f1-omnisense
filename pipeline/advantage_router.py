@@ -59,20 +59,32 @@ def _sanitize(obj):
     return obj
 
 
+def _truncate_prompt(prompt: str, max_chars: int = 12000) -> str:
+    """Truncate prompt to stay within LLM context limits."""
+    if len(prompt) <= max_chars:
+        return prompt
+    return prompt[:max_chars] + "\n\n[... truncated for context limit ...]"
+
+
 def _llm_synthesize(prompt: str, system: str = "") -> str:
     """Call Groq to synthesize text."""
     groq = _get_groq()
+    prompt = _truncate_prompt(prompt)
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    completion = groq.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        temperature=0.3,
-        max_tokens=2048,
-    )
-    return completion.choices[0].message.content or ""
+    try:
+        completion = groq.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            temperature=0.3,
+            max_tokens=2048,
+        )
+        return completion.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"LLM synthesis failed: {e}")
+        raise HTTPException(502, f"LLM provider error: {str(e)[:200]}")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -186,7 +198,8 @@ def _gather_kex_data(db, scope: str, entity: str | None) -> str:
     filt = {}
     if scope == "driver" and entity:
         filt["driver_code"] = entity.upper()
-    for doc in db["kex_driver_briefings"].find(filt, {"_id": 0}).sort("generated_at", -1).limit(10):
+    driver_limit = 5 if scope == "grid" else 10
+    for doc in db["kex_driver_briefings"].find(filt, {"_id": 0}).sort("generated_at", -1).limit(driver_limit):
         text = doc.get("text") or doc.get("summary", "")
         if text:
             parts.append(f"[{doc.get('driver_code', '?')}] {text[:300]}")
@@ -242,7 +255,8 @@ def _gather_forecast_data(db, scope: str, entity: str | None) -> str:
     elif scope == "team" and entity:
         filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
 
-    for doc in db["telemetry_race_summary"].find(filt, {"_id": 0}).sort("year", -1).limit(20):
+    telem_limit = 10 if scope == "grid" else 20
+    for doc in db["telemetry_race_summary"].find(filt, {"_id": 0}).sort("year", -1).limit(telem_limit):
         code = doc.get("driver_code", "?")
         race = doc.get("race", "?")
         year = doc.get("year", "?")
