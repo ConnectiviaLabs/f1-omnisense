@@ -386,51 +386,76 @@ function AssistantMessage({ message }: { message: UIMessage }) {
   const parts = message.parts ?? [];
   const hasToolParts = parts.some(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool');
 
-  // Collect metric_card parts to render as a grid
+  // Separate into: metric cards, visual widgets, text (tool-text + plain text)
   const metricCards: any[] = [];
-  const otherParts: any[] = [];
+  const visualWidgets: any[] = [];  // sparkline, comparison, recommendation, similar_drivers
+  const textParts: any[] = [];      // tool-text + plain text
 
   parts.forEach((part, i) => {
     const name = part.type?.startsWith('tool-') ? part.type.slice(5) : (part as any).toolName;
     if (name === 'metric_card') {
       metricCards.push({ part, key: i });
-    } else {
-      otherParts.push({ part, key: i });
+    } else if (name === 'text') {
+      // tool-text → treat as analysis text below widgets
+      textParts.push({ part, key: i, isToolText: true });
+    } else if (part.type === 'text') {
+      textParts.push({ part, key: i, isToolText: false });
+    } else if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+      visualWidgets.push({ part, key: i });
     }
   });
+
+  const hasVisuals = metricCards.length > 0 || visualWidgets.length > 0;
 
   return (
     <div className="flex items-start gap-3">
       <div className="w-7 h-7 rounded-lg bg-[#FF8000]/10 flex items-center justify-center shrink-0 mt-0.5">
         <Bot className="w-4 h-4 text-[#FF8000]" />
       </div>
-      <div className={`space-y-2 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
-        {/* Metric cards in a responsive grid */}
-        {metricCards.length > 0 && (
-          <div className={`grid gap-2 ${metricCards.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-            {metricCards.map(({ part, key }) => (
-              <div key={key}>{renderToolPart(part)}</div>
-            ))}
+      <div className={`space-y-3 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
+        {/* ── Gen UI Widgets (top section) ──────────────────────── */}
+        {hasVisuals && (
+          <div className="rounded-xl bg-[#0D1117] border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
+            {/* Metric cards grid */}
+            {metricCards.length > 0 && (
+              <div className={`grid gap-2 ${metricCards.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                {metricCards.map(({ part, key }) => (
+                  <div key={key}>{renderToolPart(part)}</div>
+                ))}
+              </div>
+            )}
+            {/* Visual widgets (sparklines, comparisons, recommendations) */}
+            {visualWidgets.map(({ part, key }) => {
+              const rendered = renderToolPart(part);
+              return rendered ? <div key={key}>{rendered}</div> : null;
+            })}
           </div>
         )}
 
-        {/* Other parts sequentially */}
-        {otherParts.map(({ part, key }) => {
-          if (part.type === 'text') {
-            if (!(part as any).text?.trim()) return null;
+        {/* ── Text Analysis (below widgets, like KeX briefing) ── */}
+        {textParts.map(({ part, key, isToolText }) => {
+          if (isToolText) {
+            // tool-text: analysis paragraph from LLM
+            const content = part.input?.content ?? '';
+            if (!content.trim()) return null;
             return (
               <FadeIn key={key}>
                 <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] text-foreground">
-                  {(part as any).text}
+                  {content}
                 </div>
               </FadeIn>
             );
           }
-          if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
-            const rendered = renderToolPart(part);
-            return rendered ? <div key={key}>{rendered}</div> : null;
-          }
-          return null;
+          // plain text part
+          const text = (part as any).text?.trim();
+          if (!text) return null;
+          return (
+            <FadeIn key={key}>
+              <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] text-foreground">
+                {text}
+              </div>
+            </FadeIn>
+          );
         })}
       </div>
     </div>
