@@ -17,6 +17,8 @@ import {
   MapPin,
   BarChart3,
   Calendar,
+  Layers,
+  GitCompare,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
@@ -61,6 +63,11 @@ const STRATEGY_ITEMS: SubItem[] = [
   { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
   { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
   { id: 'season-analytics', label: 'Season Analytics', icon: BarChart3 },
+];
+
+const DEEP_VALUE_ITEMS: NavItem[] = [
+  { id: 'deep-value-trident', label: 'Trident', icon: Layers },
+  { id: 'deep-value-crossover', label: 'Crossover', icon: GitCompare },
 ];
 
 const KNOWLEDGE_ITEMS: NavItem[] = [
@@ -180,6 +187,27 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
               >
                 <SIcon className="w-4 h-4 shrink-0" />
                 <span className="tracking-wide flex-1 text-left">{sLabel}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Deep Value — Prime only */}
+        {isPrime && (
+          <div className="mb-1">
+            <div className="text-[10px] text-muted-foreground tracking-widest uppercase px-3 pt-3 pb-1">DEEP VALUE</div>
+            {DEEP_VALUE_ITEMS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => onViewChange(id)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
+                  activeView === id
+                    ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                    : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="tracking-wide flex-1 text-left">{label}</span>
               </button>
             ))}
           </div>

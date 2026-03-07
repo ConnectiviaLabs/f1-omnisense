@@ -1,14 +1,13 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, AreaChart, Area,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, BarChart, Bar,
 } from 'recharts';
 import { Loader2, TrendingUp, Trophy, Users, Timer, Gauge, Flag, ArrowLeft, GitCompare } from 'lucide-react';
 import { ForecastChart } from './ForecastChart';
 import { HealthGauge } from './HealthGauge';
 import { StatusBadge } from './StatusBadge';
 import {
-  type VehicleData, type FeatureForecast, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
+  type VehicleData, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
 } from './anomalyHelpers';
 import type { Pillar } from './Sidebar';
 
@@ -78,11 +77,10 @@ function teamIdFromName(teamName: string): string {
 
 interface PrimeTeamProps {
   prefetchedVehicles?: VehicleData[];
-  prefetchedForecasts?: Record<string, FeatureForecast[]>;
   activePillar: Pillar;
 }
 
-export function PrimeTeam({ prefetchedVehicles, prefetchedForecasts, activePillar }: PrimeTeamProps) {
+export function PrimeTeam({ prefetchedVehicles, activePillar }: PrimeTeamProps) {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(2024);
   const [vehicles, setVehicles] = useState<VehicleData[]>(prefetchedVehicles ?? []);
@@ -165,7 +163,7 @@ export function PrimeTeam({ prefetchedVehicles, prefetchedForecasts, activePilla
         <TeamAnomalyView teamId={effectiveTeam} teamName={effectiveName} teamColor={effectiveColor} vehicles={vehicles} loading={loading} />
       )}
       {activePillar === 'forecast' && (
-        <TeamForecastView teamId={effectiveTeam} teamName={effectiveName} teamColor={effectiveColor} vehicles={vehicles} prefetchedForecasts={prefetchedForecasts} season={selectedSeason} />
+        <TeamForecastView teamId={effectiveTeam} teamName={effectiveName} teamColor={effectiveColor} vehicles={vehicles} season={selectedSeason} />
       )}
     </div>
   );
@@ -203,81 +201,109 @@ function TeamGrid({ vehicles, loading, onSelect }: {
     );
   }
 
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {teamData.map(({ teamId, name, drivers }) => {
-        const color = TEAM_COLORS[teamId] ?? '#FF8000';
-        const avgHealth = drivers.reduce((s, d) => s + d.overallHealth, 0) / drivers.length;
-        const worstLevel = drivers.some(d => d.level === 'critical') ? 'critical'
-          : drivers.some(d => d.level === 'warning') ? 'warning' : 'nominal';
+  const mclarenTeam = teamData.find(t => t.teamId === 'mclaren');
+  const otherTeams = teamData.filter(t => t.teamId !== 'mclaren');
 
-        // Aggregate system health across drivers
-        const systemMap: Record<string, number[]> = {};
-        for (const d of drivers) {
-          for (const sys of d.systems) {
-            if (!systemMap[sys.name]) systemMap[sys.name] = [];
-            systemMap[sys.name].push(sys.health);
-          }
-        }
-        const systems = Object.entries(systemMap).map(([sysName, vals]) => ({
-          name: sysName,
-          health: vals.reduce((a, b) => a + b, 0) / vals.length,
-        }));
+  const renderTeamCard = (teamId: string, name: string, drivers: VehicleData[], isMcLaren: boolean) => {
+    const color = TEAM_COLORS[teamId] ?? '#FF8000';
+    const avgHealth = drivers.reduce((s, d) => s + d.overallHealth, 0) / drivers.length;
+    const worstLevel = drivers.some(d => d.level === 'critical') ? 'critical'
+      : drivers.some(d => d.level === 'warning') ? 'warning' : 'nominal';
 
-        return (
-          <button
-            type="button"
-            key={teamId}
-            onClick={() => onSelect(teamId)}
-            className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4 text-left hover:border-[rgba(255,128,0,0.3)] transition-all group cursor-pointer"
+    const systemMap: Record<string, number[]> = {};
+    for (const d of drivers) {
+      for (const sys of d.systems) {
+        if (!systemMap[sys.name]) systemMap[sys.name] = [];
+        systemMap[sys.name].push(sys.health);
+      }
+    }
+    const systems = Object.entries(systemMap).map(([sysName, vals]) => ({
+      name: sysName,
+      health: vals.reduce((a, b) => a + b, 0) / vals.length,
+    }));
+
+    return (
+      <button
+        type="button"
+        key={teamId}
+        onClick={() => onSelect(teamId)}
+        className={`bg-[#1A1F2E] rounded-xl border text-left transition-all group cursor-pointer relative overflow-hidden ${
+          isMcLaren
+            ? 'border-[#FF8000]/30 hover:border-[#FF8000]/50 p-5'
+            : 'border-[rgba(255,128,0,0.12)] hover:border-[rgba(255,128,0,0.3)] p-4'
+        }`}
+      >
+        {/* Team color accent stripe */}
+        <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: color }} />
+
+        {/* Header */}
+        <div className={`flex items-center gap-3 ${isMcLaren ? 'mb-4' : 'mb-3'} ml-2`}>
+          <div
+            className={`rounded-lg flex items-center justify-center ${isMcLaren ? 'w-10 h-10' : 'w-8 h-8'}`}
+            style={{ background: `${color}20`, border: `1px solid ${color}40` }}
           >
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}20`, border: `1px solid ${color}40` }}>
-                {TEAM_LOGOS[teamId] ? (
-                  <img src={TEAM_LOGOS[teamId]} alt={name} className="w-5 h-5 object-contain" />
-                ) : (
-                  <Trophy className="w-4 h-4" style={{ color }} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-foreground group-hover:text-[#FF8000] transition-colors truncate">{name}</div>
-                <div className="text-[10px] text-muted-foreground">
-                  {drivers.map(d => d.code).join(', ')} — {drivers.length} driver{drivers.length > 1 ? 's' : ''}
-                </div>
-              </div>
-              <HealthGauge value={avgHealth} size={40} />
-            </div>
-
-            {/* System Health Bars */}
-            <div className="space-y-1.5">
-              {systems.map(sys => (
-                <div key={sys.name} className="flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground w-20 truncate">{sys.name}</span>
-                  <div className="flex-1 h-1.5 rounded-full bg-[#0D1117]">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${sys.health}%`,
-                        background: sys.health >= 80 ? '#22c55e' : sys.health >= 60 ? '#f59e0b' : '#ef4444',
-                      }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-mono w-8 text-right text-muted-foreground">{sys.health.toFixed(0)}%</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Status */}
-            {worstLevel !== 'nominal' && (
-              <div className="mt-2 flex items-center gap-1 text-[9px]" style={{ color: worstLevel === 'critical' ? '#ef4444' : '#f59e0b' }}>
-                <span>⚠</span>
-                <span>{drivers.filter(d => d.level === 'critical').length} critical</span>
-              </div>
+            {TEAM_LOGOS[teamId] ? (
+              <img src={TEAM_LOGOS[teamId]} alt={name} className={isMcLaren ? 'w-7 h-7 object-contain' : 'w-5 h-5 object-contain'} />
+            ) : (
+              <Trophy className={isMcLaren ? 'w-5 h-5' : 'w-4 h-4'} style={{ color }} />
             )}
-          </button>
-        );
-      })}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className={`font-semibold text-foreground transition-colors truncate ${
+              isMcLaren ? 'text-base group-hover:text-[#FF8000]' : 'text-sm group-hover:text-[#FF8000]'
+            }`}>{name}</div>
+            <div className={`text-muted-foreground ${isMcLaren ? 'text-[11px]' : 'text-[10px]'}`}>
+              {drivers.map(d => d.code).join(', ')} — {drivers.length} driver{drivers.length > 1 ? 's' : ''}
+            </div>
+          </div>
+          <HealthGauge value={avgHealth} size={isMcLaren ? 48 : 40} />
+        </div>
+
+        {/* System Health Bars */}
+        <div className={`space-y-1.5 ml-2 ${isMcLaren ? 'space-y-2' : ''}`}>
+          {systems.map(sys => (
+            <div key={sys.name} className="flex items-center gap-2">
+              <span className={`text-muted-foreground truncate ${isMcLaren ? 'text-[11px] w-24' : 'text-[10px] w-20'}`}>{sys.name}</span>
+              <div className={`flex-1 rounded-full bg-[#0D1117] ${isMcLaren ? 'h-2' : 'h-1.5'}`}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${sys.health}%`,
+                    background: sys.health >= 80 ? '#22c55e' : sys.health >= 60 ? color : '#ef4444',
+                  }}
+                />
+              </div>
+              <span className={`font-mono text-right text-muted-foreground ${isMcLaren ? 'text-[11px] w-10' : 'text-[10px] w-8'}`}>{sys.health.toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Status */}
+        {worstLevel !== 'nominal' && (
+          <div className={`flex items-center gap-1 ml-2 ${isMcLaren ? 'mt-3 text-[10px]' : 'mt-2 text-[9px]'}`} style={{ color: worstLevel === 'critical' ? '#ef4444' : '#f59e0b' }}>
+            <span>⚠</span>
+            <span>{drivers.filter(d => d.level === 'critical').length} critical</span>
+          </div>
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* McLaren — prominent row */}
+      {mclarenTeam && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {renderTeamCard(mclarenTeam.teamId, mclarenTeam.name, mclarenTeam.drivers, true)}
+        </div>
+      )}
+
+      {/* Other teams grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {otherTeams.map(({ teamId, name, drivers }) =>
+          renderTeamCard(teamId, name, drivers, false)
+        )}
+      </div>
     </div>
   );
 }
@@ -312,7 +338,7 @@ interface ConstructorProfile {
   drivers?: { driver_code: string; driver_name: string; position?: number; points?: number; wins?: number }[];
 }
 
-function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles }: {
+function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _vehicles }: {
   teamId: string; teamName: string; teamColor: string; season: number; vehicles?: VehicleData[];
 }) {
   const [profile, setProfile] = useState<ConstructorProfile | null>(null);
@@ -739,9 +765,9 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
    FORECAST PILLAR
    ══════════════════════════════════════════════════════════════════════ */
 
-function TeamForecastView({ teamId, teamName, teamColor, vehicles, prefetchedForecasts, season }: {
+function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
   teamId: string; teamName: string; teamColor: string; vehicles: VehicleData[];
-  prefetchedForecasts?: Record<string, FeatureForecast[]>; season: number;
+  season: number;
 }) {
   const [profile, setProfile] = useState<ConstructorProfile | null>(null);
 
@@ -760,36 +786,12 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, prefetchedFor
     return vehicles.filter(v => teamIdFromName(v.team) === teamId).map(v => v.code);
   }, [profile, vehicles, teamId]);
 
-  // Risk summary
-  const riskFlags = useMemo(() => {
-    const flags: string[] = [];
-    for (const code of driverCodes) {
-      const fcs = prefetchedForecasts?.[code] ?? [];
-      for (const fc of fcs) {
-        if (fc.risk_flag) flags.push(`${code}: ${fc.column}`);
-      }
-    }
-    return flags;
-  }, [driverCodes, prefetchedForecasts]);
-
   if (driverCodes.length === 0) {
     return <div className="text-sm text-muted-foreground py-8 text-center">No driver data for {teamName} to forecast</div>;
   }
 
   return (
     <div className="space-y-4">
-      {/* Risk Summary */}
-      {riskFlags.length > 0 && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <div className="text-[12px] font-medium text-red-400 mb-1">Risk Flags</div>
-          <div className="flex flex-wrap gap-1.5">
-            {riskFlags.map(f => (
-              <span key={f} className="text-[10px] px-2 py-0.5 rounded bg-red-500/15 text-red-400 font-mono">{f}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Forecast panels per driver */}
       {driverCodes.map(code => (
         <div key={code} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
@@ -797,10 +799,7 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, prefetchedFor
             <TrendingUp className="w-3 h-3" style={{ color: teamColor }} />
             Feature Forecasts — {code}
           </h3>
-          <ForecastChart
-            driverCode={code}
-            prefetchedForecasts={prefetchedForecasts?.[code]}
-          />
+          <ForecastChart driverCode={code} />
         </div>
       ))}
     </div>

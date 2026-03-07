@@ -977,6 +977,10 @@ export default defineConfig({
         target: 'http://127.0.0.1:8300',
         changeOrigin: true,
       },
+      '/api/deep-value': {
+        target: 'http://127.0.0.1:8300',
+        changeOrigin: true,
+      },
       '/api/local/mccar-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/mccar-telemetry': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/mccar-race-telemetry': { target: 'http://127.0.0.1:8300', changeOrigin: true },

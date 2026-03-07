@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Home_v3 as Home } from './components/Home_v3';
 import { LiveDashboard } from './components/LiveDashboard';
@@ -13,11 +13,13 @@ import { AIInsights } from './components/AIInsights';
 import { Regulations } from './components/Regulations';
 import { MediaIntelligence } from './components/MediaIntelligence';
 import { Chatbot } from './components/Chatbot';
+import { DeepValueTrident } from './components/DeepValueTrident';
+import { DeepValueCrossover } from './components/DeepValueCrossover';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 import type { Pillar, StrategyTab } from './components/Sidebar';
 import { parseAnomalyDrivers } from './components/anomalyHelpers';
-import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
+import type { VehicleData } from './components/anomalyHelpers';
 
 const RACE_DAY_VIEWS = new Set<ViewType>(['dashboard', 'car', 'driver', 'schedule']);
 
@@ -31,6 +33,8 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   'prime-car': { title: 'Car Intelligence', subtitle: 'Predictive maintenance, anomaly detection & fleet health monitoring' },
   'prime-team': { title: 'Team Intelligence', subtitle: 'Constructor performance, fleet anomalies & forecasting across all 10 teams' },
   'prime-strategy': { title: 'Strategy Intelligence', subtitle: 'Race strategy, circuit analysis & season analytics' },
+  'deep-value-trident': { title: 'Trident', subtitle: 'Convergence reports synthesized from KeX, anomalies & forecasts' },
+  'deep-value-crossover': { title: 'Crossover', subtitle: 'Entity similarity across drivers, teams & cars' },
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
@@ -50,18 +54,16 @@ export default function App() {
   // Remember last platform for Knowledge views (so sidebar stays correct)
   useEffect(() => {
     if (RACE_DAY_VIEWS.has(activeView)) setLastPlatform('race-day');
-    else if (activeView.startsWith('prime-')) setLastPlatform('prime');
+    else if (activeView.startsWith('prime-') || activeView.startsWith('deep-value-')) setLastPlatform('prime');
   }, [activeView]);
 
-  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-')
+  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-') || activeView.startsWith('deep-value-')
     ? platform
     : lastPlatform;
 
-  // ── Pre-fetch fleet anomaly + forecasts on app startup ──────────
+  // ── Pre-fetch fleet anomaly data on app startup ──────────
   const [fleetVehicles, setFleetVehicles] = useState<VehicleData[]>([]);
-  const [fleetForecasts, setFleetForecasts] = useState<Record<string, FeatureForecast[]>>({});
   const [fleetLoading, setFleetLoading] = useState(true);
-  const forecastsFetched = useRef(false);
 
   useEffect(() => {
     fetch('/api/pipeline/anomaly')
@@ -70,57 +72,6 @@ export default function App() {
       .catch(err => console.error('Fleet prefetch error:', err))
       .finally(() => setFleetLoading(false));
   }, []);
-
-  const MCLAREN_CODES = new Set(['NOR', 'PIA']);
-  useEffect(() => {
-    if (fleetVehicles.length === 0 || forecastsFetched.current) return;
-    forecastsFetched.current = true;
-
-    const mclarenVehicles = fleetVehicles.filter(v => MCLAREN_CODES.has(v.code));
-    const fetchDriverForecasts = async (v: VehicleData) => {
-      const critSystems = v.systems.filter(s => s.level === 'critical' || s.level === 'warning');
-      const rawFeatures = [...new Set(critSystems.flatMap(s => s.metrics.slice(0, 2).map(m => m.label)))];
-      if (rawFeatures.length === 0) return { code: v.code, forecasts: [] as FeatureForecast[] };
-      const features = rawFeatures.map(f => f.includes('_') ? f : `${f}_mean`);
-
-      const results = await Promise.all(
-        features.map(col =>
-          fetch(`/api/omni/analytics/forecast/${v.code}?column=${encodeURIComponent(col)}&horizon=5&method=ets`, { method: 'POST' })
-            .then(r => r.ok ? r.json() : null)
-            .catch(() => null)
-        )
-      );
-      const fcs: FeatureForecast[] = [];
-      for (const r of results) {
-        if (!r?.values) continue;
-        fcs.push({
-          column: r.column,
-          method: r.method,
-          mae: r.mae,
-          rmse: r.rmse,
-          trend_direction: r.trend_direction,
-          trend_pct: r.trend_pct,
-          volatility: r.volatility,
-          risk_flag: r.risk_flag,
-          history: r.history,
-          history_timestamps: r.history_timestamps,
-          data: r.values.map((val: number, i: number) => ({
-            step: r.timestamps?.[i] ?? `+${i + 1}`,
-            value: val,
-            lower: r.lower_bound?.[i] ?? val,
-            upper: r.upper_bound?.[i] ?? val,
-          })),
-        });
-      }
-      return { code: v.code, forecasts: fcs };
-    };
-
-    Promise.all(mclarenVehicles.map(fetchDriverForecasts)).then(all => {
-      const map: Record<string, FeatureForecast[]> = {};
-      for (const { code, forecasts } of all) map[code] = forecasts;
-      setFleetForecasts(map);
-    });
-  }, [fleetVehicles]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -133,10 +84,12 @@ export default function App() {
       case 'car': return <CarTelemetry />;
       case 'driver': return <DriverBiometrics />;
       case 'schedule': return <RaceSchedule />;
-      case 'prime-driver': return <PrimeDriver prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
-      case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} prefetchLoading={fleetLoading} activePillar={activePillar} />;
-      case 'prime-team': return <PrimeTeam prefetchedVehicles={fleetVehicles} prefetchedForecasts={fleetForecasts} activePillar={activePillar} />;
+      case 'prime-driver': return <PrimeDriver prefetchedVehicles={fleetVehicles} activePillar={activePillar} />;
+      case 'prime-car': return <PrimeCar prefetchedVehicles={fleetVehicles} prefetchLoading={fleetLoading} activePillar={activePillar} />;
+      case 'prime-team': return <PrimeTeam prefetchedVehicles={fleetVehicles} activePillar={activePillar} />;
       case 'prime-strategy': return <PrimeStrategy activeTab={activeStrategyTab} />;
+      case 'deep-value-trident': return <DeepValueTrident />;
+      case 'deep-value-crossover': return <DeepValueCrossover />;
       case 'ai-insights': return <AIInsights />;
       case 'regulations': return <Regulations />;
       case 'media': return <MediaIntelligence />;
