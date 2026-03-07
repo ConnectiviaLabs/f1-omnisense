@@ -45,7 +45,7 @@ function useSimpleChat() {
       });
 
       if (genRes.ok) {
-        // Gen UI available — parse AI SDK data stream
+        // Gen UI available — parse AI SDK data stream (SSE format)
         setStatus('streaming');
         const reader = genRes.body?.getReader();
         const decoder = new TextDecoder();
@@ -60,12 +60,31 @@ function useSimpleChat() {
             const lines = buffer.split('\n');
             buffer = lines.pop() ?? '';
             for (const line of lines) {
-              if (line.startsWith('0:')) {
-                try { textParts.push(JSON.parse(line.slice(2))); } catch { /* skip */ }
-              } else if (line.startsWith('9:')) {
-                // Tool call result
+              const trimmed = line.trim();
+              // AI SDK v4 SSE format: "data: {...}"
+              if (trimmed.startsWith('data: ')) {
+                const payload = trimmed.slice(6);
+                if (payload === '[DONE]') continue;
                 try {
-                  const arr = JSON.parse(line.slice(2));
+                  const evt = JSON.parse(payload);
+                  if (evt.type === 'tool-input-available') {
+                    toolParts.push({
+                      type: `tool-${evt.toolName}`,
+                      toolName: evt.toolName,
+                      input: evt.input ?? {},
+                      state: 'result',
+                    });
+                  } else if (evt.type === 'text-delta') {
+                    textParts.push(evt.textDelta ?? '');
+                  }
+                } catch { /* skip non-JSON lines */ }
+              }
+              // AI SDK v3 format fallback: "0:..." text, "9:..." tool results
+              else if (trimmed.startsWith('0:')) {
+                try { textParts.push(JSON.parse(trimmed.slice(2))); } catch { /* skip */ }
+              } else if (trimmed.startsWith('9:')) {
+                try {
+                  const arr = JSON.parse(trimmed.slice(2));
                   for (const tc of arr) {
                     toolParts.push({
                       type: `tool-${tc.toolName}`,
