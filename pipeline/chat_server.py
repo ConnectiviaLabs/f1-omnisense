@@ -464,7 +464,7 @@ async def upload_document(file: UploadFile = File(...)):
         from pipeline.omni_doc_router import upload_and_ingest
         # Reset file position and delegate
         await file.seek(0)
-        return await upload_and_ingest(file=file)
+        return await upload_and_ingest(file=file, deep_extract=False, chunk_size=1000, chunk_overlap=200)
     except ImportError:
         pass
     except Exception as e:

@@ -397,7 +397,7 @@ function StreamingSkeleton() {
    Main Chatbot Component
    ═══════════════════════════════════════════════════════════════════ */
 
-const diagnoseTransport = new DefaultChatTransport({ api: '/api/fleet/diagnose' });
+const diagnoseTransport = new DefaultChatTransport({ api: '/api/chat' });
 
 export function Chatbot() {
   const {
