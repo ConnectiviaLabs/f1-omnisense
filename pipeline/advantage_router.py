@@ -148,20 +148,20 @@ def _gather_structured_context(db, scope: str, entity: str | None) -> str:
             parts.append(
                 f"  undercut_aggression={ps.get('undercut_aggression', '?')}, "
                 f"tyre_extension_bias={ps.get('tyre_extension_bias', '?')}, "
-                f"one_stop_freq={ps.get('one_stop_freq', '?'):.3f}, "
+                f"one_stop_freq={ps.get('one_stop_freq', '?')}, "
                 f"avg_first_stop_lap={ps.get('avg_first_stop_lap', '?')}, "
                 f"pit_stops={pe.get('total_stops', '?')}, "
                 f"avg_pit_duration={pe.get('avg_duration_s', '?')}s, "
                 f"best_pit={pe.get('best_duration_s', '?')}s"
             )
-            comps = sp.get("compound_profiles", [])
+            comps = sp.get("compound_profiles") or []
             if comps:
                 parts.append("  Compound profiles:")
                 for c in comps:
                     parts.append(
-                        f"    {c['compound']}: laps={c.get('total_laps', '?')}, "
-                        f"avg_lap={c.get('avg_lap_time_s', 0):.2f}s, "
-                        f"tyre_life={c.get('avg_tyre_life', 0):.1f} laps"
+                        f"    {c.get('compound', '?')}: laps={c.get('total_laps', '?')}, "
+                        f"avg_lap={c.get('avg_lap_time_s', '?')}s, "
+                        f"tyre_life={c.get('avg_tyre_life', '?')} laps"
                     )
 
         # Compare vs grid (top 5 rivals)
@@ -172,12 +172,12 @@ def _gather_structured_context(db, scope: str, entity: str | None) -> str:
         if rivals:
             parts.append(f"RIVAL STRATEGY COMPARISON (vs {entity.upper()}):")
             for r in rivals:
-                rps = r.get("pit_strategy", {})
-                rpe = r.get("pit_execution", {})
+                rps = r.get("pit_strategy") or {}
+                rpe = r.get("pit_execution") or {}
                 parts.append(
-                    f"  {r.get('driver_code')}/{r.get('team')}: "
+                    f"  {r.get('driver_code', '?')}/{r.get('team', '?')}: "
                     f"undercut={rps.get('undercut_aggression', '?')}, "
-                    f"one_stop={rps.get('one_stop_freq', '?'):.3f}, "
+                    f"one_stop={rps.get('one_stop_freq', '?')}, "
                     f"avg_pit={rpe.get('avg_duration_s', '?')}s"
                 )
 
