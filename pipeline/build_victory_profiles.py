@@ -14,7 +14,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
@@ -22,37 +21,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import requests
+from groq import Groq
 from pymongo import UpdateOne
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from updater._db import get_db
 from embeddings import NomicEmbedder
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
+GROQ_MODEL = os.getenv("VICTORY_LLM_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 EMBEDDING_DIM = 768
 
+_groq: Groq | None = None
 
-# -- Ollama narrative generation ----------------------------------------------
+
+def _get_groq() -> Groq:
+    global _groq
+    if _groq is None:
+        _groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    return _groq
+
+
+# -- Narrative generation (Groq) ----------------------------------------------
 
 def _generate_narrative(prompt: str) -> str:
-    """Generate a ~200-word narrative summary via Ollama."""
+    """Generate a ~200-word narrative summary via Groq."""
     try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 300},
-            },
-            timeout=60,
+        client = _get_groq()
+        resp = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an F1 data analyst. Write concise ~200-word profile summaries from the data provided. Be factual and specific with numbers."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=400,
         )
-        resp.raise_for_status()
-        return resp.json().get("response", "").strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"       Ollama error: {e}")
+        print(f"       Groq error: {e}")
         return prompt  # Fallback: use raw prompt as narrative
 
 
