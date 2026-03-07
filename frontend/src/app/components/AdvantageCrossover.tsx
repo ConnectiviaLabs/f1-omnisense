@@ -12,6 +12,8 @@ import {
   X,
   Send,
   ArrowRightLeft,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   ScatterChart,
@@ -223,6 +225,7 @@ export function AdvantageCrossover() {
   const [crossInsightLoading, setCrossInsightLoading] = useState(false);
   const [crossQuery, setCrossQuery] = useState('');
   const [entitiesLoading, setEntitiesLoading] = useState(false);
+  const [insightExpanded, setInsightExpanded] = useState(false);
   const crossInputRef = useRef<HTMLInputElement>(null);
 
   const buildProfiles = useCallback(async () => {
@@ -341,6 +344,7 @@ export function AdvantageCrossover() {
   const fetchCrossInsight = useCallback(async (query: string) => {
     if (!query.trim() || selectedEntities.length < 2) return;
     setCrossInsightLoading(true);
+    setInsightExpanded(false);
     try {
       const res = await fetch('/api/advantage/crossover/cross_insights', {
         method: 'POST',
@@ -1029,32 +1033,76 @@ export function AdvantageCrossover() {
                 </button>
               </div>
 
-              {/* Insight display */}
+              {/* Insight display — KeX briefing style */}
               {crossInsight && (
-                <div className="space-y-3">
-                  <div className="text-[13px] text-foreground/85 leading-relaxed whitespace-pre-line">
-                    {crossInsight.insight}
-                  </div>
-                  {/* Correlations found */}
+                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4 space-y-3">
+                  {/* Correlation pills */}
                   {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
-                    <div className="border-t border-[rgba(255,128,0,0.06)] pt-3 space-y-2">
-                      <div className="text-[11px] text-muted-foreground font-medium">Metric Correlations</div>
+                    <div className="flex flex-wrap gap-1.5">
                       {crossInsight.correlations_found.slice(0, 4).map((c, i) => (
-                        <div key={i} className="text-[11px] space-y-0.5">
+                        <div key={i} className="text-[9px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-[rgba(255,128,0,0.1)]">
                           <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
                           {c.converging.length > 0 && (
-                            <div className="text-[#05DF72]/80 ml-3">Converging: {c.converging.join(', ')}</div>
+                            <span className="text-[#05DF72]/80 ml-1.5">+{c.converging.length} converging</span>
                           )}
                           {c.diverging.length > 0 && (
-                            <div className="text-[#FB2C36]/80 ml-3">Diverging: {c.diverging.join(', ')}</div>
+                            <span className="text-[#FB2C36]/80 ml-1.5">-{c.diverging.length} diverging</span>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                  <div className="text-[10px] text-muted-foreground/40 text-right">
-                    {crossInsight.model_used}
+
+                  {/* Summary preview (first ~200 chars) */}
+                  {!insightExpanded && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {crossInsight.insight.length > 200
+                        ? crossInsight.insight.slice(0, 200).trimEnd() + '…'
+                        : crossInsight.insight}
+                    </p>
+                  )}
+
+                  {/* Model + provider attribution */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[9px] text-muted-foreground/50 font-mono">
+                      via {crossInsight.model_used || 'auto'}
+                    </span>
                   </div>
+
+                  {/* View Full Briefing toggle */}
+                  <button
+                    onClick={() => setInsightExpanded(!insightExpanded)}
+                    className="flex items-center gap-1.5 text-[11px] text-[#FF8000] hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-[#FF8000]/5"
+                  >
+                    {insightExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                    {insightExpanded ? 'Hide Full Briefing' : 'View Full Briefing'}
+                  </button>
+
+                  {/* Full text (collapsible) */}
+                  {insightExpanded && (
+                    <div className="pt-1 border-t border-[rgba(255,128,0,0.08)]">
+                      <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
+                        {crossInsight.insight}
+                      </div>
+                      {/* Detailed correlations in expanded view */}
+                      {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
+                        <div className="border-t border-[rgba(255,128,0,0.06)] pt-3 mt-3 space-y-2">
+                          <div className="text-[11px] text-muted-foreground font-medium">Metric Correlations</div>
+                          {crossInsight.correlations_found.slice(0, 6).map((c, i) => (
+                            <div key={i} className="text-[11px] space-y-0.5">
+                              <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
+                              {c.converging.length > 0 && (
+                                <div className="text-[#05DF72]/80 ml-3">Converging: {c.converging.join(', ')}</div>
+                              )}
+                              {c.diverging.length > 0 && (
+                                <div className="text-[#FB2C36]/80 ml-3">Diverging: {c.diverging.join(', ')}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
