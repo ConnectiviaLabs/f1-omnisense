@@ -89,7 +89,12 @@ export function AdvantageTrident() {
     setEntitiesLoading(true);
     fetch(`/api/advantage/crossover/entities?entity_type=${scope}&source=VectorProfiles`)
       .then(r => { if (r.ok) return r.json(); throw new Error('fetch failed'); })
-      .then(data => setAvailableEntities(data.entities || []))
+      .then(data => {
+        const ents = (data.entities || []).map((e: { code: string } | string) =>
+          typeof e === 'string' ? e : e.code
+        );
+        setAvailableEntities(ents);
+      })
       .catch(() => setAvailableEntities([]))
       .finally(() => setEntitiesLoading(false));
   }, [scope]);
