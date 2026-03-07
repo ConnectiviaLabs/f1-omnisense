@@ -1,6 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Send, Bot, User, Loader2, Sparkles, RotateCcw,
   TrendingUp, TrendingDown, Minus, Info, AlertTriangle, XCircle,
@@ -10,7 +8,55 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
   BarChart, Bar, Cell,
 } from 'recharts';
-import type { UIMessage } from 'ai';
+
+/* ── Lightweight UIMessage type (replaces @ai-sdk/react dependency) ── */
+interface UIMessagePart { type: string; text?: string; [k: string]: any }
+interface UIMessage { id: string; role: 'user' | 'assistant'; parts: UIMessagePart[] }
+
+/* ── Simple chat hook that talks to our /api/chat endpoint ────────── */
+function useSimpleChat() {
+  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [status, setStatus] = useState<'ready' | 'submitted' | 'streaming'>('ready');
+  const [error, setError] = useState<Error | null>(null);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  const sendMessage = useCallback(async ({ text }: { text: string }) => {
+    const userMsg: UIMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts: [{ type: 'text', text }],
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setStatus('submitted');
+    setError(null);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || `Chat failed (${res.status})`);
+      }
+      const data = await res.json();
+      const assistantMsg: UIMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: data.answer ?? data.text ?? '' }],
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+    } catch (e: any) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setStatus('ready');
+    }
+  }, []);
+
+  return { messages, setMessages, sendMessage, status, error, clearError };
+}
 
 /* ── Suggestion prompts (diagnostic-focused) ─────────────────────── */
 const SUGGESTIONS = [
@@ -397,14 +443,10 @@ function StreamingSkeleton() {
    Main Chatbot Component
    ═══════════════════════════════════════════════════════════════════ */
 
-const diagnoseTransport = new DefaultChatTransport({ api: '/api/chat' });
-
 export function Chatbot() {
   const {
     messages, setMessages, sendMessage, status, error, clearError,
-  } = useChat({
-    transport: diagnoseTransport,
-  });
+  } = useSimpleChat();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
