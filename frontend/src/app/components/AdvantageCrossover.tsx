@@ -117,11 +117,11 @@ const ENTITY_TABS = [
   { value: 'car', label: 'Car', icon: Box },
 ];
 
-const SOURCE_OPTIONS = [
-  { value: 'VectorProfiles', label: 'Vector Profiles' },
-  { value: 'victory_driver_profiles', label: 'Victory Driver' },
-  { value: 'victory_car_profiles', label: 'Victory Car' },
-  { value: 'victory_team_kb', label: 'Victory Team' },
+const SOURCE_OPTIONS: { value: string; label: string; entities: string[] }[] = [
+  { value: 'VectorProfiles', label: 'Vector Profiles', entities: ['driver', 'team', 'car'] },
+  { value: 'victory_driver_profiles', label: 'Victory Driver', entities: ['driver'] },
+  { value: 'victory_car_profiles', label: 'Victory Car', entities: ['car'] },
+  { value: 'victory_team_kb', label: 'Victory Team', entities: ['team'] },
 ];
 
 const CLUSTER_COLORS = ['#FF8000', '#3B82F6', '#05DF72', '#FB2C36', '#A855F7', '#F59E0B'];
@@ -390,7 +390,16 @@ export function AdvantageCrossover() {
           {ENTITY_TABS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
-              onClick={() => { setEntityType(value); setMatrixData(null); setClusterData(null); setInsightData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
+              onClick={() => {
+                setEntityType(value);
+                setMatrixData(null); setClusterData(null); setInsightData(null);
+                setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null);
+                // Auto-select first compatible source
+                const compatible = SOURCE_OPTIONS.filter(o => o.entities.includes(value));
+                if (compatible.length > 0 && !compatible.some(o => o.value === source)) {
+                  setSource(compatible[0].value);
+                }
+              }}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
                 entityType === value
                   ? 'bg-[#FF8000]/15 text-[#FF8000] font-medium'
@@ -403,13 +412,13 @@ export function AdvantageCrossover() {
           ))}
         </div>
 
-        {/* Source Selector */}
+        {/* Source Selector — filtered by entity type */}
         <select
           value={source}
           onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
           className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/40 transition-colors"
         >
-          {SOURCE_OPTIONS.map(o => (
+          {SOURCE_OPTIONS.filter(o => o.entities.includes(entityType)).map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
