@@ -123,6 +123,31 @@ export function AdvantageCrossover() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [error, setError] = useState('');
   const [nClusters, setNClusters] = useState(4);
+  const [building, setBuilding] = useState(false);
+
+  const buildProfiles = useCallback(async () => {
+    setBuilding(true);
+    setError('');
+    try {
+      const res = await fetch('/api/victory/build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rebuild: true }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const vecCount = data.vector?.count ?? 0;
+      if (vecCount > 0) {
+        setError('');
+      } else {
+        setError('Build completed but no profiles were generated');
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Build failed');
+    } finally {
+      setBuilding(false);
+    }
+  }, []);
 
   const fetchMatrix = useCallback(async () => {
     setMatrixLoading(true);
@@ -256,8 +281,18 @@ export function AdvantageCrossover() {
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400">
-          {error}
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400 flex items-center justify-between">
+          <span>{error}</span>
+          {error.toLowerCase().includes('embedding') && (
+            <button
+              onClick={buildProfiles}
+              disabled={building}
+              className="ml-4 px-4 py-1.5 rounded-lg text-[12px] font-medium bg-[#FF8000] text-[#0D1117] hover:bg-[#FF9A33] disabled:opacity-50 transition-all flex items-center gap-2"
+            >
+              {building ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              {building ? 'Building Profiles...' : 'Build VictoryProfiles'}
+            </button>
+          )}
         </div>
       )}
 

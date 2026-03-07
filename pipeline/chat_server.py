@@ -870,6 +870,46 @@ async def victory_search(body: dict):
     return {"query": query, "results": results[:k]}
 
 
+@app.post("/api/local/victory/build")
+async def victory_build(body: dict = {}):
+    """Trigger VictoryProfiles + VectorProfiles rebuild from the frontend."""
+    import asyncio
+    season = body.get("season")
+    rebuild = body.get("rebuild", False)
+
+    results = {}
+
+    # Build VictoryProfiles (4-layer KB)
+    try:
+        from pipeline.build_victory_profiles import main as build_victory
+        await asyncio.to_thread(build_victory, season=season, rebuild=rebuild)
+        db = get_data_db()
+        results["victory"] = {
+            "driver_profiles": db["victory_driver_profiles"].count_documents({}),
+            "car_profiles": db["victory_car_profiles"].count_documents({}),
+            "strategy_profiles": db["victory_strategy_profiles"].count_documents({}),
+            "team_kb": db["victory_team_kb"].count_documents({}),
+        }
+    except Exception as e:
+        logger.exception("VictoryProfiles build failed")
+        results["victory"] = {"error": str(e)}
+
+    # Build VectorProfiles (merged + embeddings)
+    try:
+        from pipeline.build_vector_profiles import main as build_vectors
+        await asyncio.to_thread(build_vectors, rebuild=rebuild)
+        db = get_data_db()
+        results["vector"] = {
+            "count": db["VectorProfiles"].count_documents({}),
+            "with_embeddings": db["VectorProfiles"].count_documents({"embedding": {"$exists": True}}),
+        }
+    except Exception as e:
+        logger.exception("VectorProfiles build failed")
+        results["vector"] = {"error": str(e)}
+
+    return {"status": "complete", **results}
+
+
 @app.get("/api/local/victory/regression/{team}")
 async def victory_regression(team: str, season_a: int = 2023, season_b: int = 2024):
     """Season-over-season diff for internal improvement analysis."""
