@@ -71,9 +71,15 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
             for (const severity of SEVERITY_CASCADE) {
               for (const sysData of Object.values(lastRace.systems) as any[]) {
                 if (sysData.classifier_severity === severity) {
-                  const sysFeatures = (sysData.features ?? [])
-                    .slice(0, 2)
-                    .map((f: any) => f.feature ?? f.label ?? f);
+                  const raw = sysData.features;
+                  let sysFeatures: string[];
+                  if (Array.isArray(raw)) {
+                    sysFeatures = raw.slice(0, 2).map((f: any) => f.feature ?? f.label ?? f);
+                  } else if (raw && typeof raw === 'object') {
+                    sysFeatures = Object.keys(raw).slice(0, 2);
+                  } else {
+                    sysFeatures = [];
+                  }
                   featureList.push(...sysFeatures);
                 }
               }
