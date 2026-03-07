@@ -118,12 +118,12 @@ def _gather_structured_context(db, scope: str, entity: str | None) -> str:
         if teams:
             parts.append("TEAM PERFORMANCE COMPARISON:")
             for t in teams:
-                meta = t.get("metadata", {})
-                car = meta.get("car", {})
-                con = car.get("constructor", {}) if isinstance(car, dict) else {}
-                telem = car.get("telemetry", {}) if isinstance(car, dict) else {}
-                health = car.get("health", {}) if isinstance(car, dict) else {}
-                strat = meta.get("strategy", {})
+                meta = t.get("metadata") or {}
+                car = meta.get("car") or {}
+                con = (car.get("constructor") or {}) if isinstance(car, dict) else {}
+                telem = (car.get("telemetry") or {}) if isinstance(car, dict) else {}
+                health = (car.get("health") or {}) if isinstance(car, dict) else {}
+                strat = meta.get("strategy") or {}
                 parts.append(
                     f"  {t.get('team')}: wins={con.get('total_wins', '?')}, "
                     f"podiums={con.get('total_podiums', '?')}, points={con.get('total_points', '?')}, "
