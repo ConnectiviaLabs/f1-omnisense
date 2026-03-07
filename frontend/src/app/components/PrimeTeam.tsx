@@ -347,8 +347,8 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   const [loading, setLoading] = useState(true);
   const [similarTeams, setSimilarTeams] = useState<SimilarTeam[]>([]);
   const [intraPairs, setIntraPairs] = useState<IntraTeamPair[]>([]);
-  const [telKex, setTelKex] = useState<Record<string, any>>({});
-  const [telKexLoading, setTelKexLoading] = useState<Record<string, boolean>>({});
+  const [telKex, setTelKex] = useState<any>(null);
+  const [telKexLoading, setTelKexLoading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -376,24 +376,20 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
       .then(r => r.ok ? r.json() : []).then(setIntraPairs).catch(() => setIntraPairs([]));
   }, [teamId, season]);
 
-  // Auto-generate telemetry KeX briefings when profile loads
+  // Auto-generate team-level telemetry KeX briefing
   useEffect(() => {
-    const codes = (profile?.drivers ?? []).map(d => d.driver_code).filter(Boolean);
-    if (codes.length === 0) return;
-    for (const code of codes) {
-      if (telKex[code] || telKexLoading[code]) continue;
-      setTelKexLoading(prev => ({ ...prev, [code]: true }));
-      fetch(`/api/mccar-telemetry/kex/${code}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: season }),
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) setTelKex(prev => ({ ...prev, [code]: data })); })
-        .catch(() => {})
-        .finally(() => setTelKexLoading(prev => ({ ...prev, [code]: false })));
-    }
-  }, [profile, season]);
+    if (!profile || telKex || telKexLoading) return;
+    setTelKexLoading(true);
+    fetch(`/api/mccar-telemetry/kex/team/${teamId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: season }),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setTelKex(data); })
+      .catch(() => {})
+      .finally(() => setTelKexLoading(false));
+  }, [profile, season, teamId]);
 
   if (loading) {
     return (
@@ -614,30 +610,15 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
         </div>
       )}
 
-      {/* ── KeX Car Telemetry Briefings ── */}
-      {(profile.drivers ?? []).some(d => d.driver_code && (telKex[d.driver_code] || telKexLoading[d.driver_code])) && (
-        <div className="space-y-3">
-          <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
-            {teamName} Car Telemetry Intelligence
-          </h3>
-          {(profile.drivers ?? []).map(d => {
-            const code = d.driver_code;
-            if (!code) return null;
-            const kex = telKex[code] ?? null;
-            const kexLoading = telKexLoading[code] ?? false;
-            if (!kex && !kexLoading) return null;
-            return (
-              <KexBriefingCard
-                key={code}
-                title={`${code} — ${teamName} Car Telemetry`}
-                icon="sparkles"
-                kex={kex}
-                loading={kexLoading}
-                loadingText={`Generating ${code} telemetry briefing…`}
-              />
-            );
-          })}
-        </div>
+      {/* ── KeX Car Telemetry Briefing (Team) ── */}
+      {(telKex || telKexLoading) && (
+        <KexBriefingCard
+          title={`${teamName} Car Telemetry Intelligence`}
+          icon="sparkles"
+          kex={telKex}
+          loading={telKexLoading}
+          loadingText={`Generating ${teamName} telemetry briefing…`}
+        />
       )}
     </div>
   );
@@ -654,22 +635,19 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
     vehicles.filter(v => teamIdFromName(v.team) === teamId),
     [vehicles, teamId]
   );
-  const [anomKex, setAnomKex] = useState<Record<string, any>>({});
-  const [anomKexLoading, setAnomKexLoading] = useState<Record<string, boolean>>({});
+  const [anomKex, setAnomKex] = useState<any>(null);
+  const [anomKexLoading, setAnomKexLoading] = useState(false);
 
-  // Auto-generate anomaly KeX briefings when team drivers load
+  // Auto-generate team-level anomaly KeX briefing
   useEffect(() => {
-    if (loading || teamDrivers.length === 0) return;
-    for (const v of teamDrivers) {
-      if (anomKex[v.code] || anomKexLoading[v.code]) continue;
-      setAnomKexLoading(prev => ({ ...prev, [v.code]: true }));
-      fetch(`/api/anomaly/kex/${v.code}`, { method: 'POST' })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data) setAnomKex(prev => ({ ...prev, [v.code]: data })); })
-        .catch(() => {})
-        .finally(() => setAnomKexLoading(prev => ({ ...prev, [v.code]: false })));
-    }
-  }, [teamDrivers, loading]);
+    if (loading || teamDrivers.length === 0 || anomKex || anomKexLoading) return;
+    setAnomKexLoading(true);
+    fetch(`/api/anomaly/kex/team/${teamId}`, { method: 'POST' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setAnomKex(data); })
+      .catch(() => {})
+      .finally(() => setAnomKexLoading(false));
+  }, [teamDrivers, loading, teamId]);
 
   if (loading) {
     return (
@@ -822,28 +800,15 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
         );
       })()}
 
-      {/* ── KeX Anomaly Briefings ── */}
-      {teamDrivers.some(v => anomKex[v.code] || anomKexLoading[v.code]) && (
-        <div className="space-y-3">
-          <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
-            {teamName} Health &amp; Reliability Intelligence
-          </h3>
-          {teamDrivers.map(v => {
-            const kex = anomKex[v.code] ?? null;
-            const kexLoading = anomKexLoading[v.code] ?? false;
-            if (!kex && !kexLoading) return null;
-            return (
-              <KexBriefingCard
-                key={v.code}
-                title={`${v.code} — ${teamName} Health & Reliability`}
-                icon="brain"
-                kex={kex}
-                loading={kexLoading}
-                loadingText={`Generating ${v.code} health briefing…`}
-              />
-            );
-          })}
-        </div>
+      {/* ── KeX Anomaly Briefing (Team) ── */}
+      {(anomKex || anomKexLoading) && (
+        <KexBriefingCard
+          title={`${teamName} Health & Reliability Intelligence`}
+          icon="brain"
+          kex={anomKex}
+          loading={anomKexLoading}
+          loadingText={`Generating ${teamName} health briefing…`}
+        />
       )}
     </div>
   );

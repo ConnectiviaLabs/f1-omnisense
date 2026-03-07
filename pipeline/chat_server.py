@@ -1703,6 +1703,246 @@ async def anomaly_kex(driver_code: str):
     return result
 
 
+# ── Team-level KeX Briefings ───────────────────────────────────────────
+
+@app.post("/api/local/mccar-telemetry/kex/team/{constructor_id}")
+async def car_telemetry_kex_team(constructor_id: str, body: dict = {}):
+    """Generate a single team-level car telemetry KeX briefing aggregating all drivers."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    year = body.get("year")
+    if not year:
+        raise HTTPException(400, "year is required in request body")
+
+    db = get_data_db()
+    coll = db["kex_car_telemetry_briefings"]
+
+    # Resolve driver codes from constructor_profiles
+    profile = db["constructor_profiles"].find_one(
+        {"constructor_id": constructor_id, "season": int(year)}, {"_id": 0}
+    )
+    if not profile:
+        profile = db["constructor_profiles"].find_one(
+            {"constructor_id": constructor_id}, {"_id": 0}
+        )
+    if not profile or not profile.get("drivers"):
+        raise HTTPException(404, f"No profile for {constructor_id} in {year}")
+
+    team_name = profile.get("constructor_name", constructor_id)
+    driver_codes = [d["driver_code"] for d in profile["drivers"] if d.get("driver_code")]
+    if not driver_codes:
+        raise HTTPException(404, f"No drivers found for {constructor_id}")
+
+    # Gather telemetry for all drivers
+    all_rows = []
+    for code in driver_codes:
+        docs = list(db["telemetry_race_summary"].find(
+            {"Driver": code, "Year": int(year)},
+            {"_id": 0, "compounds": 0},
+        ))
+        for doc in docs:
+            doc["_driver"] = code
+        all_rows.extend(docs)
+
+    if not all_rows:
+        raise HTTPException(404, f"No telemetry for {constructor_id} drivers in {year}")
+
+    # Cache key and hash
+    cache_key = f"team:{constructor_id}:{year}:season"
+    hash_payload = f"v1:{cache_key}:{len(all_rows)}"
+    last = {k: v for k, v in all_rows[-1].items() if k not in ("_id",)}
+    hash_payload += ":" + _json.dumps(last, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(all_rows)
+    drop_cols = [c for c in ["Driver", "driver_acronym", "meeting_name",
+                              "session_name", "session_type", "compound",
+                              "_id", "_driver"] if c in df.columns]
+    df_clean = df.drop(columns=drop_cols, errors="ignore")
+
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    drivers_str = ", ".join(driver_codes)
+    persona = (
+        f"You are an F1 telemetry engineer analyzing {team_name}'s {year} season car performance "
+        f"across their full driver lineup ({drivers_str}). "
+        "Compare how each driver extracts performance from the car — speed characteristics, "
+        "braking behavior, DRS usage, tyre management differences. "
+        "Identify team-wide strengths and weaknesses, plus driver-specific divergences. "
+        "IMPORTANT: Write a concise flowing team analysis in 4-5 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = (
+        f"Analyze {team_name}'s car telemetry across {year} — team-wide performance patterns, "
+        f"driver comparison ({drivers_str}), and areas of strength and concern."
+    )
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(provider=LLMProvider.GROQ, model="llama-3.3-70b-versatile",
+                                task_type="realtime", temperature=0.15)
+        insight = extract_realtime(df_clean, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Team telemetry KeX Groq failed for %s: %s", constructor_id, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="qwen3.5:9b",
+                                    task_type="realtime", temperature=0.15)
+            insight = extract_realtime(df_clean, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Team telemetry KeX edge fallback failed for %s", constructor_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+    now = _time.time()
+    result = {
+        "cache_key": cache_key, "constructor_id": constructor_id, "team_name": team_name,
+        "drivers": driver_codes, "year": int(year), "type": "team_season",
+        "text": text, "model_used": model_used, "provider_used": provider_used,
+        "scores": scores, "summary": _extract_summary(text),
+        "grounding_score": grounding_score, "generated_at": now, "data_hash": data_hash,
+    }
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/anomaly/kex/team/{constructor_id}")
+async def anomaly_kex_team(constructor_id: str, body: dict = {}):
+    """Generate a single team-level anomaly/health KeX briefing aggregating all drivers."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    db = get_data_db()
+    coll = db["kex_anomaly_briefings"]
+    year = body.get("year")
+
+    # Resolve driver codes
+    filt: dict = {"constructor_id": constructor_id}
+    if year:
+        filt["season"] = int(year)
+    profile = db["constructor_profiles"].find_one(filt, {"_id": 0})
+    if not profile:
+        profile = db["constructor_profiles"].find_one({"constructor_id": constructor_id}, {"_id": 0})
+    if not profile or not profile.get("drivers"):
+        raise HTTPException(404, f"No profile for {constructor_id}")
+
+    team_name = profile.get("constructor_name", constructor_id)
+    driver_codes = [d["driver_code"] for d in profile["drivers"] if d.get("driver_code")]
+    if not driver_codes:
+        raise HTTPException(404, f"No drivers for {constructor_id}")
+
+    # Gather anomaly data for all drivers
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_entries = []
+    for d in snapshot.get("drivers", []):
+        if d.get("code") in driver_codes or d.get("name_acronym") in driver_codes:
+            driver_entries.append(d)
+
+    if not driver_entries:
+        raise HTTPException(404, f"No anomaly data for {constructor_id} drivers")
+
+    # Cache
+    cache_key = f"team:{constructor_id}:anomaly"
+    hash_payload = "v1:" + _json.dumps(driver_entries, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    # Build combined DataFrame from all drivers' race trends
+    trend_rows = []
+    for entry in driver_entries:
+        code = entry.get("code", "?")
+        for r in entry.get("races", [])[-10:]:
+            row = {"driver": code, "race": r.get("race", "")}
+            for sname, sinfo in r.get("systems", {}).items():
+                row[f"{sname}_health"] = sinfo.get("health")
+            trend_rows.append(row)
+
+    if not trend_rows:
+        # Fallback: flat current-state rows
+        for entry in driver_entries:
+            code = entry.get("code", "?")
+            row = {"driver": code, "overallHealth": entry.get("overallHealth")}
+            for s in entry.get("systems", []):
+                row[f"{s.get('name','?')}_health"] = s.get("health")
+            trend_rows.append(row)
+
+    df = pd.DataFrame(trend_rows)
+
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    drivers_str = ", ".join(driver_codes)
+    persona = (
+        f"You are an F1 reliability engineer analyzing {team_name}'s fleet health "
+        f"across their driver lineup ({drivers_str}). "
+        "Compare system health between drivers — identify shared weaknesses (team-wide car issues) "
+        "vs driver-specific anomalies. Assess fleet reliability trends and maintenance priorities. "
+        "IMPORTANT: Write a concise flowing team briefing in 4-5 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = (
+        f"Analyze {team_name}'s fleet health — team-wide system reliability, "
+        f"driver comparison ({drivers_str}), shared weaknesses, and maintenance priorities."
+    )
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(provider=LLMProvider.GROQ, model="llama-3.3-70b-versatile",
+                                task_type="anomaly", temperature=0.15)
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Team anomaly KeX Groq failed for %s: %s", constructor_id, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="qwen3.5:9b",
+                                    task_type="anomaly", temperature=0.15)
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Team anomaly KeX edge fallback failed for %s", constructor_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+    now = _time.time()
+    result = {
+        "cache_key": cache_key, "constructor_id": constructor_id, "team_name": team_name,
+        "drivers": driver_codes, "type": "team_anomaly",
+        "text": text, "model_used": model_used, "provider_used": provider_used,
+        "scores": scores, "summary": _extract_summary(text),
+        "grounding_score": grounding_score, "generated_at": now, "data_hash": data_hash,
+    }
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 @app.post("/api/local/forecast/kex/{driver_code}")
 async def forecast_kex(driver_code: str):
     """Generate WISE predictive maintenance forecast for a driver.
