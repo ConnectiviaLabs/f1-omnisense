@@ -11,6 +11,7 @@ import {
 import KexBriefingCard from './KexBriefingCard';
 import { ForecastChart } from './ForecastChart';
 import { HealthGauge } from './HealthGauge';
+import { AgentActivity } from './AgentActivity';
 import { getCarTelemetryKex, getAnomalyKex, type CarTelemetryKex } from '../api/driverIntel';
 import {
   type HealthLevel, type VehicleData,
@@ -180,6 +181,26 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
   // Active pillar — driven by sidebar
   const activeTab: FleetTab = (defaultSection as FleetTab) ?? 'telemetry';
+
+  // Session picker for agent runs
+  const [sessions, setSessions] = useState<{ session_key: number; meeting_name: string; session_type: string; year: number }[]>([]);
+  const [selectedSessionKey, setSelectedSessionKey] = useState<number | undefined>();
+
+  useEffect(() => {
+    fetch('/api/local/openf1/sessions?session_type=Race')
+      .then(r => r.json())
+      .then((data: any[]) => {
+        const mapped = data.slice(0, 30).map(s => ({
+          session_key: s.session_key,
+          meeting_name: s.meeting_name || s.circuit_short_name || `Session ${s.session_key}`,
+          session_type: s.session_type || 'Race',
+          year: s.year || new Date(s.date_start).getFullYear(),
+        }));
+        setSessions(mapped);
+        if (mapped.length) setSelectedSessionKey(mapped[0].session_key);
+      })
+      .catch(() => {});
+  }, []);
 
   // Per-tab KeX state (lazy-loaded)
   const [anomalyKex, setAnomalyKex] = useState<any>(null);
@@ -1220,6 +1241,29 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             loading={anomalyKexLoading}
             loadingText="Extracting anomaly intelligence\u2026"
           />
+
+          {/* Agent Analysis — session picker + live agent activity */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <select
+                title="Select race session for agent analysis"
+                value={selectedSessionKey ?? ''}
+                onChange={e => setSelectedSessionKey(Number(e.target.value))}
+                className="bg-secondary border border-border rounded-md px-3 py-1.5 text-[11px] font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {sessions.map(s => (
+                  <option key={s.session_key} value={s.session_key}>
+                    {s.year} {s.meeting_name} — {s.session_type}
+                  </option>
+                ))}
+                {sessions.length === 0 && <option value="">Loading sessions...</option>}
+              </select>
+            </div>
+            <AgentActivity
+              sessionKey={selectedSessionKey}
+              driverNumber={selectedCar.number}
+            />
+          </div>
           </>)}
 
           {/* FORECAST TAB */}
