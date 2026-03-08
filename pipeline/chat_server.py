@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -49,6 +49,7 @@ from pipeline.omni_dapt_router import router as omni_dapt_router
 from pipeline.opponents.server import router as opponents_router, init_profiler_with_db
 from pipeline.updater.server import router as updater_router
 from pipeline.advantage_router import router as advantage_router
+from pipeline.omni_agents_router import router as omni_agents_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ app.include_router(omni_dapt_router)
 app.include_router(opponents_router)
 app.include_router(updater_router)
 app.include_router(advantage_router)
+app.include_router(omni_agents_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
@@ -2705,6 +2707,183 @@ async def pipeline_videos():
     return {"videos": docs, "count": len(docs)}
 
 
+# ── AutoML (onmichine) ──────────────────────────────────────────────
+
+_automl_jobs: dict = {}  # in-memory job store; also persisted to MongoDB
+
+
+class AutoMLRequest(BaseModel):
+    target_column: str
+    data_source: str = "upload"  # "upload" or "collection"
+    collection: str | None = None  # MongoDB collection name
+    query: dict | None = None  # MongoDB query filter
+    sample_rows: int | None = None
+    time_budget_s: float = 300.0
+    max_hpo_trials: int = 50
+    task_type: str | None = None  # regression, binary_classification, multiclass_classification
+    model: str | None = None  # Groq model override
+
+
+@app.post("/api/local/automl/run")
+async def automl_run(background_tasks: BackgroundTasks, body: AutoMLRequest):
+    """Start an AutoML pipeline run via the onmichine agent.
+
+    Supports two data sources:
+    - Upload CSV via POST /api/local/automl/upload first, then reference the temp path
+    - Or specify a MongoDB collection + query to export as CSV automatically
+    """
+    import asyncio
+    import tempfile
+    import uuid
+    from datetime import datetime, timezone
+
+    job_id = str(uuid.uuid4())[:8]
+    db = get_data_db()
+
+    # Resolve data path
+    if body.collection:
+        # Export MongoDB collection to temp CSV
+        q = body.query or {}
+        docs = list(db[body.collection].find(q, {"_id": 0}).limit(body.sample_rows or 50000))
+        if not docs:
+            raise HTTPException(400, f"No documents in {body.collection} matching query")
+        import pandas as pd
+        df = pd.DataFrame(docs)
+        if body.target_column not in df.columns:
+            raise HTTPException(400, f"Column '{body.target_column}' not in {list(df.columns)[:10]}...")
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", prefix=f"automl_{job_id}_")
+        df.to_csv(tmp.name, index=False)
+        data_path = tmp.name
+        row_count = len(df)
+    else:
+        # Check for uploaded file
+        upload_path = f"/tmp/automl_upload_{job_id}.csv"
+        if not os.path.exists(upload_path):
+            raise HTTPException(400, "No data source. Set 'collection' or upload a CSV first via /api/local/automl/upload")
+        data_path = upload_path
+        row_count = sum(1 for _ in open(data_path)) - 1
+
+    _automl_jobs[job_id] = {
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "target_column": body.target_column,
+        "row_count": row_count,
+        "collection": body.collection,
+    }
+
+    async def _worker():
+        from onmichine import RunConfig, run as automl_run_fn
+        try:
+            config = RunConfig(
+                data_path=data_path,
+                target_column=body.target_column,
+                output_dir=f"/tmp/automl_output_{job_id}",
+                time_budget_s=body.time_budget_s,
+                max_hpo_trials=body.max_hpo_trials,
+                sample_rows=body.sample_rows,
+                model=body.model,
+            )
+            if body.task_type:
+                from onmichine._types import TaskType
+                config.task_type = TaskType(body.task_type)
+
+            state = await asyncio.to_thread(automl_run_fn, config)
+
+            import math
+
+            def _clean(obj):
+                """Replace NaN/Inf with None for JSON serialization."""
+                if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                    return None
+                if isinstance(obj, dict):
+                    return {k: _clean(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_clean(v) for v in obj]
+                return obj
+
+            result = _clean({
+                "status": "complete",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "best_model": state.best_trial.model_name if state.best_trial else None,
+                "best_score": state.best_trial.primary_score if state.best_trial else None,
+                "holdout_metrics": state.holdout_metrics or {},
+                "leaderboard": state.leaderboard[:10] if state.leaderboard else [],
+                "feature_importance": dict(list((state.feature_importance or {}).items())[:20]),
+                "model_card": state.model_card_md[:2000] if state.model_card_md else "",
+                "trials_count": len(state.trials),
+                "errors": state.errors,
+                "output_files": state.output_files,
+                "task_type": state.task_type.value if state.task_type else None,
+            })
+            _automl_jobs[job_id].update(result)
+            db["automl_jobs"].replace_one({"job_id": job_id}, {**_automl_jobs[job_id], "job_id": job_id}, upsert=True)
+            logger.info("AutoML job %s complete: %s (score=%.4f)", job_id, result["best_model"], result.get("best_score", 0))
+
+        except Exception as e:
+            logger.error("AutoML job %s failed: %s", job_id, e)
+            _automl_jobs[job_id].update({"status": "error", "error": str(e)})
+            db["automl_jobs"].replace_one({"job_id": job_id}, {**_automl_jobs[job_id], "job_id": job_id}, upsert=True)
+
+    background_tasks.add_task(_worker)
+    return {"job_id": job_id, "status": "running", "message": f"AutoML pipeline started ({row_count} rows, target={body.target_column})"}
+
+
+@app.get("/api/local/automl/status/{job_id}")
+async def automl_status(job_id: str):
+    """Poll AutoML job status. Returns full results when complete."""
+    import math
+
+    def _clean(obj):
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return obj
+
+    if job_id in _automl_jobs:
+        return _clean({**_automl_jobs[job_id], "job_id": job_id})
+    # Check MongoDB for persisted jobs
+    db = get_data_db()
+    doc = db["automl_jobs"].find_one({"job_id": job_id}, {"_id": 0})
+    if doc:
+        return _clean(doc)
+    raise HTTPException(404, f"Job {job_id} not found")
+
+
+@app.get("/api/local/automl/jobs")
+async def automl_jobs():
+    """List all AutoML jobs."""
+    import math
+
+    def _clean(obj):
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return obj
+
+    db = get_data_db()
+    docs = list(db["automl_jobs"].find({}, {"_id": 0}).sort("started_at", -1).limit(20))
+    return _clean({"jobs": docs, "count": len(docs)})
+
+
+@app.post("/api/local/automl/upload")
+async def automl_upload(file: UploadFile = File(...)):
+    """Upload a CSV file for AutoML processing."""
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+    upload_path = f"/tmp/automl_upload_{job_id}.csv"
+    content = await file.read()
+    with open(upload_path, "wb") as f:
+        f.write(content)
+    row_count = content.decode("utf-8", errors="ignore").count("\n") - 1
+    return {"upload_id": job_id, "path": upload_path, "rows": row_count, "filename": file.filename}
+
+
 # ── Strategy Tracker ──
 
 @app.get("/api/local/strategy/tracker")
@@ -2977,8 +3156,17 @@ async def strategy_elt(year: int = None, circuit: str = None):
 
     baselines = list(db["elt_parameters"].find(baseline_q, {"_id": 0}).sort("baseline_lap_time", 1))
 
-    driver_q = {"type": "driver_delta"}
-    drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+    # Prefer per-year deltas when year is specified, fall back to all-time deltas
+    if year:
+        driver_q = {"type": "driver_year_delta", "year": year}
+        drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+        if not drivers:
+            # Fall back to all-time deltas if no per-year data
+            driver_q = {"type": "driver_delta"}
+            drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+    else:
+        driver_q = {"type": "driver_delta"}
+        drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
 
     return {
         "baselines": baselines,
@@ -3028,6 +3216,262 @@ async def strategy_bilstm():
     }
 
 
+# ── BiLSTM Lap Time Inference ──────────────────────────────────────
+
+_bilstm_model = None
+_bilstm_scalers = None
+_bilstm_meta = None
+
+
+def _load_bilstm():
+    """Lazy-load BiLSTM model, scalers, and metadata."""
+    global _bilstm_model, _bilstm_scalers, _bilstm_meta
+    if _bilstm_model is not None:
+        return _bilstm_model, _bilstm_scalers, _bilstm_meta
+
+    import torch
+    import torch.nn as nn
+
+    base = Path(__file__).resolve().parent.parent / "colabModels" / "bilstm_temporal" / "output"
+    pt_path = base / "bilstm_best.pt"
+    scaler_path = base / "bilstm_scalers.pkl"
+    meta_path = base / "bilstm_metadata.json"
+
+    if not pt_path.exists():
+        raise HTTPException(500, f"BiLSTM model not found at {pt_path}")
+
+    # Load metadata
+    with open(meta_path) as f:
+        _bilstm_meta = json.load(f)
+
+    # Load scalers (feature_scaler + target_scaler)
+    with open(scaler_path, "rb") as f:
+        _bilstm_scalers = pickle.load(f)
+
+    # Rebuild model architecture
+    arch = _bilstm_meta["architecture"]
+
+    class BiLSTMLapPredictor(nn.Module):
+        def __init__(self, input_size, hidden_size=128, num_layers=2, dropout=0.3):
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_size=input_size, hidden_size=hidden_size,
+                num_layers=num_layers, batch_first=True,
+                bidirectional=True, dropout=dropout if num_layers > 1 else 0,
+            )
+            self.head = nn.Sequential(
+                nn.Linear(hidden_size * 2, 64), nn.ReLU(),
+                nn.Dropout(dropout), nn.Linear(64, 1),
+            )
+
+        def forward(self, x):
+            lstm_out, _ = self.lstm(x)
+            return self.head(lstm_out[:, -1, :]).squeeze(-1)
+
+    _bilstm_model = BiLSTMLapPredictor(
+        input_size=arch["input_size"],
+        hidden_size=arch["hidden_size"],
+        num_layers=arch["num_layers"],
+        dropout=arch["dropout"],
+    )
+    _bilstm_model.load_state_dict(torch.load(pt_path, map_location="cpu", weights_only=True))
+    _bilstm_model.eval()
+    logger.info("BiLSTM model loaded from %s", pt_path)
+
+    return _bilstm_model, _bilstm_scalers, _bilstm_meta
+
+
+class BiLSTMPredictionRequest(BaseModel):
+    circuit: str
+    driver_code: str
+    compound: str
+    lap_start: int = 1
+    lap_end: int = 20
+    tyre_life_start: int = 1
+    position: int = 10
+    stint: int = 1
+    baseline_pace_s: float | None = None
+    rainfall: float | None = None
+
+
+@app.post("/api/local/strategy/predict-lap-bilstm")
+async def strategy_predict_lap_bilstm(req: BiLSTMPredictionRequest):
+    """Predict lap times using BiLSTM temporal model with 10-lap rolling window."""
+    import torch
+
+    model, scalers, meta = _load_bilstm()
+    db = get_data_db()
+
+    features = meta["features"]  # 30 features
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+    window_size = meta["architecture"]["window_size"]
+
+    # Validate inputs
+    compound_code = compound_map.get(req.compound.upper())
+    if compound_code is None:
+        raise HTTPException(400, f"Unknown compound: {req.compound}")
+    circuit_code = circuit_rank.get(req.circuit)
+    if circuit_code is None:
+        raise HTTPException(400, f"Unknown circuit: {req.circuit}. Known: {list(circuit_rank.keys())[:5]}...")
+    driver_code_enc = driver_rank.get(req.driver_code.upper())
+    if driver_code_enc is None:
+        raise HTTPException(400, f"Unknown driver: {req.driver_code}")
+
+    # Look up team
+    standing = db["jolpica_driver_standings"].find_one(
+        {"driver_code": req.driver_code.upper()}, {"_id": 0, "constructor_name": 1},
+        sort=[("season", -1)],
+    )
+    team_name = standing["constructor_name"] if standing else "McLaren"
+    team_code = team_rank.get(team_name, team_rank.get("McLaren", 3))
+
+    # Total laps
+    race_doc = db["jolpica_race_results"].find_one(
+        {"race_name": req.circuit, "position": 1}, {"_id": 0, "laps": 1}, sort=[("season", -1)],
+    )
+    total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
+
+    # Weather
+    weather_doc = db["fastf1_weather"].find_one(
+        {"Race": req.circuit, "SessionType": "R"}, {"_id": 0}, sort=[("Year", -1)],
+    )
+    air_doc = db["race_air_density"].find_one({"race": req.circuit}, {"_id": 0}, sort=[("year", -1)])
+    air_temp = (weather_doc or {}).get("AirTemp") or (air_doc or {}).get("avg_temp_c") or 28.0
+    track_temp = (weather_doc or {}).get("TrackTemp") or air_temp + 15
+    humidity = (weather_doc or {}).get("Humidity") or 40.0
+    rainfall = req.rainfall if req.rainfall is not None else ((weather_doc or {}).get("Rainfall") or 0.0)
+    air_density = (air_doc or {}).get("air_density_kg_m3") or 1.18
+
+    # Sector speeds + times from MongoDB
+    ss_agg = list(db["fastf1_laps"].aggregate([
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "SpeedI1": {"$gt": 0}, "SessionType": "R"}},
+        {"$group": {"_id": None, "SpeedI1": {"$avg": "$SpeedI1"}, "SpeedI2": {"$avg": "$SpeedI2"},
+                    "SpeedFL": {"$avg": "$SpeedFL"}, "SpeedST": {"$avg": "$SpeedST"},
+                    "s1": {"$avg": "$Sector1Time"}, "s2": {"$avg": "$Sector2Time"},
+                    "s3": {"$avg": "$Sector3Time"}}},
+    ]))
+    telem_doc = db["telemetry_race_summary"].find_one(
+        {"Driver": req.driver_code.upper(), "Race": req.circuit}, {"_id": 0, "avg_speed": 1, "top_speed": 1},
+        sort=[("Year", -1)],
+    ) or db["telemetry_race_summary"].find_one(
+        {"Race": req.circuit}, {"_id": 0, "avg_speed": 1, "top_speed": 1}, sort=[("Year", -1)],
+    )
+    avg_speed = telem_doc["avg_speed"] if telem_doc else 200.0
+    top_speed = telem_doc["top_speed"] if telem_doc else 310.0
+
+    ss = ss_agg[0] if ss_agg else {}
+    speed_i1 = ss.get("SpeedI1") or avg_speed * 0.95
+    speed_i2 = ss.get("SpeedI2") or avg_speed
+    speed_fl = ss.get("SpeedFL") or avg_speed * 1.05
+    speed_st = ss.get("SpeedST") or top_speed * 0.95
+
+    # Degradation
+    deg_doc = db["tyre_degradation_curves"].find_one(
+        {"circuit": req.circuit, "compound": req.compound.upper()}, {"_id": 0, "coefficients": 1, "intercept": 1},
+    )
+
+    def calc_deg(tl):
+        if not deg_doc or not deg_doc.get("coefficients"):
+            return 0.0
+        v = deg_doc.get("intercept", 0)
+        for i, c in enumerate(deg_doc["coefficients"]):
+            v += c * (tl ** (i + 1))
+        return v
+
+    # Baseline
+    if req.baseline_pace_s:
+        baseline = req.baseline_pace_s
+    else:
+        agg = list(db["fastf1_laps"].aggregate([
+            {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit, "LapTime": {"$gt": 50, "$lt": 200}}},
+            {"$group": {"_id": None, "avg": {"$avg": "$LapTime"}}},
+        ]))
+        baseline = agg[0]["avg"] if agg and agg[0].get("avg") else 90.0
+
+    s1_avg = ss.get("s1") or baseline / 3
+    s2_avg = ss.get("s2") or baseline / 3
+    s3_avg = ss.get("s3") or baseline / 3
+
+    # Build the rolling window: initialize with baseline values
+    # BiLSTM needs 10-lap context; we fill with steady-state approximations
+    def build_feature_row(lap_num, tyre_life, lap_time):
+        race_progress = lap_num / total_laps
+        row = {
+            "LapTime": lap_time, "TyreLife": tyre_life, "CompoundCode": compound_code,
+            "LapNumber": lap_num, "Position": req.position, "Stint": req.stint,
+            "FreshTyre": 1 if tyre_life == 1 else 0,
+            "RaceProgress": race_progress, "FuelLoad": 1.0 - race_progress,
+            "SpeedI1": speed_i1, "SpeedI2": speed_i2, "SpeedFL": speed_fl, "SpeedST": speed_st,
+            "Sector1Time": s1_avg, "Sector2Time": s2_avg, "Sector3Time": s3_avg,
+            "ExpectedDegDelta": calc_deg(tyre_life),
+            "TrackTemp": track_temp, "AirTemp": air_temp, "Humidity": humidity,
+            "Rainfall": rainfall, "AirDensity": air_density,
+            "avg_speed": avg_speed, "top_speed": top_speed,
+            "CircuitCode": circuit_code, "DriverCode": driver_code_enc, "TeamCode": team_code,
+            "TyreAgeAtStart": 0 if req.stint == 1 else tyre_life,
+            "StintNumber_of1": req.stint, "IsUsedTyre": 0 if req.stint == 1 else 1,
+        }
+        return [row.get(f, 0) for f in features]
+
+    # Initialize window with synthetic laps before lap_start
+    window = []
+    for i in range(window_size):
+        pre_lap = max(1, req.lap_start - window_size + i)
+        pre_tyre = max(1, req.tyre_life_start - (req.lap_start - pre_lap))
+        window.append(build_feature_row(pre_lap, pre_tyre, baseline))
+
+    # Scalers: scalers is a dict or tuple of (feature_scaler, target_scaler)
+    if isinstance(scalers, dict):
+        feat_scaler = scalers["feature_scaler"]
+        tgt_scaler = scalers["target_scaler"]
+    else:
+        feat_scaler, tgt_scaler = scalers[0], scalers[1]
+
+    predictions = []
+    for lap_num in range(req.lap_start, req.lap_end + 1):
+        tyre_life = req.tyre_life_start + (lap_num - req.lap_start)
+
+        # Scale the window
+        window_arr = np.array(window, dtype=np.float32)
+        scaled_window = feat_scaler.transform(window_arr).reshape(1, window_size, -1).astype(np.float32)
+
+        with torch.no_grad():
+            pred_scaled = model(torch.tensor(scaled_window)).item()
+
+        pred = float(tgt_scaler.inverse_transform([[pred_scaled]])[0, 0])
+
+        predictions.append({
+            "lap": lap_num,
+            "tyre_life": tyre_life,
+            "predicted_s": round(pred, 3),
+            "deg_delta": round(calc_deg(tyre_life), 3),
+        })
+
+        # Slide window: drop oldest, append new row with predicted lap time
+        window.pop(0)
+        window.append(build_feature_row(lap_num, tyre_life, pred))
+
+    return {
+        "model": "BiLSTM",
+        "circuit": req.circuit,
+        "driver": req.driver_code.upper(),
+        "compound": req.compound.upper(),
+        "total_laps": total_laps,
+        "baseline_pace_s": round(baseline, 3),
+        "window_size": window_size,
+        "weather": {
+            "air_temp_c": air_temp, "track_temp_c": track_temp,
+            "humidity_pct": humidity, "rainfall": rainfall, "air_density": air_density,
+        },
+        "predictions": predictions,
+    }
+
+
 # ── XGBoost Lap Time Inference ──────────────────────────────────────
 
 _xgb_model = None  # lazy-loaded
@@ -3058,6 +3502,8 @@ class LapPredictionRequest(BaseModel):
     position: int = 10
     stint: int = 1
     baseline_pace_s: float | None = None  # if None, looked up from data
+    rainfall: float | None = None  # 0.0 = dry, >0 = wet; if None, looked up from weather
+    gap_to_leader: float | None = None  # seconds; if None, estimated from position
 
 
 @app.post("/api/local/strategy/predict-lap")
@@ -3105,16 +3551,51 @@ async def strategy_predict_lap(req: LapPredictionRequest):
     )
     total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
 
-    # Weather: most recent air density for this circuit
-    air_doc = db["race_air_density"].find_one(
-        {"race": req.circuit},
-        {"_id": 0},
-        sort=[("year", -1)],
+    # Weather: real TrackTemp + Rainfall from fastf1_weather, air density from race_air_density
+    weather_doc = db["fastf1_weather"].find_one(
+        {"Race": req.circuit, "SessionType": "R"},
+        {"_id": 0, "TrackTemp": 1, "AirTemp": 1, "Humidity": 1, "Rainfall": 1},
+        sort=[("Year", -1)],
     )
-    air_temp = air_doc["avg_temp_c"] if air_doc else 28.0
-    humidity = air_doc["avg_humidity_pct"] if air_doc else 40.0
-    air_density = air_doc["air_density_kg_m3"] if air_doc else 1.18
-    track_temp = air_temp + 15  # rough approximation
+    air_doc = db["race_air_density"].find_one(
+        {"race": req.circuit}, {"_id": 0}, sort=[("year", -1)],
+    )
+    air_temp = (weather_doc or {}).get("AirTemp") or (air_doc or {}).get("avg_temp_c") or 28.0
+    track_temp = (weather_doc or {}).get("TrackTemp") or air_temp + 15
+    humidity = (weather_doc or {}).get("Humidity") or (air_doc or {}).get("avg_humidity_pct") or 40.0
+    rainfall = req.rainfall if req.rainfall is not None else ((weather_doc or {}).get("Rainfall") or 0.0)
+    air_density = (air_doc or {}).get("air_density_kg_m3") or 1.18
+
+    # Sector speeds: real averages from fastf1_laps for this driver at this circuit
+    sector_speed_pipeline = [
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "SpeedI1": {"$gt": 0}, "SessionType": "R"}},
+        {"$group": {"_id": None,
+                    "SpeedI1": {"$avg": "$SpeedI1"}, "SpeedI2": {"$avg": "$SpeedI2"},
+                    "SpeedFL": {"$avg": "$SpeedFL"}, "SpeedST": {"$avg": "$SpeedST"}}},
+    ]
+    sector_speed_agg = list(db["fastf1_laps"].aggregate(sector_speed_pipeline))
+    if not sector_speed_agg:
+        # Fallback: any driver at this circuit
+        sector_speed_pipeline[0]["$match"] = {
+            "Race": req.circuit, "SpeedI1": {"$gt": 0}, "SessionType": "R"
+        }
+        sector_speed_agg = list(db["fastf1_laps"].aggregate(sector_speed_pipeline))
+
+    # Sector times: real averages from fastf1_laps for lag feature initialization
+    sector_time_pipeline = [
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "Sector1Time": {"$gt": 0}, "SessionType": "R", "IsAccurate": True}},
+        {"$group": {"_id": None,
+                    "s1": {"$avg": "$Sector1Time"}, "s2": {"$avg": "$Sector2Time"},
+                    "s3": {"$avg": "$Sector3Time"}}},
+    ]
+    sector_time_agg = list(db["fastf1_laps"].aggregate(sector_time_pipeline))
+    if not sector_time_agg:
+        sector_time_pipeline[0]["$match"] = {
+            "Race": req.circuit, "Sector1Time": {"$gt": 0}, "SessionType": "R", "IsAccurate": True
+        }
+        sector_time_agg = list(db["fastf1_laps"].aggregate(sector_time_pipeline))
 
     # Speed: from telemetry_race_summary for this driver at this circuit
     telem_doc = db["telemetry_race_summary"].find_one(
@@ -3123,7 +3604,6 @@ async def strategy_predict_lap(req: LapPredictionRequest):
         sort=[("Year", -1)],
     )
     if not telem_doc:
-        # Fallback: any driver at this circuit
         telem_doc = db["telemetry_race_summary"].find_one(
             {"Race": req.circuit},
             {"_id": 0, "avg_speed": 1, "top_speed": 1},
@@ -3131,6 +3611,27 @@ async def strategy_predict_lap(req: LapPredictionRequest):
         )
     avg_speed = telem_doc["avg_speed"] if telem_doc else 200.0
     top_speed = telem_doc["top_speed"] if telem_doc else 310.0
+
+    # Resolve sector speeds with fallbacks
+    if sector_speed_agg:
+        ss = sector_speed_agg[0]
+        speed_i1 = ss.get("SpeedI1") or avg_speed * 0.95
+        speed_i2 = ss.get("SpeedI2") or avg_speed
+        speed_fl = ss.get("SpeedFL") or avg_speed * 1.05
+        speed_st = ss.get("SpeedST") or top_speed * 0.95
+    else:
+        speed_i1, speed_i2, speed_fl, speed_st = (
+            avg_speed * 0.95, avg_speed, avg_speed * 1.05, top_speed * 0.95
+        )
+
+    # Resolve sector times with fallbacks
+    if sector_time_agg:
+        st = sector_time_agg[0]
+        sector1_avg = st.get("s1") or baseline / 3
+        sector2_avg = st.get("s2") or baseline / 3
+        sector3_avg = st.get("s3") or baseline / 3
+    else:
+        sector1_avg = sector2_avg = sector3_avg = None  # set after baseline is computed
 
     # Degradation curve for expected delta
     deg_doc = db["tyre_degradation_curves"].find_one(
@@ -3172,10 +3673,19 @@ async def strategy_predict_lap(req: LapPredictionRequest):
             agg = list(db["fastf1_laps"].aggregate(pipeline))
             baseline = agg[0]["avg"] if agg and agg[0].get("avg") else 90.0
 
+    # Finalize sector times if deferred (no MongoDB data available)
+    if sector1_avg is None:
+        sector1_avg = sector2_avg = sector3_avg = baseline / 3
+
+    # Gap evolution: position-aware defaults
+    # During training, gap features default to 0 for leaders; estimate for non-leaders
+    gap_to_leader = req.gap_to_leader if req.gap_to_leader is not None else max(0, (req.position - 1) * 1.5)
+
     # Build feature vectors for each lap
     features_order = meta["features"]
     predictions = []
     prev_laps = [baseline, baseline, baseline]  # lag1, lag2, lag3
+    prev_sectors = [sector1_avg, sector2_avg, sector3_avg]
 
     for lap_num in range(req.lap_start, req.lap_end + 1):
         tyre_life = req.tyre_life_start + (lap_num - req.lap_start)
@@ -3183,8 +3693,6 @@ async def strategy_predict_lap(req: LapPredictionRequest):
         fuel_load = 1.0 - race_progress
         fresh_tyre = 1 if tyre_life == 1 else 0
         deg_delta = calc_deg_delta(tyre_life)
-
-        sector_est = baseline / 3  # rough sector split
 
         feature_dict = {
             "TyreLife": tyre_life,
@@ -3196,22 +3704,22 @@ async def strategy_predict_lap(req: LapPredictionRequest):
             "RaceProgress": race_progress,
             "FuelLoad": fuel_load,
             "TotalLaps": total_laps,
-            "SpeedI1": avg_speed * 0.95,
-            "SpeedI2": avg_speed,
-            "SpeedFL": avg_speed * 1.05,
-            "SpeedST": top_speed * 0.95,
+            "SpeedI1": speed_i1,
+            "SpeedI2": speed_i2,
+            "SpeedFL": speed_fl,
+            "SpeedST": speed_st,
             "LapTime_lag1": prev_laps[0],
             "LapTime_lag2": prev_laps[1],
             "LapTime_lag3": prev_laps[2],
             "LapTime_roll3": sum(prev_laps) / 3,
-            "Sector1Time_lag1": sector_est,
-            "Sector2Time_lag1": sector_est,
-            "Sector3Time_lag1": sector_est,
+            "Sector1Time_lag1": prev_sectors[0],
+            "Sector2Time_lag1": prev_sectors[1],
+            "Sector3Time_lag1": prev_sectors[2],
             "ExpectedDegDelta": deg_delta,
             "TrackTemp": track_temp,
             "AirTemp": air_temp,
             "Humidity": humidity,
-            "Rainfall": 0,
+            "Rainfall": rainfall,
             "AirDensity": air_density,
             "avg_speed": avg_speed,
             "top_speed": top_speed,
@@ -3221,6 +3729,13 @@ async def strategy_predict_lap(req: LapPredictionRequest):
             "TyreAgeAtStart": 0 if req.stint == 1 else tyre_life,
             "StintNumber_of1": req.stint,
             "IsUsedTyre": 0 if req.stint == 1 else 1,
+            # Gap evolution features (6 features the model was trained on)
+            "gap_to_leader": gap_to_leader,
+            "gap_delta": 0.0,
+            "gap_delta_roll3": 0.0,
+            "interval_to_car_ahead": min(gap_to_leader, 3.0) if req.position > 1 else 0.0,
+            "undercut_threat": 1.0 if gap_to_leader < 2.0 and req.position > 1 else 0.0,
+            "close_gap_trend": 0.0,
         }
 
         # Build ordered feature vector
@@ -3235,6 +3750,14 @@ async def strategy_predict_lap(req: LapPredictionRequest):
 
         # Update lag features with prediction for next lap
         prev_laps = [pred, prev_laps[0], prev_laps[1]]
+        # Approximate sector splits from predicted lap time using real sector ratios
+        total_sector = sector1_avg + sector2_avg + sector3_avg
+        if total_sector > 0:
+            prev_sectors = [
+                pred * sector1_avg / total_sector,
+                pred * sector2_avg / total_sector,
+                pred * sector3_avg / total_sector,
+            ]
 
     return {
         "circuit": req.circuit,
@@ -3246,6 +3769,7 @@ async def strategy_predict_lap(req: LapPredictionRequest):
             "air_temp_c": air_temp,
             "track_temp_c": track_temp,
             "humidity_pct": humidity,
+            "rainfall": rainfall,
             "air_density": air_density,
         },
         "predictions": predictions,
@@ -4292,27 +4816,28 @@ async def run_backtest_endpoint(
             {"season": target_season}, {"_id": 0}, sort=[("stored_at", -1)]
         )
         if stored and stored.get("results"):
-        results = stored["results"]
-        metrics = compute_metrics(results)
-        cases = find_case_studies(results, team_filter=team or "")
-        correlations = find_system_correlations(results)
-        return {
-            "season": stored["season"],
-            "races_evaluated": stored["races_evaluated"],
-            "total_predictions": stored["total_predictions"],
-            "metrics": metrics,
-            "case_studies": cases[:10],
-            "system_correlations": correlations,
-            "results": results,
-            "generated_at": stored["generated_at"],
-            "from_cache": True,
-        }
+            results = stored["results"]
+            metrics = compute_metrics(results)
+            cases = find_case_studies(results, team_filter=team or "")
+            correlations = find_system_correlations(results)
+            return {
+                "season": stored["season"],
+                "races_evaluated": stored["races_evaluated"],
+                "total_predictions": stored["total_predictions"],
+                "metrics": metrics,
+                "case_studies": cases[:10],
+                "system_correlations": correlations,
+                "results": results,
+                "generated_at": stored["generated_at"],
+                "from_cache": True,
+            }
 
     data = run_backtest(
         season=target_season,
         driver_filter=driver,
         team_filter=team,
         round_filter=race,
+        force=force,
     )
     if not data or not data.get("results"):
         raise HTTPException(404, "No backtest results generated")
