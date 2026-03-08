@@ -1,73 +1,69 @@
-"""
-Anomaly Detection Ensemble for F1 Telemetry.
+"""Backward-compatible DataFrame-based anomaly ensemble wrapper.
 
-Extracted from OmniSense DataSense backend (core/ViaAnomalyDetect.py).
-Self-contained — no MongoDB, Redis, or EventBus dependencies.
+Canonical implementation lives in ``omnianalytics/anomaly.py`` (TabularDataset
+API).  This module keeps the legacy DataFrame-in / DataFrame-out API used by
+``pipeline.anomaly.run_f1_anomaly`` and
+``omnisuitef1.omniagents.agents.telemetry_anomaly``.
 
-Models:
-  - IsolationForest (weight 1.0)
-  - SGDOneClassSVM  (weight 0.6)
-  - KNN distance    (weight 0.8)
-  - PCA reconstruction / Autoencoder (weight 0.9)
+Shared utilities (``estimate_contamination``, ``statistical_threshold``,
+``MODEL_WEIGHTS``) are imported from omnianalytics so they stay in sync.
 """
 
 import logging
+
 import numpy as np
 import pandas as pd
-
-from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.linear_model import SGDOneClassSVM
 from sklearn.neighbors import NearestNeighbors
-from sklearn.decomposition import PCA
+
+from omnianalytics.anomaly import (
+    AnomalyEnsemble,
+    estimate_contamination,
+    statistical_threshold,
+    MODEL_WEIGHTS,
+)
 
 logger = logging.getLogger(__name__)
 
-# ─── Utilities ───────────────────────────────────────────────────────
+# Re-export canonical symbols so ``from pipeline.anomaly.ensemble import …``
+# still works for anything that referenced them directly.
+__all__ = [
+    "AnomalyDetectionEnsemble",
+    "AnomalyStatistics",
+    "severity_from_votes",
+    "estimate_contamination",
+    "statistical_threshold",
+    "MODEL_WEIGHTS",
+    "AnomalyEnsemble",
+]
 
-def estimate_contamination(data, method="iqr"):
-    """Estimate anomaly contamination ratio from data distribution."""
-    if method == "iqr":
-        Q1 = np.percentile(data, 25, axis=0)
-        Q3 = np.percentile(data, 75, axis=0)
-        IQR = Q3 - Q1
-        IQR = np.where(IQR == 0, 1, IQR)
-        lower = Q1 - 1.5 * IQR
-        upper = Q3 + 1.5 * IQR
-        outlier_mask = np.any((data < lower) | (data > upper), axis=1)
-        contamination = outlier_mask.mean()
-    else:
-        contamination = 0.1
-    return float(np.clip(contamination, 0.01, 0.25))
-
-
-def statistical_threshold(scores, method="tukey"):
-    """Compute statistically-grounded anomaly threshold."""
-    scores = np.asarray(scores)
-    if method == "tukey":
-        Q1, Q3 = np.percentile(scores, [25, 75])
-        IQR = Q3 - Q1
-        return float(Q3 + 1.5 * IQR)
-    return float(np.percentile(scores, 95))
-
-
-MODEL_WEIGHTS = {
-    "IsolationForest": 1.0,
-    "Autoencoder": 0.9,
-    "OneClassSVM": 0.6,
-    "KNN": 0.8,
+# MODEL_WEIGHTS in omnianalytics uses "PCA"; legacy pipeline code expects
+# "Autoencoder".  Build a compat mapping once at import time.
+_LEGACY_WEIGHTS = {
+    k if k != "PCA" else "Autoencoder": v for k, v in MODEL_WEIGHTS.items()
 }
 
-# ─── Ensemble ────────────────────────────────────────────────────────
+
+# ─── Legacy DataFrame-based Ensemble ─────────────────────────────────
+
 
 class AnomalyDetectionEnsemble:
-    """Ensemble of anomaly detection models with consistent scoring."""
+    """Ensemble of anomaly detection models with consistent scoring.
 
-    def __init__(self, random_state=42):
+    This is the *legacy* DataFrame-based API.  New code should prefer
+    ``omnianalytics.anomaly.AnomalyEnsemble`` which operates on
+    ``TabularDataset`` objects.
+    """
+
+    def __init__(self, random_state: int = 42):
         self.random_state = random_state
 
-    def _normalize_scores(self, df, score_cols):
-        """Percentile-based normalization: normal→~0.1, anomaly→~0.9."""
+    # -- internal helpers --------------------------------------------------
+
+    def _normalize_scores(self, df: pd.DataFrame, score_cols: list) -> pd.DataFrame:
+        """Percentile-based normalization: normal~0.1, anomaly~0.9."""
         for col in score_cols:
             if col not in df.columns:
                 continue
@@ -81,7 +77,9 @@ class AnomalyDetectionEnsemble:
             df[col] = np.clip(normalized, 0.0, 1.0)
         return df
 
-    def _add_knn_distance_score(self, scaled_data, out_df, k=5):
+    def _add_knn_distance_score(
+        self, scaled_data: pd.DataFrame, out_df: pd.DataFrame, k: int = 5,
+    ) -> pd.DataFrame:
         """KNN-based anomaly score with Tukey's fence threshold."""
         try:
             n = scaled_data.shape[0]
@@ -101,8 +99,29 @@ class AnomalyDetectionEnsemble:
             out_df["KNN_Anomaly"] = 0
         return out_df
 
-    def sklearn_models(self, raw_data, scaled_data):
-        """Run IsolationForest + OneClassSVM + KNN."""
+    def _fast_reconstruction_error(self, data):
+        """Fast PCA-based reconstruction error."""
+        try:
+            n_components = max(2, min(data.shape[1] // 2, 10))
+            pca = PCA(n_components=n_components, random_state=self.random_state)
+            transformed = pca.fit_transform(data)
+            reconstructed = pca.inverse_transform(transformed)
+            error = np.mean((data - reconstructed) ** 2, axis=1)
+            threshold_raw = statistical_threshold(error, method="tukey")
+            ranks = pd.Series(error).rank(pct=True).values
+            normalized_error = np.clip(ranks, 0.0, 1.0)
+            threshold = float((error <= threshold_raw).mean())
+            return normalized_error, threshold
+        except Exception as e:
+            logger.error(f"PCA reconstruction failed: {e}")
+            return np.zeros(len(data)), 0.5
+
+    # -- public API --------------------------------------------------------
+
+    def sklearn_models(
+        self, raw_data: pd.DataFrame, scaled_data: pd.DataFrame,
+    ) -> tuple:
+        """Run IsolationForest + OneClassSVM + KNN, mutate *raw_data* in place."""
         if len(scaled_data) != len(raw_data):
             min_len = min(len(scaled_data), len(raw_data))
             scaled_data = scaled_data.iloc[:min_len].copy()
@@ -141,48 +160,44 @@ class AnomalyDetectionEnsemble:
         raw_data = self._normalize_scores(raw_data, score_cols)
         return scaled_data, raw_data
 
-    def _fast_reconstruction_error(self, data):
-        """Fast PCA-based reconstruction error."""
-        try:
-            n_components = max(2, min(data.shape[1] // 2, 10))
-            pca = PCA(n_components=n_components, random_state=self.random_state)
-            transformed = pca.fit_transform(data)
-            reconstructed = pca.inverse_transform(transformed)
-            error = np.mean((data - reconstructed) ** 2, axis=1)
-            threshold_raw = statistical_threshold(error, method="tukey")
-            ranks = pd.Series(error).rank(pct=True).values
-            normalized_error = np.clip(ranks, 0.0, 1.0)
-            threshold = float((error <= threshold_raw).mean())
-            return normalized_error, threshold
-        except Exception as e:
-            logger.error(f"PCA reconstruction failed: {e}")
-            return np.zeros(len(data)), 0.5
-
-    def run_autoencoder(self, scaled_data, raw_data):
+    def run_autoencoder(
+        self, scaled_data: pd.DataFrame, raw_data: pd.DataFrame,
+    ) -> tuple:
         """PCA-based reconstruction (fast, no TF dependency)."""
         normalized_error, threshold = self._fast_reconstruction_error(scaled_data)
         raw_data["Autoencoder_Anomaly"] = np.where(
-            normalized_error > threshold, 1, 0
+            normalized_error > threshold, 1, 0,
         )
         raw_data["Autoencoder_AnomalyScore"] = normalized_error
         return scaled_data, raw_data
 
-    def run_anomaly_detection_models(self, raw_data, scaled_data):
-        """Full ensemble pipeline."""
+    def run_anomaly_detection_models(
+        self, raw_data: pd.DataFrame, scaled_data: pd.DataFrame,
+    ) -> tuple:
+        """Full ensemble pipeline: sklearn models + autoencoder."""
         scaled_data, raw_data = self.sklearn_models(raw_data, scaled_data)
         scaled_data, raw_data = self.run_autoencoder(scaled_data, raw_data)
         return scaled_data, raw_data
 
 
-# ─── Statistics ──────────────────────────────────────────────────────
+# ─── Statistics ───────────────────────────────────────────────────────
+
 
 class AnomalyStatistics:
     """Aggregate ensemble results into severity levels."""
 
-    def anomaly_insights(self, df):
+    def anomaly_insights(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute voting, weighted scores, severity levels."""
-        anoms = ["IsolationForest_Anomaly", "OneClassSVM_Anomaly", "Autoencoder_Anomaly"]
-        scores = ["IsolationForest_AnomalyScore", "OneClassSVM_AnomalyScore", "Autoencoder_AnomalyScore"]
+        anoms = [
+            "IsolationForest_Anomaly",
+            "OneClassSVM_Anomaly",
+            "Autoencoder_Anomaly",
+        ]
+        scores = [
+            "IsolationForest_AnomalyScore",
+            "OneClassSVM_AnomalyScore",
+            "Autoencoder_AnomalyScore",
+        ]
 
         # Filter to columns that actually exist
         anoms = [a for a in anoms if a in df.columns]
@@ -203,33 +218,49 @@ class AnomalyStatistics:
         if "KNN_Anomaly" in df.columns:
             anomaly_sum += df["KNN_Anomaly"]
         if "KNN_AnomalyScore" in df.columns:
-            score_mean = (score_mean * len(scores) + df["KNN_AnomalyScore"]) / (len(scores) + 1)
+            score_mean = (
+                score_mean * len(scores) + df["KNN_AnomalyScore"]
+            ) / (len(scores) + 1)
 
         df["Voted_Anomaly"] = np.where(anomaly_sum >= 2, 1, 0)
         df["Anomaly_Score_Mean"] = score_mean
         df["Anomaly_Score_STD"] = score_std
-        df["Voting_Score"] = anomaly_sum / (len(anoms) + (1 if "KNN_Anomaly" in df.columns else 0))
+        df["Voting_Score"] = anomaly_sum / (
+            len(anoms) + (1 if "KNN_Anomaly" in df.columns else 0)
+        )
 
         # Reliability-weighted score
         model_names = [a.replace("_Anomaly", "") for a in anoms]
         if "KNN_Anomaly" in df.columns:
             model_names.append("KNN")
-        weights = np.array([MODEL_WEIGHTS.get(m, 0.5) for m in model_names])
+        weights = np.array(
+            [_LEGACY_WEIGHTS.get(m, 0.5) for m in model_names],
+        )
         weights = weights / weights.sum()
 
-        all_scores_cols = scores + (["KNN_AnomalyScore"] if "KNN_AnomalyScore" in df.columns else [])
+        all_scores_cols = scores + (
+            ["KNN_AnomalyScore"] if "KNN_AnomalyScore" in df.columns else []
+        )
         df["Reliability_Weighted_Score"] = df[all_scores_cols].values.dot(weights)
 
         # Enhanced score
-        df["Enhanced_Anomaly_Score"] = df["Reliability_Weighted_Score"] - (score_std * 0.1)
-        df["Enhanced_Anomaly_Score"] += np.where(anomaly_sum == len(model_names), 0.05, 0)
+        df["Enhanced_Anomaly_Score"] = df["Reliability_Weighted_Score"] - (
+            score_std * 0.1
+        )
+        df["Enhanced_Anomaly_Score"] += np.where(
+            anomaly_sum == len(model_names), 0.05, 0,
+        )
 
         # Severity classification
-        sq = df["Enhanced_Anomaly_Score"].quantile(q=[0.25, 0.50, 0.75, 0.85, 0.95])
+        sq = df["Enhanced_Anomaly_Score"].quantile(
+            q=[0.25, 0.50, 0.75, 0.85, 0.95],
+        )
         std_q = score_std.quantile(q=[0.25, 0.50, 0.75])
 
         df["Anomaly_Level"] = df.apply(
-            lambda r: self._classify(r["Enhanced_Anomaly_Score"], r["Anomaly_Score_STD"], sq, std_q),
+            lambda r: self._classify(
+                r["Enhanced_Anomaly_Score"], r["Anomaly_Score_STD"], sq, std_q,
+            ),
             axis=1,
         )
         return df
@@ -248,7 +279,8 @@ class AnomalyStatistics:
         return "normal"
 
 
-# ─── Vote-based severity (from anomaly_broadcaster.py) ───────────────
+# ─── Vote-based severity (from anomaly_broadcaster.py) ────────────────
+
 
 def severity_from_votes(vote_count: int, total_models: int = 4) -> str:
     """Data-driven severity based on model voting consensus."""
