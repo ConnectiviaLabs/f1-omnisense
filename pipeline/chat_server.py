@@ -4268,6 +4268,272 @@ def omni_health_check():
     return {"status": "ok", "modules": modules}
 
 
+# ── Backtest ─────────────────────────────────────────────────────────────
+
+@app.post("/api/local/backtest/run")
+async def run_backtest_endpoint(
+    team: str | None = None,
+    driver: str | None = None,
+    race: int | None = None,
+    season: int | None = None,
+    force: bool = False,
+):
+    """Run backtest replay. Returns stored results if available, else runs fresh.
+    Pass force=true to skip cache and retrain from scratch."""
+    from pipeline.backtest.replay import run_backtest, push_backtest_results
+    from pipeline.backtest.evaluate import compute_metrics, find_case_studies, find_system_correlations
+
+    target_season = season or 2024
+    db = get_data_db()
+
+    # Return stored results unless force=true or specific race filter
+    if not force and not race:
+        stored = db["backtest_results"].find_one(
+            {"season": target_season}, {"_id": 0}, sort=[("stored_at", -1)]
+        )
+        if stored and stored.get("results"):
+        results = stored["results"]
+        metrics = compute_metrics(results)
+        cases = find_case_studies(results, team_filter=team or "")
+        correlations = find_system_correlations(results)
+        return {
+            "season": stored["season"],
+            "races_evaluated": stored["races_evaluated"],
+            "total_predictions": stored["total_predictions"],
+            "metrics": metrics,
+            "case_studies": cases[:10],
+            "system_correlations": correlations,
+            "results": results,
+            "generated_at": stored["generated_at"],
+            "from_cache": True,
+        }
+
+    data = run_backtest(
+        season=target_season,
+        driver_filter=driver,
+        team_filter=team,
+        round_filter=race,
+    )
+    if not data or not data.get("results"):
+        raise HTTPException(404, "No backtest results generated")
+
+    metrics = compute_metrics(data["results"])
+    cases = find_case_studies(data["results"], team_filter=team or "")
+    correlations = find_system_correlations(data["results"])
+
+    push_backtest_results(data)
+
+    return {
+        "season": data["season"],
+        "races_evaluated": data["races_evaluated"],
+        "total_predictions": data["total_predictions"],
+        "metrics": metrics,
+        "case_studies": cases[:10],
+        "system_correlations": correlations,
+        "results": data["results"],
+        "generated_at": data["generated_at"],
+    }
+
+
+@app.get("/api/local/backtest/results")
+async def get_backtest_results():
+    """Get the latest stored backtest results."""
+    db = get_data_db()
+    doc = db["backtest_results"].find_one(
+        {}, {"_id": 0}, sort=[("stored_at", -1)]
+    )
+    if not doc:
+        raise HTTPException(404, "No backtest results found")
+
+    from pipeline.backtest.evaluate import compute_metrics, find_case_studies, find_system_correlations
+
+    results = doc.get("results", [])
+    metrics = compute_metrics(results)
+    cases = find_case_studies(results)
+    correlations = find_system_correlations(results)
+    return {
+        "season": doc.get("season"),
+        "races_evaluated": doc.get("races_evaluated"),
+        "total_predictions": doc.get("total_predictions"),
+        "metrics": metrics,
+        "case_studies": cases[:10],
+        "system_correlations": correlations,
+        "results": results,
+        "generated_at": doc.get("generated_at"),
+    }
+
+
+@app.post("/api/local/backtest/kex")
+async def backtest_kex_briefing(force: bool = False):
+    """Generate per-case-study insights + combined briefing from stored backtest results."""
+    import asyncio
+    import time as _time
+
+    db = get_data_db()
+    coll = db["kex_backtest_briefings"]
+
+    # Return cached briefing unless forced
+    if not force:
+        existing = coll.find_one({}, {"_id": 0}, sort=[("generated_at", -1)])
+        if existing:
+            return existing
+
+    # Load latest stored backtest results from MongoDB
+    doc = db["backtest_results"].find_one({}, {"_id": 0}, sort=[("stored_at", -1)])
+    if not doc:
+        raise HTTPException(404, "No backtest results to brief on")
+
+    metrics = doc.get("metrics", {})
+    cases = doc.get("case_studies", [])[:7]
+
+    # Fallback: recompute if stored doc lacks pre-computed fields
+    if not metrics:
+        from pipeline.backtest.evaluate import compute_metrics, find_case_studies
+        results = doc.get("results", [])
+        metrics = compute_metrics(results)
+        cases = find_case_studies(results)[:7]
+
+    bad_outcomes = {"dnf_mechanical", "dnf_other", "lapped", "major_underperformance", "underperformance"}
+    system = (
+        "You are a McLaren F1 performance analyst. "
+        "Be precise, data-driven, and concise. Reference specific data points."
+    )
+
+    groq = get_groq()
+
+    def _llm_call(prompt: str, max_tokens: int = 512) -> str:
+        try:
+            completion = groq.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens,
+            )
+            return completion.choices[0].message.content or ""
+        except Exception as e:
+            logger.error("Backtest KeX LLM failed: %s", e)
+            return f"Briefing generation failed: {e}"
+
+    # ── Per-case-study insight prompts ──
+    def _case_prompt(cs: dict) -> str:
+        is_bad = cs.get("actual_outcome") in bad_outcomes
+        tag = "HIT" if cs.get("predicted_risk") and is_bad else "MISS" if is_bad else "CORRECT"
+        signals = cs.get("composite_signals", {})
+        signal_str = ", ".join(f"{k}={v:.0f}" if isinstance(v, (int, float)) else f"{k}={v}" for k, v in signals.items()) if signals else "N/A"
+        systems = cs.get("predicted_systems", {})
+        sys_str = ", ".join(f"{s}={h.get('health', '?')}%" for s, h in systems.items()) if systems else "N/A"
+
+        return (
+            f"Analyze this single race case study ({tag}):\n"
+            f"  Race: R{cs['round']} {cs['race_name']}\n"
+            f"  Driver: {cs['driver_code']} ({cs.get('constructor_name', 'McLaren')})\n"
+            f"  Grid: {cs.get('actual_grid')} → P{cs.get('actual_position')} "
+            f"({cs.get('actual_positions_gained', 0):+d} positions)\n"
+            f"  Outcome: {cs.get('actual_outcome')} | Status: {cs.get('actual_status')} "
+            f"| Points: {cs.get('actual_points', 0)}\n"
+            f"  Predicted Health: {cs.get('predicted_health')}% | Risk flagged: {cs.get('predicted_risk')}\n"
+            f"  Composite Risk: {cs.get('composite_risk', 'N/A')} ({cs.get('composite_risk_level', 'N/A')})\n"
+            f"  Signals: {signal_str}\n"
+            f"  Systems: {sys_str}\n"
+            f"  Flagged: {', '.join(cs.get('flagged_systems', [])) or 'None'}\n"
+            f"  Degrading: {', '.join(cs.get('degrading_systems', [])) or 'None'}\n"
+            f"  Strategy: {cs.get('strategy_predicted', 'N/A')}"
+            f"{' ✓' if cs.get('strategy_match') else ' ✗' if cs.get('strategy_match') is not None else ''}"
+            f"{' (delta ' + format(cs['strategy_time_delta_s'], '+.1f') + 's)' if cs.get('strategy_time_delta_s') is not None else ''}\n"
+            f"  Cliff warnings: {cs.get('cliff_warnings', 0)}\n\n"
+            f"In 2-3 sentences: What happened, why did MARIP {'correctly flag' if tag == 'HIT' else 'miss' if tag == 'MISS' else 'correctly clear'} this, "
+            f"and what signal was most informative?"
+        )
+
+    # ── Combined briefing prompt ──
+    case_lines = []
+    for cs in cases:
+        is_bad = cs.get("actual_outcome") in bad_outcomes
+        tag = "HIT" if cs.get("predicted_risk") and is_bad else "MISS" if is_bad else "OK"
+        case_lines.append(
+            f"  R{cs['round']} {cs['race_name']}: {cs['driver_code']} "
+            f"G{cs.get('actual_grid')}→P{cs.get('actual_position')} "
+            f"({cs.get('actual_outcome')}) Health={cs.get('predicted_health')}% "
+            f"Composite={cs.get('composite_risk', 'N/A')} [{tag}]"
+        )
+
+    cm = metrics.get("confusion_matrix", {})
+    combined_prompt = (
+        f"McLaren backtest analysis for {doc.get('season', 2024)} season.\n\n"
+        f"METRICS:\n"
+        f"  Accuracy: {metrics.get('accuracy')}% ({metrics.get('correct')}/{metrics.get('total_predictions')})\n"
+        f"  Precision: {metrics.get('precision')}% | Recall: {metrics.get('recall')}% | F1: {metrics.get('f1_score')}%\n"
+        f"  Confusion: TP={cm.get('true_positive', 0)} FP={cm.get('false_positive', 0)} "
+        f"FN={cm.get('false_negative', 0)} TN={cm.get('true_negative', 0)}\n"
+        f"  Avg Composite Risk: {metrics.get('avg_composite_risk', 'N/A')}\n"
+        f"  Strategy Match Rate: {metrics.get('strategy_match_rate', 'N/A')}%\n"
+        f"  ELT Coverage: {metrics.get('elt_coverage', 'N/A')}%\n"
+        f"  Cliff Warnings: {metrics.get('cliff_warnings_total', 0)}\n\n"
+        f"TOP 7 CASE STUDIES:\n" + "\n".join(case_lines) + "\n\n"
+        f"Provide a concise race engineer briefing covering:\n"
+        f"1. Overall model reliability assessment with key strengths/weaknesses\n"
+        f"2. Which signals (anomaly, ELT, strategy, cliff) contribute most to accuracy\n"
+        f"3. Pattern analysis — what types of incidents are caught vs missed\n"
+        f"4. Actionable recommendations for improving prediction coverage\n"
+        f"Keep it under 400 words. Use data references."
+    )
+
+    # ── Run all LLM calls in parallel: 7 per-case + 1 combined ──
+    case_prompts = [_case_prompt(cs) for cs in cases]
+    all_prompts = case_prompts + [combined_prompt]
+    all_results = await asyncio.gather(
+        *[asyncio.to_thread(_llm_call, p, 256 if i < len(cases) else 1024)
+          for i, p in enumerate(all_prompts)]
+    )
+
+    case_insights = all_results[:len(cases)]
+    combined_text = all_results[-1]
+    model_used = GROQ_MODEL
+
+    # Build per-case insight list keyed by round+driver
+    per_case = []
+    for cs, insight in zip(cases, case_insights):
+        per_case.append({
+            "round": cs["round"],
+            "driver_code": cs["driver_code"],
+            "race_name": cs["race_name"],
+            "insight": insight,
+        })
+
+    # Score dimensions from metrics
+    scores = {
+        "Accuracy": round(metrics.get("accuracy", 0), 1),
+        "Precision": round(metrics.get("precision", 0), 1),
+        "Recall": round(metrics.get("recall", 0), 1),
+        "F1 Score": round(metrics.get("f1_score", 0), 1),
+        "ELT Coverage": round(metrics.get("elt_coverage", 0), 1),
+    }
+    if metrics.get("strategy_match_rate") is not None:
+        scores["Strategy Match"] = round(metrics["strategy_match_rate"], 1)
+
+    summary = combined_text.split(". ")[0] + "." if ". " in combined_text else combined_text[:200]
+
+    now = _time.time()
+    result = {
+        "text": combined_text,
+        "scores": scores,
+        "summary": summary,
+        "model_used": model_used,
+        "provider_used": "groq",
+        "generated_at": now,
+        "season": doc.get("season"),
+        "case_insights": per_case,
+    }
+
+    # Persist: upsert by season
+    coll.replace_one({"season": doc.get("season")}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 # ── Run ──────────────────────────────────────────────────────────────────
 
 # ── Serve frontend SPA (must be last mount) ─────────────────────────────

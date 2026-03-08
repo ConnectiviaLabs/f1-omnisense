@@ -18,6 +18,7 @@ function localDataPlugin() {
 
         // These endpoints are served by the Python backend — let proxy handle them
         if (filePath.startsWith('strategy/')) { next(); return; }
+        if (filePath.startsWith('backtest/')) { next(); return; }
         if (filePath.startsWith('mccar-summary/')) { next(); return; }
         if (filePath.startsWith('mccar-telemetry/')) { next(); return; }
         if (filePath.startsWith('mccar-race-telemetry/')) { next(); return; }
@@ -779,6 +780,7 @@ export default defineConfig({
       '/api/local/mccar-race-stints': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/mcdriver-summary': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/strategy': { target: 'http://127.0.0.1:8300', changeOrigin: true },
+      '/api/local/backtest': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/local/team_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/constructor_profiles': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },

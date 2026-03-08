@@ -38,7 +38,11 @@ def _session_laps_to_docs(session, year: int) -> list[dict]:
 
     docs = []
     race_name = session.event["EventName"]
-    session_type = session.name  # "Race", "Qualifying", etc.
+    # Normalize session type to short codes for consistency across versions
+    _SESSION_SHORT = {"Race": "R", "Qualifying": "Q", "Sprint": "S",
+                      "Sprint Qualifying": "SQ", "Sprint Shootout": "SQ",
+                      "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3"}
+    session_type = _SESSION_SHORT.get(session.name, session.name)
 
     for _, lap in laps.iterrows():
         doc = {

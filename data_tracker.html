@@ -431,7 +431,8 @@ const DATA = [
 
   // ── Raw Data: FastF1 ──
   { name: "fastf1_laps", docs: 348566, sizeMB: 222.5, idxCount: 3, category: "raw", status: "active",
-    writers: ["fastf1_fetcher.py"], readers: ["build_telemetry_summaries.py", "driver_performance_markers.py"], frontend: ["—"] },
+    writers: ["fastf1_fetcher.py"], readers: ["build_telemetry_summaries.py", "driver_performance_markers.py", "pipeline/backtest/models.py"], frontend: ["BacktestView"],
+    notes: "Primary training data source for backtest anomaly model. 2018-2024, ~15k McLaren race laps across 7 seasons." },
   { name: "fastf1_weather", docs: 66495, sizeMB: 18.0, idxCount: 2, category: "raw", status: "active",
     writers: ["fastf1_fetcher.py"], readers: ["chat_server.py"], frontend: ["—"] },
 
@@ -505,6 +506,18 @@ const DATA = [
   { name: "anomaly_scores_snapshot", docs: 1, sizeMB: 3.4, idxCount: 1, category: "intel", status: "active",
     writers: ["anomaly_scorer.py"], readers: ["/api/pipeline/anomaly"], frontend: ["FleetOverview", "DriverIntel"],
     notes: "Single doc containing all driver anomaly scores. Live snapshot." },
+
+  { name: "backtest_results", docs: 0, sizeMB: 0, idxCount: 1, category: "intel", status: "active",
+    writers: ["pipeline/backtest/replay.py"], readers: ["/api/local/backtest/results"], frontend: ["BacktestView"],
+    notes: "Per-season backtest replay results. Predictions vs actuals for anomaly scoring validation." },
+
+  { name: "kex_backtest_briefings", docs: 0, sizeMB: 0, idxCount: 1, category: "kex", status: "active",
+    writers: ["chat_server.py:/api/local/backtest/kex"], readers: ["/api/local/backtest/kex"], frontend: ["BacktestView"],
+    notes: "LLM-generated intelligence briefings from backtest results. One per season, upserted." },
+
+  { name: "mclaren_telemetry", docs: 68, sizeMB: 0.1, idxCount: 2, category: "derived", status: "active",
+    writers: ["pipeline/ingest/ingest_mclaren_telemetry.py"], readers: ["—"], frontend: ["—"],
+    notes: "Rich per-race CSV telemetry for McLaren (NOR+PIA). 2023-2024. Backtest model now uses fastf1_laps uniformly (2018-2024) instead." },
 
   // ── Strategy & ML Models ──
   { name: "tyre_degradation_curves", docs: 286, sizeMB: 0.3, idxCount: 2, category: "model", status: "active",

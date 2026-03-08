@@ -1,6 +1,7 @@
 import { RaceStrategy } from './RaceStrategy';
 import { CircuitIntel } from './CircuitIntel';
 import { McLarenAnalytics } from './McLarenAnalytics';
+import { BacktestView } from './BacktestView';
 import type { StrategyTab } from './Sidebar';
 
 interface PrimeStrategyProps {
@@ -13,6 +14,7 @@ export function PrimeStrategy({ activeTab }: PrimeStrategyProps) {
       {activeTab === 'race-strategy' && <RaceStrategy />}
       {activeTab === 'circuit-intel' && <CircuitIntel />}
       {activeTab === 'season-analytics' && <McLarenAnalytics />}
+      {activeTab === 'backtest' && <BacktestView />}
     </div>
   );
 }

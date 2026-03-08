@@ -19,11 +19,12 @@ import {
   Calendar,
   Layers,
   GitCompare,
+  FlaskConical,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 
 export type Pillar = 'telemetry' | 'anomaly' | 'forecast';
-export type StrategyTab = 'race-strategy' | 'circuit-intel' | 'season-analytics';
+export type StrategyTab = 'race-strategy' | 'circuit-intel' | 'season-analytics' | 'backtest';
 
 interface SidebarProps {
   activeView: ViewType;
@@ -63,6 +64,7 @@ const STRATEGY_ITEMS: SubItem[] = [
   { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
   { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
   { id: 'season-analytics', label: 'Season Analytics', icon: BarChart3 },
+  { id: 'backtest', label: 'Backtest', icon: FlaskConical },
 ];
 
 const ADVANTAGE_ITEMS: NavItem[] = [
