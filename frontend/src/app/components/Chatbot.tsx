@@ -656,7 +656,7 @@ export function Chatbot() {
         </form>
         <div className="flex items-center justify-between mt-2 px-1">
           <span className="text-[11px] text-muted-foreground">
-            Powered by Groq Llama 3.3 70B · GenUI
+            Groq Llama 3.3 70B · GenUI
           </span>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-muted-foreground">
@@ -685,7 +685,7 @@ export function Chatbot() {
 function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-14 h-14 rounded-2xl bg-[#FF8000]/10 flex items-center justify-center mb-4">
+      <div className="w-14 h-14 rounded-lg bg-[#FF8000]/10 flex items-center justify-center mb-4">
         <Sparkles className="w-7 h-7 text-[#FF8000]" />
       </div>
       <h3 className="text-sm text-foreground mb-1">F1 Diagnostic AI</h3>

@@ -862,7 +862,7 @@ export function AdvantageCrossover() {
 
           {!insightData && !insightLoading && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-[#FF8000]/8 flex items-center justify-center mb-4">
+              <div className="w-14 h-14 rounded-lg bg-[#FF8000]/8 flex items-center justify-center mb-4">
                 <Sparkles className="w-6 h-6 text-[#FF8000]/40" />
               </div>
               <p className="text-sm text-muted-foreground">

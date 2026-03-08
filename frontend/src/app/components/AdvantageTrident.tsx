@@ -357,7 +357,7 @@ export function AdvantageTrident() {
           {/* Empty State */}
           {!report && !loading && !error && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-[#FF8000]/8 flex items-center justify-center mb-4">
+              <div className="w-16 h-16 rounded-lg bg-[#FF8000]/8 flex items-center justify-center mb-4">
                 <Layers className="w-7 h-7 text-[#FF8000]/40" />
               </div>
               <p className="text-sm text-muted-foreground mb-1">No convergence report yet</p>

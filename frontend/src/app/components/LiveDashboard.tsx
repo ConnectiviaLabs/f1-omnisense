@@ -1038,7 +1038,7 @@ export function LiveDashboard() {
             </div>
             <div>
               <span className={`font-mono ${latestWeather.rainfall ? 'text-blue-400' : 'text-green-400'}`}>
-                {latestWeather.rainfall ? '🌧 Rain' : '☀ Dry'}
+                {latestWeather.rainfall ? 'WET' : 'DRY'}
               </span>
             </div>
           </div>

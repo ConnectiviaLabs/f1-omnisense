@@ -18,7 +18,7 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
         size === 'sm' ? 'px-2 py-0.5 text-[12px]' : 'px-3 py-1 text-sm'
       } tracking-wider`}
     >
-      <span className={`${config.dot} rounded-full ${size === 'sm' ? 'h-1.5 w-1.5' : 'h-2 w-2'} animate-pulse`} />
+      <span className={`${config.dot} rounded-full ${size === 'sm' ? 'h-1.5 w-1.5' : 'h-2 w-2'}`} />
       {config.label}
     </span>
   );
