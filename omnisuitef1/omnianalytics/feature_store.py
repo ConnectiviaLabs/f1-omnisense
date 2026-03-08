@@ -53,13 +53,16 @@ def get(db, session_key: int, driver_number: int, computation: str):
 
 def put(db, session_key: int, driver_number: int, computation: str, result) -> bool:
     """Upsert a computation result.  Returns ``True`` on success."""
-    if db is None:
+    if db is None or result is None:
         return False
     try:
         key = _make_key(session_key, driver_number, computation)
         db[COLLECTION].update_one(
             key,
-            {"$set": {**key, "result": result, "created_at": datetime.now(timezone.utc)}},
+            {
+                "$set": {**key, "result": result},
+                "$setOnInsert": {"created_at": datetime.now(timezone.utc)},
+            },
             upsert=True,
         )
         return True
