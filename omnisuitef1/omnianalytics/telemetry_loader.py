@@ -36,7 +36,7 @@ def load_session_telemetry(
     if db is None:
         return pd.DataFrame()
 
-    cache_driver = driver_number or 0
+    cache_driver = driver_number if driver_number is not None else 0
 
     # ── cache check ──────────────────────────────────────────────────
     cached = feature_store.get(db, session_key, cache_driver, "telemetry_raw")
@@ -46,7 +46,7 @@ def load_session_telemetry(
 
     # ── build query ──────────────────────────────────────────────────
     query: dict = {"session_key": session_key}
-    if driver_number:
+    if driver_number is not None:
         query["driver_number"] = driver_number
 
     projection = {"_id": 0}
