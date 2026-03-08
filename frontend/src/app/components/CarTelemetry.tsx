@@ -420,10 +420,10 @@ export function CarTelemetry() {
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-foreground">{driverInfo?.name || driver}</span>
               {driverInfo && <span className="text-base">{driverInfo.flag}</span>}
-              <span className="text-[11px] text-[#FF8000]/60 font-mono">#{driverInfo?.number || ''}</span>
+              <span className="text-[11px] text-primary/60 font-mono">#{driverInfo?.number || ''}</span>
             </div>
             <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
-              <span className="text-[#FF8000] font-semibold">McLaren</span>
+              <span className="text-primary font-semibold">McLaren</span>
               <span className="opacity-40">|</span>
               <span>{tab === 'detail' && race ? `${race} GP ${year}` : `${year} Season`}</span>
               {tab === 'detail' && driverData.length > 0 && (
@@ -458,7 +458,7 @@ export function CarTelemetry() {
           ]).map(t => (
             <button type="button" key={t.id} onClick={() => setTab(t.id)}
               className={`text-sm px-4 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
-                tab === t.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'
+                tab === t.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
             ><t.icon className="w-3.5 h-3.5" />{t.label}</button>
           ))}
@@ -497,8 +497,8 @@ export function CarTelemetry() {
               <button type="button" key={d} onClick={() => setDriver(d)}
                 className={`px-3 py-1 rounded-full text-sm font-semibold transition-all border ${
                   driver === d
-                    ? 'bg-[#FF8000] text-white border-[#FF8000] shadow-[0_0_12px_rgba(255,128,0,0.3)]'
-                    : 'bg-transparent text-[#FF8000] border-[#FF8000]/30 hover:border-[#FF8000]/60'
+                    ? 'bg-primary text-white border-primary shadow-[0_0_12px_rgba(255,128,0,0.3)]'
+                    : 'bg-transparent text-primary border-primary/30 hover:border-primary/60'
                 }`}
               >{d}</button>
             ))}
@@ -512,8 +512,8 @@ export function CarTelemetry() {
                 <button type="button" key={`d1-${d}`} onClick={() => setDriver(d)}
                   className={`px-3 py-1 rounded-full text-sm font-semibold transition-all border ${
                     driver === d
-                      ? 'bg-[#FF8000] text-white border-[#FF8000] shadow-[0_0_12px_rgba(255,128,0,0.3)]'
-                      : 'bg-transparent text-[#FF8000] border-[#FF8000]/30 hover:border-[#FF8000]/60'
+                      ? 'bg-primary text-white border-primary shadow-[0_0_12px_rgba(255,128,0,0.3)]'
+                      : 'bg-transparent text-primary border-primary/30 hover:border-primary/60'
                   }`}
                 >{d}</button>
               ))}
@@ -533,7 +533,7 @@ export function CarTelemetry() {
             <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
               {([{ id: 'race' as const, label: 'Single Race' }, { id: 'season' as const, label: 'Full Season' }]).map(m => (
                 <button type="button" key={m.id} onClick={() => setH2hMode(m.id)}
-                  className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                 >{m.label}</button>
               ))}
             </div>
@@ -544,7 +544,7 @@ export function CarTelemetry() {
           <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
             {([{ id: 'race' as const, label: 'Race vs Race' }, { id: 'year' as const, label: 'Year vs Year' }]).map(m => (
               <button type="button" key={m.id} onClick={() => setCompareMode(m.id)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${compareMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`text-sm px-3 py-1.5 rounded-md transition-all ${compareMode === m.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >{m.label}</button>
             ))}
           </div>
@@ -554,7 +554,7 @@ export function CarTelemetry() {
       {/* ── System Health Compact Bar ── */}
       {selectedVehicle && selectedVehicle.systems.length > 0 && (tab === 'detail' || tab === 'season') && (
         <div className="flex items-center gap-4 bg-card border border-border rounded-lg px-4 py-2">
-          <span className="text-[10px] tracking-[0.2em] text-[#FF8000]/50 font-semibold">SYSTEMS</span>
+          <span className="text-[10px] tracking-[0.2em] text-primary/50 font-semibold">SYSTEMS</span>
           {selectedVehicle.systems.slice(0, 4).map(sys => (
             <div key={sys.name} className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">{sys.name}</span>
@@ -633,7 +633,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading telemetry...</span>
       </div>
     );
@@ -643,7 +643,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
     <>
       {kpis && (
         <div className="grid grid-cols-4 gap-3">
-          <KPI icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} label="TOP SPEED" value={`${kpis.topSpeed} km/h`} detail={`${race} GP ${year}`} color="text-[#FF8000]" />
+          <KPI icon={<Gauge className="w-4 h-4 text-primary" />} label="TOP SPEED" value={`${kpis.topSpeed} km/h`} detail={`${race} GP ${year}`} color="text-primary" />
           <KPI icon={<Zap className="w-4 h-4 text-cyan-400" />} label="AVG RPM" value={kpis.avgRPM} detail="Engine average" color="text-cyan-400" />
           <KPI icon={<Wind className="w-4 h-4 text-green-400" />} label="DRS ACTIVATIONS" value={String(kpis.drsActivations)} detail="Total samples with DRS open" color="text-green-400" />
           <KPI icon={<Timer className="w-4 h-4 text-amber-400" />} label="TIRE COMPOUNDS" value={kpis.compounds.join(' / ')} detail={`${raceStints.length} stints`} color="text-amber-400" />
@@ -811,7 +811,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
   seasonSummary: CarSummary[]; loading: boolean; year: number; driver: string; highlightRace: string;
 }) {
   if (loading) {
-    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Computing season telemetry summary...</span></div>;
+    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-primary animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Computing season telemetry summary...</span></div>;
   }
   if (!seasonSummary.length) {
     return <div className="flex items-center justify-center h-[400px] text-muted-foreground text-sm">No telemetry data available for {year}</div>;
@@ -827,7 +827,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
   return (
     <>
       <div className="grid grid-cols-6 gap-3">
-        <KPI icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} label="SEASON TOP SPEED" value={`${seasonTopSpeed.toFixed(0)} km/h`} detail={`${fastestRace.race} GP`} color="text-[#FF8000]" />
+        <KPI icon={<Gauge className="w-4 h-4 text-primary" />} label="SEASON TOP SPEED" value={`${seasonTopSpeed.toFixed(0)} km/h`} detail={`${fastestRace.race} GP`} color="text-primary" />
         <KPI icon={<Gauge className="w-4 h-4 text-cyan-400" />} label="SEASON AVG SPEED" value={`${seasonAvgSpeed.toFixed(1)} km/h`} detail={`Across ${seasonSummary.length} races`} color="text-cyan-400" />
         <KPI icon={<Zap className="w-4 h-4 text-purple-400" />} label="SEASON AVG RPM" value={seasonAvgRPM.toFixed(0)} detail="Engine average" color="text-purple-400" />
         <KPI icon={<Wind className="w-4 h-4 text-green-400" />} label="AVG THROTTLE" value={`${seasonAvgThrottle.toFixed(1)}%`} detail="Season average" color="text-green-400" />
@@ -912,7 +912,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       {/* Season Summary Table */}
       <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
-          <GitCompareArrows className="w-3 h-3 text-[#FF8000]" />{driver} — {year} Season Telemetry Summary
+          <GitCompareArrows className="w-3 h-3 text-primary" />{driver} — {year} Season Telemetry Summary
         </h3>
         <div className="overflow-x-auto">
           <div className="grid grid-cols-[160px_80px_80px_80px_80px_80px_80px_80px_120px] gap-px bg-[rgba(255,128,0,0.12)] rounded-lg overflow-hidden min-w-[840px]">
@@ -921,15 +921,15 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
             ))}
             {seasonSummary.map((r, i) => (
               <React.Fragment key={i}>
-                <div className={`px-3 py-1.5 text-sm ${r.race === highlightRace ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'bg-card text-foreground'}`}>{r.race} GP</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>{r.avgSpeed.toFixed(1)}</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.topSpeed >= seasonTopSpeed - 5 ? 'text-[#FF8000]' : 'text-foreground'}`}>{r.topSpeed.toFixed(0)}</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>{r.avgRPM}</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>{r.maxRPM}</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-green-400`}>{r.avgThrottle.toFixed(1)}%</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.brakePct > 15 ? 'text-red-400' : 'text-foreground'}`}>{r.brakePct.toFixed(1)}</div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>{r.drsPct.toFixed(1)}</div>
-                <div className={`px-3 py-1.5 text-[12px] ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'}`}>
+                <div className={`px-3 py-1.5 text-sm ${r.race === highlightRace ? 'bg-primary/10 text-primary' : 'bg-card text-foreground'}`}>{r.race} GP</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>{r.avgSpeed.toFixed(1)}</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.topSpeed >= seasonTopSpeed - 5 ? 'text-primary' : 'text-foreground'}`}>{r.topSpeed.toFixed(0)}</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>{r.avgRPM}</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>{r.maxRPM}</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-green-400`}>{r.avgThrottle.toFixed(1)}%</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.brakePct > 15 ? 'text-red-400' : 'text-foreground'}`}>{r.brakePct.toFixed(1)}</div>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>{r.drsPct.toFixed(1)}</div>
+                <div className={`px-3 py-1.5 text-[12px] ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'}`}>
                   {r.compounds.map((c, ci) => <span key={ci} className="font-mono mr-1" style={{ color: compoundColors[c] || '#8888a0' }}>{c}</span>)}
                 </div>
               </React.Fragment>
@@ -949,7 +949,7 @@ function H2HView({ mode, loading, year, race, driver1, driver2, raceData, season
   raceData: Record<string, any>[]; season1: CarSummary[]; season2: CarSummary[];
 }) {
   if (loading) {
-    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading head-to-head data...</span></div>;
+    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-primary animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading head-to-head data...</span></div>;
   }
   if (mode === 'race') return <H2HRaceView raceData={raceData} race={race} year={year} driver1={driver1} driver2={driver2} />;
   return <H2HSeasonView season1={season1} season2={season2} year={year} driver1={driver1} driver2={driver2} />;
@@ -995,7 +995,7 @@ function H2HRaceView({ raceData, race, year, driver1, driver2 }: { raceData: Rec
     <>
       <div className="grid grid-cols-4 gap-3">
         <DeltaKPI label="TOP SPEED" val1={d1Kpis?.topSpeed || '—'} val2={d2Kpis?.topSpeed || '—'} label1={driver1} label2={driver2} unit=" km/h"
-          icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={D1_COLOR} color2={D2_COLOR} />
+          icon={<Gauge className="w-4 h-4 text-primary" />} color1={D1_COLOR} color2={D2_COLOR} />
         <DeltaKPI label="AVG RPM" val1={d1Kpis?.avgRPM || '—'} val2={d2Kpis?.avgRPM || '—'} label1={driver1} label2={driver2} unit=""
           icon={<Zap className="w-4 h-4 text-cyan-400" />} color1={D1_COLOR} color2={D2_COLOR} />
         <DeltaKPI label="AVG THROTTLE" val1={d1Kpis?.avgThrottle || '—'} val2={d2Kpis?.avgThrottle || '—'} label1={driver1} label2={driver2} unit="%"
@@ -1073,7 +1073,7 @@ function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: 
   return (
     <>
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={driver1} label2={driver2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={D1_COLOR} color2={D2_COLOR} />
+        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={driver1} label2={driver2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-primary" />} color1={D1_COLOR} color2={D2_COLOR} />
         <DeltaKPI label="AVG SPEED" val1={avg(season1, 'avgSpeed')} val2={avg(season2, 'avgSpeed')} label1={driver1} label2={driver2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={D1_COLOR} color2={D2_COLOR} />
         <DeltaKPI label="AVG THROTTLE" val1={avg(season1, 'avgThrottle')} val2={avg(season2, 'avgThrottle')} label1={driver1} label2={driver2} unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={D1_COLOR} color2={D2_COLOR} />
         <DeltaKPI label="AVG BRAKE" val1={avg(season1, 'brakePct')} val2={avg(season2, 'brakePct')} label1={driver1} label2={driver2} unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={D1_COLOR} color2={D2_COLOR} />
@@ -1160,7 +1160,7 @@ function CompareView({ mode, loading, year, year2, driver, race1, race2, data1, 
   season1: CarSummary[]; season2: CarSummary[]; years: number[]; onYear2Change: (y: number) => void;
 }) {
   if (loading) {
-    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading comparison...</span></div>;
+    return <div className="flex items-center justify-center h-[400px]"><Loader2 className="w-6 h-6 text-primary animate-spin" /><span className="ml-2 text-sm text-muted-foreground">Loading comparison...</span></div>;
   }
   if (mode === 'race') return <RaceVsRaceView driver={driver} year={year} race1={race1} race2={race2} data1={data1} data2={data2} />;
   return <YearVsYearView driver={driver} year1={year} year2={year2} season1={season1} season2={season2} years={years} onYear2Change={onYear2Change} />;
@@ -1192,7 +1192,7 @@ function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
   return (
     <>
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={kpis1?.topSpeed || '—'} val2={kpis2?.topSpeed || '—'} label1={race1} label2={race2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={R1_COLOR} color2={R2_COLOR} />
+        <DeltaKPI label="TOP SPEED" val1={kpis1?.topSpeed || '—'} val2={kpis2?.topSpeed || '—'} label1={race1} label2={race2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-primary" />} color1={R1_COLOR} color2={R2_COLOR} />
         <DeltaKPI label="AVG SPEED" val1={kpis1?.avgSpeed || '—'} val2={kpis2?.avgSpeed || '—'} label1={race1} label2={race2} unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={R1_COLOR} color2={R2_COLOR} />
         <DeltaKPI label="AVG THROTTLE" val1={kpis1?.avgThrottle || '—'} val2={kpis2?.avgThrottle || '—'} label1={race1} label2={race2} unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={R1_COLOR} color2={R2_COLOR} />
         <DeltaKPI label="BRAKE %" val1={kpis1?.brakePct || '—'} val2={kpis2?.brakePct || '—'} label1={race1} label2={race2} unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={R1_COLOR} color2={R2_COLOR} />
@@ -1264,7 +1264,7 @@ function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2
       </div>
 
       <div className="grid grid-cols-4 gap-3">
-        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={String(year1)} label2={String(year2)} unit=" km/h" icon={<Gauge className="w-4 h-4 text-[#FF8000]" />} color1={Y1_COLOR} color2={Y2_COLOR} />
+        <DeltaKPI label="TOP SPEED" val1={topOf(season1)} val2={topOf(season2)} label1={String(year1)} label2={String(year2)} unit=" km/h" icon={<Gauge className="w-4 h-4 text-primary" />} color1={Y1_COLOR} color2={Y2_COLOR} />
         <DeltaKPI label="AVG SPEED" val1={avg(season1, 'avgSpeed')} val2={avg(season2, 'avgSpeed')} label1={String(year1)} label2={String(year2)} unit=" km/h" icon={<Gauge className="w-4 h-4 text-cyan-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />
         <DeltaKPI label="AVG THROTTLE" val1={avg(season1, 'avgThrottle')} val2={avg(season2, 'avgThrottle')} label1={String(year1)} label2={String(year2)} unit="%" icon={<Wind className="w-4 h-4 text-green-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />
         <DeltaKPI label="AVG BRAKE" val1={avg(season1, 'brakePct')} val2={avg(season2, 'brakePct')} label1={String(year1)} label2={String(year2)} unit="%" icon={<Disc className="w-4 h-4 text-red-400" />} color1={Y1_COLOR} color2={Y2_COLOR} />

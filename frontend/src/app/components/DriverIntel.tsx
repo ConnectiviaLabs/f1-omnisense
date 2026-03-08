@@ -117,7 +117,7 @@ function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 py-1">
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
-      <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold select-none">{label}</span>
+      <span className="text-[10px] tracking-[0.25em] text-primary/60 font-semibold select-none">{label}</span>
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
     </div>
   );
@@ -128,10 +128,10 @@ function StatCard({ label, value, unit, precision = 2, accent }: {
 }) {
   const display = value != null ? value.toFixed(precision) : '\u2014';
   return (
-    <div className={`rounded-lg p-3 transition-colors ${accent ? 'bg-[#FF8000]/5 border border-[#FF8000]/20' : 'bg-background border border-border'}`}>
+    <div className={`rounded-lg p-3 transition-colors ${accent ? 'bg-primary/5 border border-primary/20' : 'bg-background border border-border'}`}>
       <div className="text-[10px] text-muted-foreground mb-1.5 tracking-wide uppercase">{label}</div>
       <div className="flex items-baseline gap-1.5">
-        <span className={`font-mono text-lg leading-none ${accent ? 'text-[#FF8000]' : 'text-foreground'}`}>{display}</span>
+        <span className={`font-mono text-lg leading-none ${accent ? 'text-primary' : 'text-foreground'}`}>{display}</span>
         <span className="text-[10px] text-muted-foreground">{unit}</span>
       </div>
     </div>
@@ -156,8 +156,8 @@ function CustomTooltip({ active, payload }: any) {
 function SectionHeader({ icon: Icon, label, sub }: { icon: React.ElementType; label: string; sub?: string }) {
   return (
     <div className="flex items-center gap-2.5 mb-3">
-      <div className="w-7 h-7 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
-        <Icon className="w-3.5 h-3.5 text-[#FF8000]" />
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+        <Icon className="w-3.5 h-3.5 text-primary" />
       </div>
       <div>
         <h3 className="text-sm font-semibold text-foreground leading-none">{label}</h3>
@@ -203,7 +203,7 @@ export function DriverIntel({ showTabBar = true, prefetchedVehicles }: { showTab
               onClick={() => setTab(t.id)}
               className={`relative text-[13px] px-4 py-2 rounded-lg transition-all flex items-center gap-2 font-medium ${
                 tab === t.id
-                  ? 'bg-[#FF8000]/10 text-[#FF8000]'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:text-foreground hover:bg-card/60'
               }`}
             >
@@ -323,7 +323,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
   }
 
   const sortBtn = (key: SortKey, label: string) => (
@@ -332,7 +332,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
       onClick={() => toggleSort(key)}
       className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
         sortBy === key
-          ? 'bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/25'
+          ? 'bg-primary/15 text-primary border border-primary/25'
           : 'text-muted-foreground hover:text-foreground border border-transparent hover:border-border'
       }`}
     >
@@ -360,8 +360,8 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
             <span className="text-muted-foreground/60">critical</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#FF8000]" />
-            <span className="text-[#FF8000] font-mono">{warningCount}</span>
+            <span className="w-2 h-2 rounded-full bg-primary" />
+            <span className="text-primary font-mono">{warningCount}</span>
             <span className="text-muted-foreground/60">warning</span>
           </span>
           <span className="flex items-center gap-1.5">
@@ -386,7 +386,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search drivers, teams\u2026"
-            className="w-full pl-10 pr-4 py-2 text-sm bg-background border border-[rgba(255,128,0,0.10)] rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-[#FF8000]/30 transition-colors"
+            className="w-full pl-10 pr-4 py-2 text-sm bg-background border border-[rgba(255,128,0,0.10)] rounded-lg text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-primary/30 transition-colors"
           />
         </div>
         <div className="flex items-center gap-1">
@@ -423,7 +423,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
               onClick={() => onSelect(d.driver_id)}
               className={`text-left rounded-lg transition-all group relative overflow-hidden ${
                 isMcLaren
-                  ? 'bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]'
+                  ? 'bg-card border border-primary/25 hover:border-primary/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]'
                   : 'bg-card border border-border hover:border-[rgba(255,128,0,0.25)]'
               }`}
             >
@@ -450,14 +450,14 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
                       {vehicle.number}
                     </span>
                   )}
-                  <div className={`text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors ${isMcLaren ? 'text-[17px]' : 'text-[15px]'}`}>
+                  <div className={`text-foreground font-bold leading-tight group-hover:text-primary transition-colors ${isMcLaren ? 'text-[17px]' : 'text-[15px]'}`}>
                     {formatDriverName(d.driver_id)}
                   </div>
                 </div>
 
                 {standing && (
                   <div className="flex items-center gap-2 mt-1.5 text-[11px]">
-                    <span className="font-mono font-bold text-[#FF8000]">P{standing.position}</span>
+                    <span className="font-mono font-bold text-primary">P{standing.position}</span>
                     <span className="text-muted-foreground font-mono">{standing.points} pts</span>
                   </div>
                 )}
@@ -467,7 +467,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
                     <span className="text-sm leading-none">{NATIONALITY_FLAGS[d.nationality]}</span>
                   )}
                   {d.total_races != null && <span className="font-mono">{d.total_races} <span className="text-muted-foreground/60">races</span></span>}
-                  {d.wins != null && d.wins > 0 && <span className="font-mono text-[#FF8000]">{d.wins}W</span>}
+                  {d.wins != null && d.wins > 0 && <span className="font-mono text-primary">{d.wins}W</span>}
                 </div>
 
                 {/* Driver performance stats */}
@@ -496,7 +496,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
                   </div>
                 )}
 
-                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 absolute bottom-3 right-3 group-hover:text-[#FF8000]/60 transition-colors" />
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 absolute bottom-3 right-3 group-hover:text-primary/60 transition-colors" />
               </div>
             </motion.button>
           );
@@ -643,7 +643,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
   }, [selectedVehicle]);
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
   }
 
   if (!driverCode) {
@@ -694,7 +694,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                 {NATIONALITY_FLAGS[driverObj.nationality] && <span className="text-sm">{NATIONALITY_FLAGS[driverObj.nationality]}</span>}
                 {driverObj.nationality}
                 {driverObj.total_races != null && <span className="ml-3 font-mono">{driverObj.total_races} races</span>}
-                {driverObj.wins != null && driverObj.wins > 0 && <span className="ml-2 font-mono text-[#FF8000]">{driverObj.wins} wins</span>}
+                {driverObj.wins != null && driverObj.wins > 0 && <span className="ml-2 font-mono text-primary">{driverObj.wins} wins</span>}
               </div>
             )}
           </div>
@@ -704,7 +704,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
             value={driverCode}
             onChange={e => onSelect(e.target.value)}
             aria-label="Select driver"
-            className="bg-background border border-[rgba(255,128,0,0.10)] rounded-lg px-3 py-2 text-[12px] text-foreground focus:outline-none focus:border-[#FF8000]/30 transition-colors cursor-pointer"
+            className="bg-background border border-[rgba(255,128,0,0.10)] rounded-lg px-3 py-2 text-[12px] text-foreground focus:outline-none focus:border-primary/30 transition-colors cursor-pointer"
           >
             {drivers.map((d: any) => (
               <option key={d.driver_id} value={d.driver_id}>
@@ -739,7 +739,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                 <div className="grid grid-cols-6 gap-1 mt-1">
                   {radarData.map(d => (
                     <div key={d.metric} className="text-center">
-                      <div className="text-[9px] text-muted-foreground/70 truncate">{d.metric}</div>
+                      <div className="text-[10px] text-muted-foreground/70 truncate">{d.metric}</div>
                       <div className="text-[12px] font-mono font-semibold text-foreground">{d.value.toFixed(0)}</div>
                     </div>
                   ))}
@@ -771,19 +771,19 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <div className="text-[9px] text-muted-foreground/70 uppercase tracking-wider mb-1">Degradation</div>
+                            <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wider mb-1">Degradation</div>
                             <span className="text-sm font-mono text-foreground">
                               {c.degradation_slope != null ? `${c.degradation_slope.toFixed(4)}` : '\u2014'}
                             </span>
-                            <span className="text-[9px] text-muted-foreground ml-1">s/lap</span>
+                            <span className="text-[10px] text-muted-foreground ml-1">s/lap</span>
                           </div>
                           <div>
-                            <div className="text-[9px] text-muted-foreground/70 uppercase tracking-wider mb-1">Avg Life</div>
+                            <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wider mb-1">Avg Life</div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-mono text-foreground">
                                 {c.avg_tyre_life != null ? c.avg_tyre_life.toFixed(1) : '\u2014'}
                               </span>
-                              <span className="text-[9px] text-muted-foreground">laps</span>
+                              <span className="text-[10px] text-muted-foreground">laps</span>
                             </div>
                             <div className="h-1 bg-secondary rounded-full mt-1.5 overflow-hidden">
                               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${lifePct}%`, backgroundColor: color }} />
@@ -851,13 +851,13 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
           {onCompare && (
             <button
               onClick={onCompare}
-              className="w-full bg-card border border-dashed border-[rgba(255,128,0,0.20)] rounded-lg p-3.5 flex items-center justify-center gap-3 hover:border-[#FF8000]/40 hover:bg-[#FF8000]/[0.03] transition-all group"
+              className="w-full bg-card border border-dashed border-[rgba(255,128,0,0.20)] rounded-lg p-3.5 flex items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/[0.03] transition-all group"
             >
-              <GitCompare className="w-4 h-4 text-[#FF8000]/50 group-hover:text-[#FF8000]" />
+              <GitCompare className="w-4 h-4 text-primary/50 group-hover:text-primary" />
               <span className="text-[13px] text-muted-foreground group-hover:text-foreground transition-colors">
-                Compare <span className="text-[#FF8000] font-medium">{driverName}</span> against other drivers
+                Compare <span className="text-primary font-medium">{driverName}</span> against other drivers
               </span>
-              <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-[#FF8000]/60" />
+              <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary/60" />
             </button>
           )}
 
@@ -880,7 +880,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                     </div>
                     <div className="flex items-center justify-between text-[10px]">
                       <span className="text-muted-foreground">Last Race</span>
-                      <span className="font-mono text-foreground text-[9px]">{selectedVehicle.lastRace}</span>
+                      <span className="font-mono text-foreground text-[10px]">{selectedVehicle.lastRace}</span>
                     </div>
                   </div>
                 </div>
@@ -920,12 +920,12 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                           </div>
                         )}
 
-                        <div className="flex items-center justify-between text-[9px] text-muted-foreground/70 mb-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground/70 mb-1.5">
                           <span>Models: {sys.voteCount}/{sys.totalModels}</span>
                         </div>
 
                         {maint && (
-                          <div className="flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-md" style={{ backgroundColor: maint.color + '12', color: maint.color }}>
+                          <div className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md" style={{ backgroundColor: maint.color + '12', color: maint.color }}>
                             <maint.icon className="w-2.5 h-2.5" />
                             <span>{maint.label}</span>
                           </div>
@@ -935,7 +935,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                           <div className="mt-1.5 space-y-0.5">
                             <div className="text-[8px] text-muted-foreground/70 tracking-wider uppercase">Top Features</div>
                             {sys.metrics.slice(0, 3).map(met => (
-                              <div key={met.label} className="flex items-center justify-between text-[9px]">
+                              <div key={met.label} className="flex items-center justify-between text-[10px]">
                                 <span className="text-muted-foreground truncate mr-1">{met.label}</span>
                                 <span className="font-mono text-foreground">{met.value}</span>
                               </div>
@@ -1181,7 +1181,7 @@ function CompareDrivers() {
   });
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
   }
 
   const selectedCodes = selected.map(getDriverCode);
@@ -1222,7 +1222,7 @@ function CompareDrivers() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search\u2026"
-              className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-[#FF8000]/25 transition-colors"
+              className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/25 transition-colors"
             />
           </div>
           <div className="space-y-0.5 max-h-[60vh] overflow-y-auto pr-1">
@@ -1249,7 +1249,7 @@ function CompareDrivers() {
                     <span className="w-1.5 h-4 rounded-sm shrink-0" style={{ backgroundColor: tColor + '60' }} />
                   )}
                   <span className={`font-semibold ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>{code}</span>
-                  <span className="text-[9px] text-muted-foreground/60 truncate">{team}</span>
+                  <span className="text-[10px] text-muted-foreground/60 truncate">{team}</span>
                 </button>
               );
             })}
@@ -1263,7 +1263,7 @@ function CompareDrivers() {
               {selected.length === 1 && similarDrivers.length > 0 ? (
                 <>
                   <GitCompare className="w-7 h-7 mb-3 opacity-30" />
-                  <p className="text-[13px] mb-1">Similar to <span className="text-[#FF8000] font-semibold">{getDriverCode(selected[0])}</span></p>
+                  <p className="text-[13px] mb-1">Similar to <span className="text-primary font-semibold">{getDriverCode(selected[0])}</span></p>
                   <p className="text-[10px] opacity-50 mb-4">Vector profile similarity — click to add</p>
                   <div className="space-y-1.5 w-full max-w-xs">
                     {similarDrivers.map((s, i) => {
@@ -1275,7 +1275,7 @@ function CompareDrivers() {
                           type="button"
                           key={s.driver_code}
                           onClick={() => { if (driverEntry) toggleDriver(driverEntry.driver_id); }}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-background hover:bg-[#FF8000]/[0.03] border border-transparent hover:border-[#FF8000]/15 transition-all group"
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg bg-background hover:bg-primary/[0.03] border border-transparent hover:border-primary/15 transition-all group"
                         >
                           <span className="text-[10px] font-mono text-muted-foreground/50 w-3">{i + 1}</span>
                           {TEAM_NAME_TO_LOGO[s.team] && TEAM_LOGOS[TEAM_NAME_TO_LOGO[s.team]] ? (
@@ -1284,8 +1284,8 @@ function CompareDrivers() {
                             <span className="w-1.5 h-4 rounded-sm shrink-0" style={{ backgroundColor: color }} />
                           )}
                           <div className="flex-1 text-left">
-                            <span className="text-[11px] font-semibold text-foreground group-hover:text-[#FF8000] transition-colors">{s.driver_code}</span>
-                            <span className="text-[9px] text-muted-foreground/60 ml-1.5">{driverEntry ? formatDriverName(driverEntry.driver_id) : ''}</span>
+                            <span className="text-[11px] font-semibold text-foreground group-hover:text-primary transition-colors">{s.driver_code}</span>
+                            <span className="text-[10px] text-muted-foreground/60 ml-1.5">{driverEntry ? formatDriverName(driverEntry.driver_id) : ''}</span>
                             <span className="text-[8px] ml-1" style={{ color }}>{s.team}</span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1392,7 +1392,7 @@ function CompareDrivers() {
                           <tr key={row.label} className="border-b border-[rgba(255,128,0,0.03)] hover:bg-[rgba(255,128,0,0.02)] transition-colors">
                             <td className="py-2 pr-4 text-muted-foreground">
                               {row.label}
-                              {row.unit && <span className="text-[9px] ml-1 opacity-40">{row.unit}</span>}
+                              {row.unit && <span className="text-[10px] ml-1 opacity-40">{row.unit}</span>}
                             </td>
                             {selectedCodes.map((code) => {
                               const val = row.values[code];
@@ -1400,7 +1400,7 @@ function CompareDrivers() {
                               const isBest = !isNaN(num) && num === best && numVals.length > 1;
                               return (
                                 <td key={code} className="text-center px-3 py-2 font-mono">
-                                  <span className={isBest ? 'text-[#FF8000] font-semibold' : 'text-foreground'}>{val}</span>
+                                  <span className={isBest ? 'text-primary font-semibold' : 'text-foreground'}>{val}</span>
                                 </td>
                               );
                             })}

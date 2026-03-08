@@ -184,7 +184,7 @@ function EntityMetricCard({ code, metrics }: { code: string; metrics: Record<str
   const entries = Object.entries(metrics).slice(0, 8);
   return (
     <div className="rounded-lg border border-border bg-card/30 p-4">
-      <div className="text-sm font-semibold text-[#FF8000] mb-3">{code}</div>
+      <div className="text-sm font-semibold text-primary mb-3">{code}</div>
       <div className="space-y-1.5">
         {entries.map(([k, v]) => (
           <div key={k} className="flex items-center justify-between text-[11px]">
@@ -402,7 +402,7 @@ export function AdvantageCrossover() {
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
                 entityType === value
-                  ? 'bg-[#FF8000]/15 text-[#FF8000] font-medium'
+                  ? 'bg-primary/15 text-primary font-medium'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -416,7 +416,7 @@ export function AdvantageCrossover() {
         <select
           value={source}
           onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
-          className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/40 transition-colors"
+          className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary/40 transition-colors"
         >
           {SOURCE_OPTIONS.filter(o => o.entities.includes(entityType)).map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -430,7 +430,7 @@ export function AdvantageCrossover() {
           onClick={() => handleViewChange('matrix')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'matrix'
-              ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+              ? 'border-primary/30 bg-primary/8 text-primary'
               : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -441,7 +441,7 @@ export function AdvantageCrossover() {
           onClick={() => handleViewChange('cluster')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'cluster'
-              ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+              ? 'border-primary/30 bg-primary/8 text-primary'
               : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -452,7 +452,7 @@ export function AdvantageCrossover() {
           onClick={() => handleViewChange('insight')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'insight'
-              ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+              ? 'border-primary/30 bg-primary/8 text-primary'
               : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -463,7 +463,7 @@ export function AdvantageCrossover() {
           onClick={() => handleViewChange('compare')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'compare'
-              ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+              ? 'border-primary/30 bg-primary/8 text-primary'
               : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -479,7 +479,7 @@ export function AdvantageCrossover() {
             <button
               onClick={buildProfiles}
               disabled={building}
-              className="ml-4 px-4 py-1.5 rounded-lg text-[12px] font-medium bg-[#FF8000] text-[#0D1117] hover:bg-[#FF9A33] disabled:opacity-50 transition-all flex items-center gap-2"
+              className="ml-4 px-4 py-1.5 rounded-lg text-[12px] font-medium bg-primary text-[#0D1117] hover:bg-[#FF9A33] disabled:opacity-50 transition-all flex items-center gap-2"
             >
               {building ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
               {building ? 'Building Profiles...' : 'Build VictoryProfiles'}
@@ -495,7 +495,7 @@ export function AdvantageCrossover() {
             <div className="flex flex-col items-center justify-center py-16">
               <button
                 onClick={fetchMatrix}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
               >
                 <Grid3X3 className="w-4 h-4" />
                 Compute Similarity Matrix
@@ -508,7 +508,7 @@ export function AdvantageCrossover() {
 
           {matrixLoading && (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-6 h-6 animate-spin text-[#FF8000]/50" />
+              <Loader2 className="w-6 h-6 animate-spin text-primary/50" />
               <span className="ml-3 text-sm text-muted-foreground">Computing similarity matrix...</span>
             </div>
           )}
@@ -579,7 +579,7 @@ export function AdvantageCrossover() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={fetchCluster}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98] transition-all"
                 >
                   <ScatterIcon className="w-4 h-4" />
                   Compute Clusters
@@ -593,7 +593,7 @@ export function AdvantageCrossover() {
                     value={nClusters}
                     onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
                     title="Number of clusters"
-                    className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                    className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-primary/40"
                   />
                 </div>
               </div>
@@ -605,7 +605,7 @@ export function AdvantageCrossover() {
 
           {clusterLoading && (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-6 h-6 animate-spin text-[#FF8000]/50" />
+              <Loader2 className="w-6 h-6 animate-spin text-primary/50" />
               <span className="ml-3 text-sm text-muted-foreground">Computing clusters...</span>
             </div>
           )}
@@ -626,7 +626,7 @@ export function AdvantageCrossover() {
                         value={nClusters}
                         onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
                         title="Number of clusters"
-                        className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                        className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-primary/40"
                       />
                       <button
                         type="button"
@@ -776,7 +776,7 @@ export function AdvantageCrossover() {
                         </div>
                         <div className="w-16 bg-background/60 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-[#FF8000]"
+                            className="h-full rounded-full bg-primary"
                             style={{ width: `${Math.min(100, d.spread * 100)}%` }}
                           />
                         </div>
@@ -803,7 +803,7 @@ export function AdvantageCrossover() {
             <button
               onClick={fetchInsight}
               disabled={insightLoading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
             >
               {insightLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -849,8 +849,8 @@ export function AdvantageCrossover() {
               {/* LLM Insight */}
               <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.04)] p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Brain className="w-4 h-4 text-[#FF8000]" />
-                  <span className="text-sm font-medium text-[#FF8000]">Pattern Analysis</span>
+                  <Brain className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">Pattern Analysis</span>
                   <span className="text-[11px] text-muted-foreground ml-auto">{insightData.model_used}</span>
                 </div>
                 <div className="text-[13px] text-foreground/85 leading-relaxed whitespace-pre-line">
@@ -862,8 +862,8 @@ export function AdvantageCrossover() {
 
           {!insightData && !insightLoading && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-14 h-14 rounded-lg bg-[#FF8000]/8 flex items-center justify-center mb-4">
-                <Sparkles className="w-6 h-6 text-[#FF8000]/40" />
+              <div className="w-14 h-14 rounded-lg bg-primary/8 flex items-center justify-center mb-4">
+                <Sparkles className="w-6 h-6 text-primary/40" />
               </div>
               <p className="text-sm text-muted-foreground">
                 Click "Analyze Patterns" to get LLM-synthesized insights about {entityType} similarity groupings
@@ -891,7 +891,7 @@ export function AdvantageCrossover() {
 
             {entitiesLoading ? (
               <div className="flex items-center gap-2 py-4 justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]/50" />
+                <Loader2 className="w-4 h-4 animate-spin text-primary/50" />
                 <span className="text-[12px] text-muted-foreground">Loading entities...</span>
               </div>
             ) : (
@@ -906,7 +906,7 @@ export function AdvantageCrossover() {
                       onClick={() => toggleEntity(code)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-all border ${
                         selected
-                          ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
+                          ? 'border-primary/40 bg-primary/12 text-primary font-medium'
                           : 'border-border bg-background/40 text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.15)]'
                       }`}
                     >
@@ -930,7 +930,7 @@ export function AdvantageCrossover() {
               <button
                 onClick={fetchCompare}
                 disabled={selectedEntities.length < 2 || compareLoading}
-                className="flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
+                className="flex items-center gap-2 px-5 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
               >
                 {compareLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRightLeft className="w-3.5 h-3.5" />}
                 {compareLoading ? 'Comparing...' : 'Compare'}
@@ -1002,8 +1002,8 @@ export function AdvantageCrossover() {
           {compareData && (
             <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
               <div className="flex items-center gap-2">
-                <Brain className="w-4 h-4 text-[#FF8000]" />
-                <span className="text-sm font-medium text-[#FF8000]">Cross-Entity Intelligence</span>
+                <Brain className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-primary">Cross-Entity Intelligence</span>
               </div>
 
               {/* Suggested questions */}
@@ -1031,12 +1031,12 @@ export function AdvantageCrossover() {
                   onChange={e => setCrossQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && crossQuery.trim()) fetchCrossInsight(crossQuery); }}
                   placeholder={`Ask about ${selectedEntities.join(', ')}...`}
-                  className="flex-1 bg-background/60 border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/40 transition-colors"
+                  className="flex-1 bg-background/60 border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 transition-colors"
                 />
                 <button
                   onClick={() => fetchCrossInsight(crossQuery)}
                   disabled={!crossQuery.trim() || crossInsightLoading}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-[#FF8000]/15 text-[#FF8000] hover:bg-[#FF8000]/25"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-medium transition-all disabled:opacity-30 bg-primary/15 text-primary hover:bg-primary/25"
                 >
                   {crossInsightLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 </button>
@@ -1049,7 +1049,7 @@ export function AdvantageCrossover() {
                   {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {crossInsight.correlations_found.slice(0, 4).map((c, i) => (
-                        <div key={i} className="text-[9px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-border">
+                        <div key={i} className="text-[10px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-border">
                           <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
                           {c.converging.length > 0 && (
                             <span className="text-[#05DF72]/80 ml-1.5">+{c.converging.length} converging</span>
@@ -1073,7 +1073,7 @@ export function AdvantageCrossover() {
 
                   {/* Model + provider attribution */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[9px] text-muted-foreground/50 font-mono">
+                    <span className="text-[10px] text-muted-foreground/50 font-mono">
                       via {crossInsight.model_used || 'auto'}
                     </span>
                   </div>
@@ -1081,7 +1081,7 @@ export function AdvantageCrossover() {
                   {/* View Full Briefing toggle */}
                   <button
                     onClick={() => setInsightExpanded(!insightExpanded)}
-                    className="flex items-center gap-1.5 text-[11px] text-[#FF8000] hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-[#FF8000]/5"
+                    className="flex items-center gap-1.5 text-[11px] text-primary hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-primary/5"
                   >
                     {insightExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     {insightExpanded ? 'Hide Full Briefing' : 'View Full Briefing'}

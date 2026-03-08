@@ -42,7 +42,7 @@ function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 pt-2">
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
-      <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">{label}</span>
+      <span className="text-[10px] tracking-[0.25em] text-primary/60 font-semibold">{label}</span>
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
     </div>
   );
@@ -87,6 +87,8 @@ export function RaceStrategy() {
   const [predLapStart, setPredLapStart] = useState(1);
   const [predLapEnd, setPredLapEnd] = useState(25);
   const [predResult, setPredResult] = useState<any>(null);
+  const [bilstmResult, setBilstmResult] = useState<any>(null);
+  const [predModel, setPredModel] = useState<'xgboost' | 'bilstm' | 'both'>('both');
   const [predLoading, setPredLoading] = useState(false);
 
   useEffect(() => {
@@ -206,7 +208,7 @@ export function RaceStrategy() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-6 h-6 animate-spin text-[#FF8000]" />
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
         <span className="ml-2 text-muted-foreground">Loading strategy data...</span>
       </div>
     );
@@ -220,25 +222,25 @@ export function RaceStrategy() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
             <KPI
-              icon={<Flag className="w-4 h-4 text-[#FF8000]" />}
+              icon={<Flag className="w-4 h-4 text-primary" />}
               label="RACE"
               value={session.meeting}
               detail={`${session.circuit} — ${session.year}`}
             />
             <KPI
-              icon={<Gauge className="w-4 h-4 text-[#FF8000]" />}
+              icon={<Gauge className="w-4 h-4 text-primary" />}
               label="TOTAL LAPS"
               value={String(session.total_laps)}
               detail={`Session ${session.session_key}`}
             />
             <KPI
-              icon={<Users className="w-4 h-4 text-[#FF8000]" />}
+              icon={<Users className="w-4 h-4 text-primary" />}
               label="DRIVERS"
               value={String(drivers.length)}
               detail={`${simMeta?.n_strategies_evaluated || '—'} strategies evaluated`}
             />
             <KPI
-              icon={<Timer className="w-4 h-4 text-[#FF8000]" />}
+              icon={<Timer className="w-4 h-4 text-primary" />}
               label="PIT LOSS"
               value={`${simMeta?.pit_loss?.toFixed(1) || '22.0'}s`}
               detail="Time lost per pit stop"
@@ -279,14 +281,14 @@ export function RaceStrategy() {
               <div
                 key={d.driver_number}
                 className={`rounded-lg transition cursor-pointer ${
-                  isMcL ? 'border-l-2 border-l-[#FF8000]' : ''
+                  isMcL ? 'border-l-2 border-l-primary' : ''
                 } ${isExpanded ? 'bg-secondary' : 'hover:bg-[#1e2433]'}`}
                 onClick={() => setExpandedDriver(isExpanded ? null : d.driver)}
               >
                 <div className="flex items-center gap-3 px-3 py-1.5">
                   {/* Driver name */}
                   <div className="w-12 shrink-0">
-                    <span className={`text-sm font-mono ${isMcL ? 'text-[#FF8000] font-semibold' : 'text-foreground'}`}>
+                    <span className={`text-sm font-mono ${isMcL ? 'text-primary font-semibold' : 'text-foreground'}`}>
                       {d.driver}
                     </span>
                   </div>
@@ -303,7 +305,7 @@ export function RaceStrategy() {
                       return (
                         <div
                           key={i}
-                          className="h-full flex items-center justify-center text-[9px] font-mono"
+                          className="h-full flex items-center justify-center text-[10px] font-mono"
                           style={{
                             width: `${pct}%`,
                             backgroundColor: compoundColors[s.compound] || '#6b7280',
@@ -350,7 +352,7 @@ export function RaceStrategy() {
                             <div className="text-yellow-500">Cliff: lap {s.cliff_lap}</div>
                           )}
                           {s.predicted_pit_window && (
-                            <div className="text-[#FF8000]">Pit window: L{s.predicted_pit_window}</div>
+                            <div className="text-primary">Pit window: L{s.predicted_pit_window}</div>
                           )}
                         </div>
                       ))}
@@ -384,11 +386,11 @@ export function RaceStrategy() {
                     <div
                       key={b.driver_number}
                       className={`flex items-center justify-between px-3 py-1.5 rounded-lg bg-background ${
-                        isMcLaren(b.team) ? 'border-l-2 border-l-[#FF8000]' : ''
+                        isMcLaren(b.team) ? 'border-l-2 border-l-primary' : ''
                       }`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={`text-sm font-mono ${isMcLaren(b.team) ? 'text-[#FF8000] font-semibold' : 'text-foreground'}`}>
+                        <span className={`text-sm font-mono ${isMcLaren(b.team) ? 'text-primary font-semibold' : 'text-foreground'}`}>
                           {b.driver}
                         </span>
                         <span className="text-[10px] text-muted-foreground">{b.team}</span>
@@ -422,11 +424,11 @@ export function RaceStrategy() {
                   <div
                     key={b.driver_number}
                     className={`flex items-center justify-between px-3 py-1 rounded-lg hover:bg-secondary ${
-                      isMcLaren(b.team) ? 'border-l-2 border-l-[#FF8000]' : ''
+                      isMcLaren(b.team) ? 'border-l-2 border-l-primary' : ''
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span className={`text-[12px] font-mono w-10 ${isMcLaren(b.team) ? 'text-[#FF8000] font-semibold' : 'text-foreground'}`}>
+                      <span className={`text-[12px] font-mono w-10 ${isMcLaren(b.team) ? 'text-primary font-semibold' : 'text-foreground'}`}>
                         {b.driver}
                       </span>
                       <span className="text-[10px] text-muted-foreground w-20 truncate">{b.team}</span>
@@ -530,11 +532,11 @@ export function RaceStrategy() {
                       <tr
                         key={i}
                         className={`border-b border-[rgba(255,128,0,0.04)] ${
-                          isMcLaren(s.team) ? 'bg-[#FF8000]/5' : ''
+                          isMcLaren(s.team) ? 'bg-primary/5' : ''
                         }`}
                       >
                         <td className="py-1.5 pr-2 font-mono text-muted-foreground">{i + 1}</td>
-                        <td className={`py-1.5 pr-2 font-mono ${isMcLaren(s.team) ? 'text-[#FF8000] font-semibold' : 'text-foreground'}`}>
+                        <td className={`py-1.5 pr-2 font-mono ${isMcLaren(s.team) ? 'text-primary font-semibold' : 'text-foreground'}`}>
                           {s.driver}
                         </td>
                         <td className="py-1.5 pr-2 text-muted-foreground">{s.team}</td>
@@ -751,7 +753,7 @@ export function RaceStrategy() {
           {xgbData?.metadata && (
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
-                <Brain className="w-4 h-4 text-[#FF8000]" />
+                <Brain className="w-4 h-4 text-primary" />
                 <h3 className="text-foreground font-semibold text-sm">XGBoost Lap Predictor</h3>
                 <span className="ml-auto text-[10px] text-muted-foreground font-mono">
                   v{xgbData.metadata.model_version} &middot; {xgbData.metadata.n_estimators} trees
@@ -865,12 +867,15 @@ export function RaceStrategy() {
       {xgbData?.metadata && (
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
-            <Brain className="w-4 h-4 text-[#FF8000]" />
+            <Brain className="w-4 h-4 text-primary" />
             <h3 className="text-foreground font-semibold text-sm">Lap Time Predictor</h3>
-            <span className="ml-auto text-[10px] text-muted-foreground">XGBoost inference &middot; MAE {xgbData.metadata.validation?.mae?.toFixed(2)}s</span>
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              XGBoost MAE {xgbData.metadata.validation?.mae?.toFixed(2)}s
+              {bilstmData?.metadata?.validation && <> &middot; BiLSTM MAE {bilstmData.metadata.validation.mae?.toFixed(2)}s</>}
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">Circuit</label>
               <select value={predCircuit} onChange={e => setPredCircuit(e.target.value)} title="Circuit"
@@ -910,58 +915,113 @@ export function RaceStrategy() {
                   className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
               </div>
             </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Model</label>
+              <select value={predModel} onChange={e => setPredModel(e.target.value as any)} title="Model"
+                className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                <option value="both">Both (Compare)</option>
+                <option value="xgboost">XGBoost</option>
+                <option value="bilstm">BiLSTM</option>
+              </select>
+            </div>
             <div className="flex items-end">
               <button
                 type="button"
                 onClick={() => {
                   setPredLoading(true);
-                  strategy.predictLap({
+                  const params = {
                     circuit: predCircuit, driver_code: predDriver, compound: predCompound,
                     lap_start: predLapStart, lap_end: predLapEnd,
-                  }).then(setPredResult).catch(() => setPredResult(null)).finally(() => setPredLoading(false));
+                  };
+                  if (predModel === 'xgboost') {
+                    strategy.predictLap(params).then(r => { setPredResult(r); setBilstmResult(null); })
+                      .catch(() => { setPredResult(null); setBilstmResult(null); })
+                      .finally(() => setPredLoading(false));
+                  } else if (predModel === 'bilstm') {
+                    strategy.predictLapBilstm(params).then(r => { setBilstmResult(r); setPredResult(null); })
+                      .catch(() => { setBilstmResult(null); setPredResult(null); })
+                      .finally(() => setPredLoading(false));
+                  } else {
+                    Promise.all([
+                      strategy.predictLap(params).catch(() => null),
+                      strategy.predictLapBilstm(params).catch(() => null),
+                    ]).then(([xgb, bilstm]) => { setPredResult(xgb); setBilstmResult(bilstm); })
+                      .finally(() => setPredLoading(false));
+                  }
                 }}
                 disabled={predLoading}
-                className="w-full bg-[#FF8000] hover:bg-[#FF8000]/80 text-black font-semibold text-[12px] rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+                className="w-full bg-primary hover:bg-primary/80 text-black font-semibold text-[12px] rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
               >
                 {predLoading ? 'Predicting...' : 'Predict'}
               </button>
             </div>
           </div>
 
-          {/* Prediction results */}
-          {predResult?.predictions && (
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {predResult.driver} at {predResult.circuit.replace(' Grand Prix', '')} &middot; {predResult.compound} &middot; Baseline: {predResult.baseline_pace_s}s
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  Weather: {predResult.weather?.air_temp_c}°C air / {predResult.weather?.track_temp_c}°C track / {predResult.weather?.humidity_pct}% hum
-                </span>
+          {/* Prediction results — merged chart for XGBoost + BiLSTM */}
+          {(predResult?.predictions || bilstmResult?.predictions) && (() => {
+            const meta = predResult || bilstmResult;
+            // Merge both model predictions into one dataset keyed by lap
+            const lapMap: Record<number, any> = {};
+            if (predResult?.predictions) {
+              for (const p of predResult.predictions) {
+                lapMap[p.lap] = { lap: p.lap, tyre_life: p.tyre_life, deg_delta: p.deg_delta, xgboost: p.predicted_s };
+              }
+            }
+            if (bilstmResult?.predictions) {
+              for (const p of bilstmResult.predictions) {
+                if (!lapMap[p.lap]) lapMap[p.lap] = { lap: p.lap, tyre_life: p.tyre_life, deg_delta: p.deg_delta };
+                lapMap[p.lap].bilstm = p.predicted_s;
+              }
+            }
+            const chartData = Object.values(lapMap).sort((a: any, b: any) => a.lap - b.lap);
+            const hasXgb = predResult?.predictions;
+            const hasBilstm = bilstmResult?.predictions;
+
+            return (
+              <div>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-[11px] text-muted-foreground">
+                    {meta.driver} at {meta.circuit?.replace(' Grand Prix', '')} &middot; {meta.compound} &middot; Baseline: {meta.baseline_pace_s}s
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Weather: {meta.weather?.air_temp_c}°C air / {meta.weather?.track_temp_c}°C track / {meta.weather?.humidity_pct}% hum
+                  </span>
+                  {hasXgb && hasBilstm && (
+                    <span className="ml-auto text-[10px] text-muted-foreground flex items-center gap-3">
+                      <span className="flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-primary" /> XGBoost</span>
+                      <span className="flex items-center gap-1"><span className="inline-block w-3 h-[2px] bg-[#06B6D4]" /> BiLSTM</span>
+                    </span>
+                  )}
+                </div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={chartData} margin={{ left: 5, right: 10, top: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="lap" tick={{ fill: '#8b949e', fontSize: 11 }} label={{ value: 'Lap', position: 'insideBottom', offset: -2, fill: '#8b949e', fontSize: 10 }} />
+                    <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} domain={['auto', 'auto']} label={{ value: 'Lap Time (s)', angle: -90, position: 'insideLeft', fill: '#8b949e', fontSize: 10 }} />
+                    <Tooltip content={({ active, payload }: any) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0]?.payload;
+                      return (
+                        <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+                          <div className="text-foreground font-semibold">Lap {d?.lap}</div>
+                          {d?.xgboost != null && <div className="text-primary">XGBoost: <span className="font-mono">{d.xgboost.toFixed(3)}s</span></div>}
+                          {d?.bilstm != null && <div className="text-[#06B6D4]">BiLSTM: <span className="font-mono">{d.bilstm.toFixed(3)}s</span></div>}
+                          {d?.xgboost != null && d?.bilstm != null && (
+                            <div className="text-muted-foreground mt-1">Delta: <span className="font-mono">{(d.xgboost - d.bilstm).toFixed(3)}s</span></div>
+                          )}
+                          <div className="text-muted-foreground">Tyre Life: <span className="font-mono">{d?.tyre_life}</span></div>
+                          <div className="text-muted-foreground">Deg: <span className="font-mono">{d?.deg_delta?.toFixed(3)}s</span></div>
+                        </div>
+                      );
+                    }} />
+                    <ReferenceLine y={meta.baseline_pace_s} stroke="#8b949e" strokeDasharray="3 3" label={{ value: 'Baseline', fill: '#8b949e', fontSize: 10 }} />
+                    {hasXgb && <Line type="monotone" dataKey="xgboost" stroke="#FF8000" strokeWidth={2} dot={false} name="XGBoost" />}
+                    {hasBilstm && <Line type="monotone" dataKey="bilstm" stroke="#06B6D4" strokeWidth={2} dot={false} name="BiLSTM" strokeDasharray={hasXgb ? "5 3" : undefined} />}
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={predResult.predictions} margin={{ left: 5, right: 10, top: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="lap" tick={{ fill: '#8b949e', fontSize: 11 }} label={{ value: 'Lap', position: 'insideBottom', offset: -2, fill: '#8b949e', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} domain={['auto', 'auto']} label={{ value: 'Lap Time (s)', angle: -90, position: 'insideLeft', fill: '#8b949e', fontSize: 10 }} />
-                  <Tooltip content={({ active, payload }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0]?.payload;
-                    return (
-                      <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
-                        <div className="text-foreground font-semibold">Lap {d?.lap}</div>
-                        <div className="text-muted-foreground">Predicted: <span className="text-foreground font-mono">{d?.predicted_s?.toFixed(3)}s</span></div>
-                        <div className="text-muted-foreground">Tyre Life: <span className="text-foreground font-mono">{d?.tyre_life}</span></div>
-                        <div className="text-muted-foreground">Deg Delta: <span className="text-foreground font-mono">{d?.deg_delta?.toFixed(3)}s</span></div>
-                      </div>
-                    );
-                  }} />
-                  <ReferenceLine y={predResult.baseline_pace_s} stroke="#8b949e" strokeDasharray="3 3" label={{ value: 'Baseline', fill: '#8b949e', fontSize: 10 }} />
-                  <Line type="monotone" dataKey="predicted_s" stroke="#FF8000" strokeWidth={2} dot={false} name="Predicted" />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
@@ -969,7 +1029,7 @@ export function RaceStrategy() {
       {xgbCircuitData.length > 0 && (
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Flag className="w-4 h-4 text-[#FF8000]" />
+            <Flag className="w-4 h-4 text-primary" />
             <h3 className="text-foreground font-semibold text-sm">XGBoost Accuracy by Circuit</h3>
             <span className="ml-auto text-[11px] text-muted-foreground">
               MAE in seconds &middot; lower is better
@@ -1029,7 +1089,7 @@ export function RaceStrategy() {
                     <span className="text-[11px] font-mono text-foreground">{name}</span>
                     <span className="text-[10px] font-semibold">{label}</span>
                     {lastTrained && (
-                      <span className="text-[9px] text-muted-foreground">
+                      <span className="text-[10px] text-muted-foreground">
                         {new Date(lastTrained).toLocaleDateString()}
                       </span>
                     )}
@@ -1044,7 +1104,7 @@ export function RaceStrategy() {
       {driverDeltaData.length > 0 && (
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-[#FF8000]" />
+            <TrendingUp className="w-4 h-4 text-primary" />
             <h3 className="text-foreground font-semibold text-sm">Driver Pace Deltas (ELT Model)</h3>
             <span className="ml-auto text-[11px] text-muted-foreground">
               Negative = faster than field median — {eltData?.driver_count} drivers, {eltData?.baseline_count} baselines

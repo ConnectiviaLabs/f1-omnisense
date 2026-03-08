@@ -264,7 +264,7 @@ function AnnotatedVideoPlayer({
         />
         {hasFrames && activeFrame && (
           <div className="absolute top-2 left-2 flex items-center gap-2 pointer-events-none">
-            <span className="text-[10px] font-mono bg-black/70 text-[#FF8000] px-2 py-0.5 rounded">
+            <span className="text-[10px] font-mono bg-black/70 text-primary px-2 py-0.5 rounded">
               Frame {activeFrame.frame_index} — {frameTimes[activeFrameIdx].toFixed(1)}s
             </span>
             <span className="text-[10px] font-mono bg-black/70 text-green-400 px-2 py-0.5 rounded">
@@ -288,7 +288,7 @@ function AnnotatedVideoPlayer({
                 key={f.frame_index}
                 type="button"
                 onClick={() => seekToFrame(i)}
-                className="absolute top-0 bottom-0 hover:ring-1 hover:ring-[#FF8000]/50"
+                className="absolute top-0 bottom-0 hover:ring-1 hover:ring-primary/50"
                 style={{
                   left: `${(i / frames.length) * 100}%`,
                   width: `${Math.max(100 / frames.length, 2)}%`,
@@ -311,7 +311,7 @@ function AnnotatedVideoPlayer({
           <div className="flex items-center gap-2 mb-1">
             <Brain className="w-3 h-3 text-purple-400" />
             <span className="text-[10px] text-purple-400 tracking-wider font-mono">AI INSIGHT</span>
-            <span className="text-[9px] text-muted-foreground ml-auto">{activeNarration.tokens} tok</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">{activeNarration.tokens} tok</span>
           </div>
           <p className="text-[11px] text-foreground/90 leading-relaxed">{activeNarration.narration}</p>
         </div>
@@ -331,11 +331,11 @@ function AnnotatedVideoPlayer({
                 onClick={() => seekToFrame(i)}
                 className={`shrink-0 rounded-md px-2 py-1 text-center transition-all border ${
                   i === activeFrameIdx
-                    ? 'bg-[#FF8000]/15 border-[#FF8000] text-[#FF8000]'
-                    : 'bg-background border-border text-muted-foreground hover:border-[#FF8000]/30'
+                    ? 'bg-primary/15 border-primary text-primary'
+                    : 'bg-background border-border text-muted-foreground hover:border-primary/30'
                 }`}
               >
-                <div className="text-[9px] font-mono">{frameTimes[i].toFixed(1)}s</div>
+                <div className="text-[10px] font-mono">{frameTimes[i].toFixed(1)}s</div>
                 <div className="text-[8px]">{detCount} det</div>
               </button>
             );
@@ -345,7 +345,7 @@ function AnnotatedVideoPlayer({
 
       {!hasFrames && (
         <div className="text-[11px] text-muted-foreground text-center py-3">
-          No detection data — click <span className="text-[#FF8000]">Analyze</span> to run the pipeline
+          No detection data — click <span className="text-primary">Analyze</span> to run the pipeline
         </div>
       )}
     </div>
@@ -522,7 +522,7 @@ export function MediaIntelligence() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-3 text-muted-foreground text-sm">Loading media pipeline...</span>
       </div>
     );
@@ -535,8 +535,8 @@ export function MediaIntelligence() {
       <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-[#FF8000]" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
             </div>
             <div>
               <h3 className="text-sm text-foreground tracking-wide">OMNISENSE MEDIA INTELLIGENCE</h3>
@@ -553,7 +553,7 @@ export function MediaIntelligence() {
               <span className="text-[rgba(255,128,0,0.3)]">|</span>
               <span>{totalDetections} detections</span>
             </div>
-            <label className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] bg-[#FF8000]/15 text-[#FF8000] rounded-lg hover:bg-[#FF8000]/25 cursor-pointer transition-colors">
+            <label className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] bg-primary/15 text-primary rounded-lg hover:bg-primary/25 cursor-pointer transition-colors">
               <Upload className="w-3 h-3" />
               Upload
               <input
@@ -570,7 +570,7 @@ export function MediaIntelligence() {
       {/* ── VIDEO STRIP ── */}
       <div
         className={`bg-card border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
-          uploadDragging ? 'border-[#FF8000]' : 'border-border'
+          uploadDragging ? 'border-primary' : 'border-border'
         }`}
         onDragOver={e => { e.preventDefault(); setUploadDragging(true); }}
         onDragLeave={() => setUploadDragging(false)}
@@ -597,8 +597,8 @@ export function MediaIntelligence() {
                 }}
                 className={`shrink-0 w-36 rounded-lg overflow-hidden border transition-all ${
                   isSelected
-                    ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30'
-                    : 'border-border hover:border-[#FF8000]/30'
+                    ? 'border-primary ring-1 ring-primary/30'
+                    : 'border-border hover:border-primary/30'
                 }`}
               >
                 <div className="h-20 bg-background relative">
@@ -619,13 +619,13 @@ export function MediaIntelligence() {
                         {gdinoData![v.filename].length}f
                       </span>
                     ) : (
-                      <span className="text-[8px] bg-[#FF8000]/20 text-[#FF8000] px-1.5 py-0.5 rounded">Pending</span>
+                      <span className="text-[8px] bg-primary/20 text-primary px-1.5 py-0.5 rounded">Pending</span>
                     )}
                   </div>
                 </div>
                 <div className="px-2 py-1.5 bg-background">
                   <div className="text-[10px] text-foreground truncate">{v.filename}</div>
-                  <div className="text-[9px] text-muted-foreground">{v.size_mb} MB</div>
+                  <div className="text-[10px] text-muted-foreground">{v.size_mb} MB</div>
                 </div>
               </button>
             );
@@ -663,7 +663,7 @@ export function MediaIntelligence() {
                     type="button"
                     onClick={() => analyzeVideo(selectedVideo)}
                     disabled={analyzeProgress === 'detecting' || analyzeProgress === 'analyzing'}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#FF8000]/20 text-[#FF8000] text-[12px] rounded-lg hover:bg-[#FF8000]/30 disabled:opacity-40 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary/20 text-primary text-[12px] rounded-lg hover:bg-primary/30 disabled:opacity-40 transition-colors"
                   >
                     {analyzeProgress === 'detecting' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Detecting...</>}
                     {analyzeProgress === 'analyzing' && <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Analyzing...</>}
@@ -681,9 +681,9 @@ export function MediaIntelligence() {
                       title="Detection confidence threshold"
                       value={Math.round(confidenceThreshold * 100)}
                       onChange={e => setConfidenceThreshold(Number(e.target.value) / 100)}
-                      className="w-20 accent-[#FF8000] h-1"
+                      className="w-20 accent-primary h-1"
                     />
-                    <span className="text-[10px] font-mono text-[#FF8000] w-7">{Math.round(confidenceThreshold * 100)}%</span>
+                    <span className="text-[10px] font-mono text-primary w-7">{Math.round(confidenceThreshold * 100)}%</span>
                   </div>
 
                   {/* Category toggles */}
@@ -701,9 +701,9 @@ export function MediaIntelligence() {
                               return next;
                             });
                           }}
-                          className={`text-[9px] px-1.5 py-0.5 rounded-full border transition-all ${
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full border transition-all ${
                             active
-                              ? 'border-[#FF8000]/30 bg-[#FF8000]/15 text-[#FF8000]'
+                              ? 'border-primary/30 bg-primary/15 text-primary'
                               : 'border-border text-muted-foreground/40 line-through'
                           }`}
                         >
@@ -748,28 +748,28 @@ export function MediaIntelligence() {
                 {structured ? (
                   <div className="space-y-3">
                     <div>
-                      <div className="text-[9px] text-[#FF8000] tracking-wider mb-1">SCENE</div>
+                      <div className="text-[10px] text-primary tracking-wider mb-1">SCENE</div>
                       <p className="text-[11px] text-foreground/90 leading-relaxed">{structured.scene}</p>
                     </div>
                     <div>
-                      <div className="text-[9px] text-[#FF8000] tracking-wider mb-1">KEY OBJECTS</div>
+                      <div className="text-[10px] text-primary tracking-wider mb-1">KEY OBJECTS</div>
                       <div className="flex flex-wrap gap-1">
                         {structured.key_objects?.map(obj => (
-                          <span key={obj} className="text-[9px] px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">{obj}</span>
+                          <span key={obj} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">{obj}</span>
                         ))}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] text-cyan-400 tracking-wider mb-1">CONDITIONS</div>
+                      <div className="text-[10px] text-cyan-400 tracking-wider mb-1">CONDITIONS</div>
                       <p className="text-[11px] text-foreground/90">{structured.track_conditions}</p>
                     </div>
                     <div>
-                      <div className="text-[9px] text-purple-400 tracking-wider mb-1">STRATEGY</div>
+                      <div className="text-[10px] text-purple-400 tracking-wider mb-1">STRATEGY</div>
                       <p className="text-[11px] text-foreground/90">{structured.strategic_notes}</p>
                     </div>
                     {structured.incidents?.length > 0 && structured.incidents[0] !== '' && (
                       <div>
-                        <div className="text-[9px] text-red-400 tracking-wider mb-1">INCIDENTS</div>
+                        <div className="text-[10px] text-red-400 tracking-wider mb-1">INCIDENTS</div>
                         {structured.incidents.map((inc, i) => (
                           <div key={i} className="text-[11px] text-foreground/90 flex items-start gap-1.5">
                             <span className="text-red-400 mt-0.5">-</span>
@@ -783,12 +783,12 @@ export function MediaIntelligence() {
                   <p className="text-[11px] text-foreground/90 leading-relaxed whitespace-pre-line">{vlmAnalysis.analysis}</p>
                 ) : (
                   <div className="text-[11px] text-muted-foreground text-center py-6">
-                    Click <span className="text-[#FF8000]">Analyze</span> to generate insights
+                    Click <span className="text-primary">Analyze</span> to generate insights
                   </div>
                 )}
 
                 {vlmAnalysis && (
-                  <div className="mt-2 pt-2 border-t border-border text-[9px] text-muted-foreground font-mono">
+                  <div className="mt-2 pt-2 border-t border-border text-[10px] text-muted-foreground font-mono">
                     {vlmAnalysis.model} | {vlmAnalysis.frames_analyzed}f | {vlmAnalysis.tokens} tok | {vlmAnalysis.tok_per_s} tok/s
                   </div>
                 )}
@@ -806,13 +806,13 @@ export function MediaIntelligence() {
                       <div key={s.category}>
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-foreground">{s.category}</span>
-                          <span className="text-[9px] font-mono text-muted-foreground">
+                          <span className="text-[10px] font-mono text-muted-foreground">
                             {s.count}x · {Math.round(s.avgConfidence * 100)}%
                           </span>
                         </div>
                         <div className="h-1 bg-background rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#FF8000] rounded-full transition-all"
+                            className="h-full bg-primary rounded-full transition-all"
                             style={{ width: `${(s.count / maxCount) * 100}%` }}
                           />
                         </div>
@@ -832,7 +832,7 @@ export function MediaIntelligence() {
                   <div className="space-y-2">
                     {vmae && (
                       <div>
-                        <div className="text-[9px] text-purple-400 tracking-wider mb-1">VideoMAE</div>
+                        <div className="text-[10px] text-purple-400 tracking-wider mb-1">VideoMAE</div>
                         {vmae.top_predictions.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-[10px]">
                             <div className="w-10 h-1 bg-secondary rounded-full overflow-hidden">
@@ -846,7 +846,7 @@ export function MediaIntelligence() {
                     )}
                     {tsf && (
                       <div className={vmae ? 'mt-2' : ''}>
-                        <div className="text-[9px] text-cyan-400 tracking-wider mb-1">TimeSformer</div>
+                        <div className="text-[10px] text-cyan-400 tracking-wider mb-1">TimeSformer</div>
                         {tsf.top_predictions.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-[10px]">
                             <div className="w-10 h-1 bg-secondary rounded-full overflow-hidden">
@@ -947,10 +947,10 @@ export function MediaIntelligence() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                       <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 flex items-center justify-between">
                         <span className="text-[10px] text-purple-400 font-mono font-bold">{(r.score * 100).toFixed(1)}%</span>
-                        <span className="text-[9px] text-muted-foreground">#{i + 1}</span>
+                        <span className="text-[10px] text-muted-foreground">#{i + 1}</span>
                       </div>
                       <div className="absolute top-0 left-0 right-0 px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[9px] text-white/80">{r.source_video} f{r.frame_index}</span>
+                        <span className="text-[10px] text-white/80">{r.source_video} f{r.frame_index}</span>
                       </div>
                     </div>
                   ))}

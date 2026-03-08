@@ -447,7 +447,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Activity className="w-5 h-5 text-[#FF8000] animate-spin" />
+        <Activity className="w-5 h-5 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading anomaly detection data...</span>
       </div>
     );
@@ -470,7 +470,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
       {/* Fleet status bar */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-2 bg-card rounded-lg px-3 py-2 border border-border">
-          <CircleDot className="w-3 h-3 text-[#FF8000]" />
+          <CircleDot className="w-3 h-3 text-primary" />
           <span className="text-[12px] text-muted-foreground">{vehicles.length} drivers monitored</span>
           {liveSource && (
             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
@@ -515,7 +515,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: i * 0.05 }}
                 onClick={() => setSelectedCar(v)}
-                className="text-left rounded-lg transition-all group relative overflow-hidden bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
+                className="text-left rounded-lg transition-all group relative overflow-hidden bg-card border border-primary/25 hover:border-primary/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
               >
                 <div className="absolute top-0 left-0 bottom-0 w-[4px] rounded-l-xl" style={{ background: color }} />
                 <div className="p-5 pl-6">
@@ -535,7 +535,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     {v.number > 0 && (
                       <span className="text-[22px] font-black font-mono leading-none opacity-25" style={{ color }}>{v.number}</span>
                     )}
-                    <div className="text-[17px] text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors">
+                    <div className="text-[17px] text-foreground font-bold leading-tight group-hover:text-primary transition-colors">
                       {v.driver}
                     </div>
                   </div>
@@ -549,7 +549,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   {/* Car status indicators */}
                   <div className="flex items-center gap-2.5 mt-2 text-[11px] text-muted-foreground">
                     {critCount > 0 && <span className="font-mono text-red-400">{critCount} critical</span>}
-                    {warnCount > 0 && <span className="font-mono text-[#FF8000]">{warnCount} warning</span>}
+                    {warnCount > 0 && <span className="font-mono text-primary">{warnCount} warning</span>}
                     {critCount === 0 && warnCount === 0 && <span className="font-mono text-green-400">All systems nominal</span>}
                     {topAction && <MaintenanceBadge action={topAction} />}
                   </div>
@@ -557,7 +557,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   <div className="mt-3 space-y-1">
                     {v.systems.map(sys => (
                       <div key={sys.name} className="flex items-center gap-1.5">
-                        <span className="text-[9px] w-12 text-muted-foreground/70 truncate">{sys.name}</span>
+                        <span className="text-[10px] w-12 text-muted-foreground/70 truncate">{sys.name}</span>
                         <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
                         </div>
@@ -565,7 +565,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     ))}
                   </div>
 
-                  <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 absolute bottom-3 right-3 group-hover:text-[#FF8000]/60 transition-colors" />
+                  <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 absolute bottom-3 right-3 group-hover:text-primary/60 transition-colors" />
                 </div>
               </motion.button>
             );
@@ -603,7 +603,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-1 min-w-0">
                         {logoUrl && <img src={logoUrl} alt={v.team} className="h-3.5 w-3.5 object-contain shrink-0" />}
-                        <span className="text-[9px] font-medium tracking-wide truncate" style={{ color }}>{v.team}</span>
+                        <span className="text-[10px] font-medium tracking-wide truncate" style={{ color }}>{v.team}</span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <TrendIcon trend={trend} />
@@ -616,7 +616,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         <span className="text-[14px] font-black font-mono leading-none opacity-25" style={{ color }}>{v.number}</span>
                       )}
                       <div>
-                        <div className="text-[12px] text-foreground font-bold leading-tight group-hover:text-[#FF8000] transition-colors">
+                        <div className="text-[12px] text-foreground font-bold leading-tight group-hover:text-primary transition-colors">
                           {v.driver}
                         </div>
                         <div className="text-[8px] text-muted-foreground/60 font-mono">{carModel.label}</div>
@@ -624,11 +624,11 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     </div>
 
                     {/* Car health + status */}
-                    <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                    <div className="flex items-center gap-1.5 mt-1 text-[10px]">
                       <span className="font-mono font-bold" style={{ color: levelColor(v.level) }}>{v.overallHealth}%</span>
                       <span className="uppercase text-[8px] tracking-wider" style={{ color: levelColor(v.level) }}>{v.level}</span>
                       {critCount > 0 && <span className="font-mono text-red-400">{critCount}C</span>}
-                      {warnCount > 0 && <span className="font-mono text-[#FF8000]">{warnCount}W</span>}
+                      {warnCount > 0 && <span className="font-mono text-primary">{warnCount}W</span>}
                     </div>
 
                     <div className="mt-2 space-y-0.5">
@@ -657,21 +657,21 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
         return (
         <div className="space-y-4">
           {/* Driver Profile Header */}
-          <div className="bg-card rounded-lg border border-[#FF8000]/20 overflow-hidden">
-            <div className="h-1 bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
+          <div className="bg-card rounded-lg border border-primary/20 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
             <div className="px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-lg bg-[#FF8000]/10 border border-[#FF8000]/30 flex items-center justify-center">
-                  <span className="text-xl font-bold font-mono text-[#FF8000]">#{selectedCar.number}</span>
+                <div className="w-14 h-14 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center">
+                  <span className="text-xl font-bold font-mono text-primary">#{selectedCar.number}</span>
                 </div>
                 <div>
                   <div className="text-lg font-semibold text-foreground">{selectedCar.driver}</div>
                   <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
                     <span>{selectedCar.team}</span>
-                    <span className="text-[#FF8000]/40">|</span>
-                    <span className="text-[#FF8000]/80">{carModel.label}</span>
+                    <span className="text-primary/40">|</span>
+                    <span className="text-primary/80">{carModel.label}</span>
                     {s.nationality && <>
-                      <span className="text-[#FF8000]/40">|</span>
+                      <span className="text-primary/40">|</span>
                       <span>{s.nationality}</span>
                     </>}
                   </div>
@@ -702,7 +702,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   <div><span className="text-muted-foreground">Points </span><span className="font-mono font-bold text-foreground">{s.points}</span></div>
                 )}
                 {s.wins != null && s.wins > 0 && (
-                  <div><span className="text-muted-foreground">Wins </span><span className="font-mono font-bold text-[#FF8000]">{s.wins}</span></div>
+                  <div><span className="text-muted-foreground">Wins </span><span className="font-mono font-bold text-primary">{s.wins}</span></div>
                 )}
                 {s.podiums != null && s.podiums > 0 && (
                   <div><span className="text-muted-foreground">Podiums </span><span className="font-mono font-bold text-foreground">{s.podiums}</span></div>
@@ -723,7 +723,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             )}
             {statsLoading && (
               <div className="px-5 pb-3 flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin text-[#FF8000]" /> Loading driver stats...
+                <Loader2 className="w-3 h-3 animate-spin text-primary" /> Loading driver stats...
               </div>
             )}
           </div>
@@ -745,7 +745,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <div className="lg:col-span-2 bg-card rounded-lg border border-border p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
+                  <Shield className="w-3.5 h-3.5 text-primary" />
                   {carModel.label} — Vehicle Stress
                 </h3>
                 <div className="flex gap-3">
@@ -793,7 +793,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         </AreaChart>
                       </ResponsiveContainer>
                       <div className="flex items-center justify-between mt-1">
-                        <span className="text-[9px] text-muted-foreground">{label}</span>
+                        <span className="text-[10px] text-muted-foreground">{label}</span>
                         <span className="text-[10px] font-mono font-semibold" style={{ color }}>
                           {raceTelemetry[raceTelemetry.length - 1][key].toFixed(1)}{unit}
                         </span>
@@ -822,7 +822,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               {(s.avgTopSpeed || s.throttleSmoothness || s.overtakesMade) && (
                 <div className="bg-card rounded-lg border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
-                    <Activity className="w-3 h-3 text-[#FF8000]" />
+                    <Activity className="w-3 h-3 text-primary" />
                     Performance Profile
                   </h3>
                   <div className="space-y-2">
@@ -874,23 +874,23 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               {s.overtakesMade != null && (
                 <div className="bg-card rounded-lg border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
-                    <Sparkles className="w-3 h-3 text-[#FF8000]" />
+                    <Sparkles className="w-3 h-3 text-primary" />
                     Overtake Profile
                   </h3>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold text-[#22c55e]">{s.overtakesMade}</div>
-                      <div className="text-[9px] text-muted-foreground">Made</div>
+                      <div className="text-[10px] text-muted-foreground">Made</div>
                     </div>
                     <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold text-red-400">{s.timesOvertaken}</div>
-                      <div className="text-[9px] text-muted-foreground">Lost</div>
+                      <div className="text-[10px] text-muted-foreground">Lost</div>
                     </div>
                     <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold" style={{ color: (s.overtakeNet ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
                         {(s.overtakeNet ?? 0) >= 0 ? '+' : ''}{s.overtakeNet}
                       </div>
-                      <div className="text-[9px] text-muted-foreground">Net</div>
+                      <div className="text-[10px] text-muted-foreground">Net</div>
                     </div>
                   </div>
                 </div>
@@ -899,7 +899,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               {/* System Health — stacked in sidebar */}
               <div className="bg-card rounded-lg border border-border p-3">
                 <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
-                  <Gauge className="w-3 h-3 text-[#FF8000]" />
+                  <Gauge className="w-3 h-3 text-primary" />
                   System Health
                 </h3>
                 <div className="space-y-1.5">
@@ -917,7 +917,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                               {sys.health}%
                             </span>
                             {sys.level === 'nominal' && <CheckCircle2 className="w-2.5 h-2.5 text-green-400" />}
-                            {sys.level === 'warning' && <AlertTriangle className="w-2.5 h-2.5 text-[#FF8000]" />}
+                            {sys.level === 'warning' && <AlertTriangle className="w-2.5 h-2.5 text-primary" />}
                             {sys.level === 'critical' && <XCircle className="w-2.5 h-2.5 text-red-400" />}
                           </div>
                         </div>
@@ -946,7 +946,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <div className="bg-card rounded-lg border border-border p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
-                  <Fuel className="w-3.5 h-3.5 text-[#FF8000]" />
+                  <Fuel className="w-3.5 h-3.5 text-primary" />
                   Tyre Strategy — {lastRaceName}
                 </h3>
                 <span className="text-[10px] text-muted-foreground font-mono">{totalLaps} laps</span>
@@ -1015,7 +1015,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           <div className="bg-card rounded-lg border border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
+                <Shield className="w-3.5 h-3.5 text-primary" />
                 {carModel.label} — Anomaly Stress Map
               </h3>
               <div className="flex gap-3">
@@ -1076,7 +1076,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     </div>
                   )}
                   {/* Model consensus */}
-                  <div className="mt-2 text-[9px] text-muted-foreground">
+                  <div className="mt-2 text-[10px] text-muted-foreground">
                     {sys.voteCount}/{sys.totalModels} models agree
                   </div>
                 </div>
@@ -1088,7 +1088,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           {omniComponents.length > 0 && (
             <div className="bg-card rounded-lg border border-border p-4">
               <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
-                <Shield className="w-3 h-3 text-[#FF8000]" />
+                <Shield className="w-3 h-3 text-primary" />
                 OmniHealth Assessment
                 <span className="text-[10px] text-muted-foreground font-normal ml-auto">Live diagnostic</span>
               </h3>
@@ -1110,14 +1110,14 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         <div className="h-full rounded-full transition-all" style={{ width: `${comp.health_pct}%`, background: sevColor }} />
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-[9px] px-1.5 py-0.5 rounded font-medium"
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                           style={{ background: `${sevColor}15`, color: sevColor, border: `1px solid ${sevColor}25` }}>
                           {comp.severity}
                         </span>
-                        <span className="text-[9px] text-muted-foreground">{comp.action.replace(/_/g, ' ')}</span>
+                        <span className="text-[10px] text-muted-foreground">{comp.action.replace(/_/g, ' ')}</span>
                       </div>
                       {comp.confidence != null && (
-                        <div className="mt-1.5 text-[9px] text-muted-foreground">
+                        <div className="mt-1.5 text-[10px] text-muted-foreground">
                           Confidence: <span className="font-mono text-foreground">{(comp.confidence * 100).toFixed(0)}%</span>
                         </div>
                       )}
@@ -1129,7 +1129,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           )}
           {omniLoading && (
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2 justify-center">
-              <Loader2 className="w-3 h-3 animate-spin text-[#FF8000]" /> Loading OmniHealth assessment...
+              <Loader2 className="w-3 h-3 animate-spin text-primary" /> Loading OmniHealth assessment...
             </div>
           )}
 
@@ -1138,7 +1138,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <div className="bg-card rounded-lg border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
-                  <TrendingUp className="w-3 h-3 text-[#FF8000]" />
+                  <TrendingUp className="w-3 h-3 text-primary" />
                   Season Health Trend
                 </h3>
                 {trendYears.length > 1 && (
@@ -1149,7 +1149,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         onClick={() => setTrendYear(y)}
                         className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
                           trendYear === y
-                            ? 'bg-[#FF8000] text-black font-medium'
+                            ? 'bg-primary text-black font-medium'
                             : 'bg-background text-muted-foreground hover:text-foreground border border-border'
                         }`}
                       >
@@ -1168,7 +1168,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                               onClick={() => setTrendYear(y)}
                               className={`px-3 py-1 rounded text-[10px] font-mono transition-colors text-left ${
                                 trendYear === y
-                                  ? 'bg-[#FF8000] text-black font-medium'
+                                  ? 'bg-primary text-black font-medium'
                                   : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,128,0,0.1)]'
                               }`}
                             >

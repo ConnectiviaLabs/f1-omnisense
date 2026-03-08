@@ -120,7 +120,7 @@ export function AIInsights() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-3 text-muted-foreground text-sm">Loading pipeline intelligence...</span>
       </div>
     );
@@ -145,8 +145,8 @@ export function AIInsights() {
       <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-[#FF8000]" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
             </div>
             <div>
               <h3 className="text-sm text-foreground">PDF Extraction Intelligence</h3>
@@ -163,7 +163,7 @@ export function AIInsights() {
         <div className="grid grid-cols-6 gap-3">
           {[
             { label: 'Pages Processed', value: s.total_pages.toLocaleString(), icon: <FileText className="w-3 h-3 text-cyan-400" /> },
-            { label: 'Rules Extracted', value: s.total_rules.toLocaleString(), icon: <Layers className="w-3 h-3 text-[#FF8000]" /> },
+            { label: 'Rules Extracted', value: s.total_rules.toLocaleString(), icon: <Layers className="w-3 h-3 text-primary" /> },
             { label: 'Equipment Items', value: s.total_equipment.toLocaleString(), icon: <Cog className="w-3 h-3 text-green-400" /> },
             { label: 'Dimensions', value: s.total_dimensions.toLocaleString(), icon: <Ruler className="w-3 h-3 text-amber-400" /> },
             { label: 'API Cost', value: `$${s.total_cost_usd.toFixed(2)}`, icon: <DollarSign className="w-3 h-3 text-purple-400" /> },
@@ -201,7 +201,7 @@ export function AIInsights() {
             ].map(({ code, name }) => (
               <div key={code} className="bg-background rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-mono text-[#FF8000]">{code}</span>
+                  <span className="text-[11px] font-mono text-primary">{code}</span>
                   <span className="text-[11px] text-muted-foreground">{name}</span>
                 </div>
                 {kexInsights[code] ? (
@@ -228,7 +228,7 @@ export function AIInsights() {
                     type="button"
                     onClick={() => fetchKexInsight(code)}
                     disabled={kexLoading !== null}
-                    className="w-full flex items-center justify-center gap-2 text-[11px] text-[#FF8000] hover:text-[#FF8000]/80 bg-[#FF8000]/5 rounded-lg py-2 transition-colors disabled:opacity-40"
+                    className="w-full flex items-center justify-center gap-2 text-[11px] text-primary hover:text-primary/80 bg-primary/5 rounded-lg py-2 transition-colors disabled:opacity-40"
                   >
                     {kexLoading === code ? (
                       <>
@@ -255,7 +255,7 @@ export function AIInsights() {
         <div
           className={`bg-card border-2 border-dashed rounded-lg p-6 transition-colors ${
             dragging
-              ? 'border-[#FF8000] bg-[#FF8000]/5'
+              ? 'border-primary bg-primary/5'
               : 'border-[rgba(255,128,0,0.2)] hover:border-[rgba(255,128,0,0.4)]'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -267,13 +267,13 @@ export function AIInsights() {
           }}
         >
           <div className="flex flex-col items-center gap-3">
-            <CloudUpload className={`w-8 h-8 ${dragging ? 'text-[#FF8000]' : 'text-[rgba(255,128,0,0.4)]'}`} />
+            <CloudUpload className={`w-8 h-8 ${dragging ? 'text-primary' : 'text-[rgba(255,128,0,0.4)]'}`} />
             <div className="text-center">
               <p className="text-sm text-foreground">
                 Drop files here or{' '}
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-[#FF8000] hover:underline"
+                  className="text-primary hover:underline"
                 >
                   browse
                 </button>
@@ -307,7 +307,7 @@ export function AIInsights() {
                 key={`${u.name}-${i}`}
                 className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2.5"
               >
-                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-[#FF8000] animate-spin shrink-0" />}
+                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />}
                 {u.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
                 {u.status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                 <div className="flex-1 min-w-0">
@@ -377,7 +377,7 @@ export function AIInsights() {
                       <span className="text-[11px] text-foreground w-48 truncate">{cat}</span>
                       <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-[#FF8000] rounded-full"
+                          className="h-full bg-primary rounded-full"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -418,7 +418,7 @@ export function AIInsights() {
               {data.dimensional_data.slice(0, 8).map((dim, i) => (
                 <div key={i} className="flex items-center justify-between text-[11px]">
                   <span className="text-foreground truncate max-w-[200px]">{dim.component}</span>
-                  <span className="font-mono text-[#FF8000]">
+                  <span className="font-mono text-primary">
                     {dim.value != null ? `${dim.value} ${dim.unit || ''}` : '—'}
                   </span>
                 </div>
@@ -477,7 +477,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary transition-colors"
       >
         {expanded
-          ? <ChevronDown className="w-4 h-4 text-[#FF8000] shrink-0" />
+          ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
           : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
         }
         <div className="flex-1 min-w-0">
@@ -488,7 +488,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
         </div>
         <div className="flex items-center gap-4 text-[12px] shrink-0">
           <span className="font-mono text-muted-foreground">{doc.total_pages} pages</span>
-          <span className="font-mono text-[#FF8000]">{totalItems} items</span>
+          <span className="font-mono text-primary">{totalItems} items</span>
           <span className="font-mono text-muted-foreground">${totalCost.toFixed(2)}</span>
         </div>
       </button>
@@ -501,7 +501,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
             <div className="space-y-1.5">
               {doc.passes.map((p) => (
                 <div key={p.number} className="flex items-center gap-3 text-[11px]">
-                  <span className="text-[#FF8000] font-mono w-5">P{p.number}</span>
+                  <span className="text-primary font-mono w-5">P{p.number}</span>
                   <span className="text-foreground w-28">{p.name}</span>
                   <span className="text-muted-foreground font-mono">{p.items_found} items</span>
                   <span className="text-muted-foreground font-mono">{p.latency_s.toFixed(0)}s</span>
@@ -518,7 +518,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
               <div className="grid grid-cols-2 gap-1">
                 {doc.sections.slice(0, 20).map((s, i) => (
                   <div key={i} className="text-[12px] flex items-center gap-1.5">
-                    <span className="text-[#FF8000] font-mono">{s.number}</span>
+                    <span className="text-primary font-mono">{s.number}</span>
                     <span className="text-foreground truncate">{s.title}</span>
                   </div>
                 ))}

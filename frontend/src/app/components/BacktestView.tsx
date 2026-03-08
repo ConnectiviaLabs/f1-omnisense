@@ -186,8 +186,8 @@ function ConfusionMatrixDisplay({ cm }: { cm: ConfusionMatrix }) {
   const cell = (val: number, label: string, good: boolean) => (
     <div className={`rounded-lg p-3 text-center border ${good ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
       <div className={`text-xl font-bold font-mono ${good ? 'text-green-400' : 'text-red-400'}`}>{val}</div>
-      <div className="text-[9px] text-muted-foreground mt-0.5">{label}</div>
-      <div className="text-[9px] text-muted-foreground/60">{total > 0 ? ((val / total) * 100).toFixed(0) : 0}%</div>
+      <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
+      <div className="text-[10px] text-muted-foreground/60">{total > 0 ? ((val / total) * 100).toFixed(0) : 0}%</div>
     </div>
   );
   return (
@@ -199,7 +199,7 @@ function ConfusionMatrixDisplay({ cm }: { cm: ConfusionMatrix }) {
         {cell(cm.false_negative, 'False Negative', false)}
         {cell(cm.true_negative, 'True Negative', true)}
       </div>
-      <div className="grid grid-cols-2 gap-2 mt-2 text-[9px] text-muted-foreground/60">
+      <div className="grid grid-cols-2 gap-2 mt-2 text-[10px] text-muted-foreground/60">
         <div className="text-center">Flagged risk, bad outcome</div>
         <div className="text-center">Flagged risk, normal outcome</div>
         <div className="text-center">Missed, bad outcome</div>
@@ -232,9 +232,9 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
           <span className="text-sm font-medium text-foreground">R{cs.round} {cs.race_name}</span>
         </div>
         <div className="flex items-center gap-1.5">
-          {isHit && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-green-500/15 text-green-400">HIT</span>}
-          {isMiss && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">MISS</span>}
-          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">
+          {isHit && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-500/15 text-green-400">HIT</span>}
+          {isMiss && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">MISS</span>}
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">
             Score: {cs.score}
           </span>
         </div>
@@ -248,12 +248,12 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
         </div>
         <div className="flex items-center gap-2">
           {cs.actual_points > 0 && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#05DF72]/10 text-[#05DF72] border border-[#05DF72]/20">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#05DF72]/10 text-[#05DF72] border border-[#05DF72]/20">
               {cs.actual_points} pts
             </span>
           )}
           {cs.actual_is_dnf && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
               DNF
             </span>
           )}
@@ -263,7 +263,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
       {/* Prediction vs Actual */}
       <div className="grid grid-cols-2 gap-3 text-[11px]">
         <div>
-          <div className="text-muted-foreground/60 text-[9px] uppercase mb-0.5">Prediction</div>
+          <div className="text-muted-foreground/60 text-[10px] uppercase mb-0.5">Prediction</div>
           <div className="flex items-center gap-1.5">
             <Shield className="w-3 h-3 text-muted-foreground" />
             <span className="text-muted-foreground">Health:</span>
@@ -280,18 +280,18 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
           </div>
         </div>
         <div>
-          <div className="text-muted-foreground/60 text-[9px] uppercase mb-0.5">Actual</div>
+          <div className="text-muted-foreground/60 text-[10px] uppercase mb-0.5">Actual</div>
           <div className="flex items-center gap-1.5">
             <Target className="w-3 h-3 text-muted-foreground" />
             <span className="text-muted-foreground">Grid {cs.actual_grid}</span>
             <span className="text-muted-foreground/40">&rarr;</span>
             <span className="font-mono font-medium text-foreground">P{cs.actual_position}</span>
-            <span className={`text-[9px] font-mono ${gained > 0 ? 'text-green-400' : gained < 0 ? 'text-red-400' : 'text-muted-foreground/50'}`}>
+            <span className={`text-[10px] font-mono ${gained > 0 ? 'text-green-400' : gained < 0 ? 'text-red-400' : 'text-muted-foreground/50'}`}>
               {gained > 0 ? `+${gained}` : gained === 0 ? '=' : gained}
             </span>
           </div>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[9px] px-1 py-0.5 rounded font-mono" style={{
+            <span className="text-[10px] px-1 py-0.5 rounded font-mono" style={{
               color: outcomeColors[cs.actual_outcome] || '#888',
               background: `${outcomeColors[cs.actual_outcome] || '#888'}15`,
             }}>
@@ -305,7 +305,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
       {cs.composite_risk != null && (
         <div className="mt-2 bg-background rounded-lg p-2">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
               <Layers className="w-2.5 h-2.5" /> Composite Risk
             </span>
             <span className="text-[10px] font-mono font-medium" style={{ color: riskColor }}>
@@ -361,12 +361,12 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
       {(cs.flagged_systems.length > 0 || cs.degrading_systems.length > 0) && (
         <div className="flex flex-wrap gap-1 mt-2">
           {cs.flagged_systems.map(s => (
-            <span key={s} className="text-[9px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+            <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
               {s}
             </span>
           ))}
           {cs.degrading_systems.map(s => (
-            <span key={s} className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <span key={s} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
               {s} (degrading)
             </span>
           ))}
@@ -376,7 +376,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
       {/* Expand reasons */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1 text-[10px] text-[#FF8000] hover:text-[#FF9933] mt-2 transition-colors"
+        className="flex items-center gap-1 text-[10px] text-primary hover:text-[#FF9933] mt-2 transition-colors"
       >
         {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
         {expanded ? 'Hide details' : `${cs.reasons.length} reason${cs.reasons.length !== 1 ? 's' : ''} + system detail`}
@@ -388,7 +388,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
           <div className="pl-3 border-l border-border space-y-0.5">
             {cs.reasons.map((r, i) => (
               <div key={i} className="text-[10px] text-muted-foreground">
-                <span className="text-[#FF8000] mr-1">&rarr;</span> {r}
+                <span className="text-primary mr-1">&rarr;</span> {r}
               </div>
             ))}
           </div>
@@ -396,15 +396,15 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
           {/* System health breakdown */}
           {cs.predicted_systems && Object.keys(cs.predicted_systems).length > 0 && (
             <div className="bg-background rounded-lg p-2">
-              <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">System Health</div>
+              <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">System Health</div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                 {Object.entries(cs.predicted_systems).map(([sys, sh]) => {
                   const h = sh?.health ?? 0;
                   const sysColor = h >= 70 ? '#05DF72' : h >= 50 ? '#f59e0b' : '#ef4444';
                   return (
                     <div key={sys} className="flex items-center justify-between">
-                      <span className="text-[9px] text-muted-foreground truncate">{sys}</span>
-                      <span className="text-[9px] font-mono font-medium" style={{ color: sysColor }}>{h}%</span>
+                      <span className="text-[10px] text-muted-foreground truncate">{sys}</span>
+                      <span className="text-[10px] font-mono font-medium" style={{ color: sysColor }}>{h}%</span>
                     </div>
                   );
                 })}
@@ -414,8 +414,8 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
 
           {/* KeX per-case insight */}
           {insight && (
-            <div className="bg-background rounded-lg p-2 border-l-2 border-[#FF8000]/30">
-              <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <div className="bg-background rounded-lg p-2 border-l-2 border-primary/30">
+              <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider mb-1 flex items-center gap-1">
                 KeX Insight
               </div>
               <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-line">{insight}</p>
@@ -477,7 +477,7 @@ export function BacktestView() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 gap-3">
-        <Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-5 h-5 text-primary animate-spin" />
         <span className="text-muted-foreground text-sm">Loading backtest results...</span>
       </div>
     );
@@ -520,7 +520,7 @@ export function BacktestView() {
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <FlaskConical className="w-5 h-5 text-[#FF8000]" />
+            <FlaskConical className="w-5 h-5 text-primary" />
             <div>
               <h2 className="text-sm font-semibold text-foreground">McLaren Backtest Framework</h2>
               <p className="text-[11px] text-muted-foreground">
@@ -534,7 +534,7 @@ export function BacktestView() {
             <button
               onClick={() => runBacktest(false)}
               disabled={running}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-[#FF8000] text-[#0D1117] hover:bg-[#FF9933] disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary text-[#0D1117] hover:bg-[#FF9933] disabled:opacity-50 transition-colors"
             >
               {running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
               {running ? 'Running...' : 'Run Backtest'}
@@ -553,9 +553,9 @@ export function BacktestView() {
           <div className="mt-2 text-[11px] text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg">{error}</div>
         )}
         {data?.generated_at && (
-          <div className="mt-2 flex items-center gap-3 text-[9px] text-muted-foreground/50 font-mono">
+          <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground/50 font-mono">
             <span>Last run: {new Date(data.generated_at).toLocaleString()}</span>
-            <span className="px-1.5 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">
+            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary">
               Train: {data.results?.[0]?.train_seasons?.length
                 ? `${data.results[0].train_seasons[0]}–${data.results[0].train_seasons[data.results[0].train_seasons.length - 1]}`
                 : '2018–2023'} → Test: {data.season}
@@ -566,7 +566,7 @@ export function BacktestView() {
             {data.results?.[0]?.train_accuracy != null && (
               <span>CV accuracy: {data.results[0].train_accuracy}%{data.results[0]?.cv_std ? ` ±${data.results[0].cv_std}%` : ''}</span>
             )}
-            <span className="text-[#FF8000]">XGBoost + SHAP</span>
+            <span className="text-primary">XGBoost + SHAP</span>
           </div>
         )}
       </div>
@@ -643,7 +643,7 @@ export function BacktestView() {
           {m.composite_risk_distribution && Object.keys(m.composite_risk_distribution).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-[#FF8000]" />
+                <Layers className="w-3.5 h-3.5 text-primary" />
                 Composite Risk Distribution
               </div>
               <div className="flex items-center gap-3">
@@ -657,7 +657,7 @@ export function BacktestView() {
                   return (
                     <div key={level} className="flex-1 text-center">
                       <div className="text-lg font-bold font-mono" style={{ color: colors[level] }}>{count}</div>
-                      <div className="text-[9px] text-muted-foreground capitalize">{level}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{level}</div>
                       <div className="mt-1 h-1.5 rounded-full bg-background overflow-hidden">
                         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors[level] }} />
                       </div>
@@ -671,11 +671,11 @@ export function BacktestView() {
           {/* ── Active Models ── */}
           {m.models_active && (
             <div className="flex items-center gap-2 px-1">
-              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider">Models:</span>
+              <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">Models:</span>
               {Object.entries(m.models_active).map(([model, active]) => (
                 <span
                   key={model}
-                  className={`text-[9px] px-2 py-0.5 rounded-full font-mono ${
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
                     active ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-card text-muted-foreground/40 border border-[rgba(255,128,0,0.05)]'
                   }`}
                 >
@@ -746,9 +746,9 @@ export function BacktestView() {
           {data.case_studies.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <Target className="w-4 h-4 text-[#FF8000]" />
+                <Target className="w-4 h-4 text-primary" />
                 <h3 className="text-sm font-semibold text-foreground">Case Study Candidates</h3>
-                <span className="text-[9px] text-muted-foreground bg-card px-2 py-0.5 rounded-full">
+                <span className="text-[10px] text-muted-foreground bg-card px-2 py-0.5 rounded-full">
                   Top {data.case_studies.length}
                 </span>
               </div>

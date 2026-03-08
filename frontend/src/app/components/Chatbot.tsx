@@ -310,7 +310,7 @@ function Recommendation({ title, description, severity, action }: {
 function AnalysisText({ content }: { content: string }) {
   return (
     <FadeIn>
-      <div className="border-l-2 border-[#FF8000]/40 pl-3 py-1">
+      <div className="border-l-2 border-primary/40 pl-3 py-1">
         <p className="text-[11px] text-muted-foreground leading-relaxed">{content}</p>
       </div>
     </FadeIn>
@@ -323,7 +323,7 @@ function SimilarDriversWidget({ driver_code, similar }: { driver_code: string; s
   return (
     <FadeIn>
       <div className="rounded-lg border border-[rgba(255,128,0,0.15)] bg-background p-3">
-        <div className="text-[10px] font-semibold tracking-wider text-[#FF8000]/70 mb-2">
+        <div className="text-[10px] font-semibold tracking-wider text-primary/70 mb-2">
           SIMILAR TO {driver_code}
         </div>
         <div className="space-y-1.5">
@@ -335,9 +335,9 @@ function SimilarDriversWidget({ driver_code, similar }: { driver_code: string; s
                 <span className="font-semibold text-foreground w-8">{s.driver_code}</span>
                 <span className="text-muted-foreground flex-1 truncate">{s.team || '—'}</span>
                 <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-[#FF8000]" style={{ width: `${pct}%` }} />
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
                 </div>
-                <span className="font-mono text-[#FF8000] w-8 text-right">{pct}%</span>
+                <span className="font-mono text-primary w-8 text-right">{pct}%</span>
               </div>
             );
           })}
@@ -409,8 +409,8 @@ function AssistantMessage({ message }: { message: UIMessage }) {
 
   return (
     <div className="flex items-start gap-3">
-      <div className="w-7 h-7 rounded-lg bg-[#FF8000]/10 flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="w-4 h-4 text-[#FF8000]" />
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-4 h-4 text-primary" />
       </div>
       <div className={`space-y-3 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
         {/* ── Gen UI Widgets (top section) ──────────────────────── */}
@@ -514,28 +514,28 @@ function ErrorBanner({ error, onRetry }: { error: Error; onRetry: () => void }) 
 function StreamingSkeleton() {
   return (
     <div className="flex items-start gap-3">
-      <div className="w-7 h-7 rounded-lg bg-[#FF8000]/10 flex items-center justify-center shrink-0 mt-0.5">
-        <Bot className="w-4 h-4 text-[#FF8000]" />
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-4 h-4 text-primary" />
       </div>
       <div className="space-y-2 w-full">
         {/* Metric card skeletons */}
         <div className="grid grid-cols-3 gap-2">
           {[1, 2, 3].map(i => (
             <div key={i} className="rounded-lg bg-card border border-border px-3 py-2.5 animate-pulse">
-              <div className="h-2 w-16 bg-[#FF8000]/10 rounded mb-2" />
-              <div className="h-5 w-12 bg-[#FF8000]/15 rounded mb-1" />
-              <div className="h-2 w-20 bg-[#FF8000]/5 rounded" />
+              <div className="h-2 w-16 bg-primary/10 rounded mb-2" />
+              <div className="h-5 w-12 bg-primary/15 rounded mb-1" />
+              <div className="h-2 w-20 bg-primary/5 rounded" />
             </div>
           ))}
         </div>
         {/* Chart skeleton */}
         <div className="rounded-lg bg-background border border-border p-3 animate-pulse">
-          <div className="h-2 w-24 bg-[#FF8000]/10 rounded mb-3" />
-          <div className="h-[100px] bg-[#FF8000]/5 rounded" />
+          <div className="h-2 w-24 bg-primary/10 rounded mb-3" />
+          <div className="h-[100px] bg-primary/5 rounded" />
         </div>
         {/* Text skeleton */}
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin text-[#FF8000]" />
+          <Loader2 className="w-3 h-3 animate-spin text-primary" />
           Analyzing diagnostics...
         </div>
       </div>
@@ -607,9 +607,9 @@ export function Chatbot() {
         {isStreaming && (
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-10">
             <div className="flex gap-0.5">
-              <span className="w-1 h-1 rounded-full bg-[#FF8000] animate-pulse" />
-              <span className="w-1 h-1 rounded-full bg-[#FF8000] animate-pulse [animation-delay:150ms]" />
-              <span className="w-1 h-1 rounded-full bg-[#FF8000] animate-pulse [animation-delay:300ms]" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
             </div>
             Generating...
           </div>
@@ -630,7 +630,7 @@ export function Chatbot() {
               input.value = '';
             }
           }}
-          className="flex items-center gap-2 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors"
+          className="flex items-center gap-2 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-primary/40 transition-colors"
         >
           <input
             ref={inputRef}
@@ -649,7 +649,7 @@ export function Chatbot() {
             type="submit"
             disabled={isLoading}
             title="Send message"
-            className="w-7 h-7 rounded-lg bg-[#FF8000] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#FF8000]/80 transition-colors"
+            className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/80 transition-colors"
           >
             <Send className="w-3.5 h-3.5 text-[#0D1117]" />
           </button>
@@ -666,7 +666,7 @@ export function Chatbot() {
               <button
                 type="button"
                 onClick={() => { setMessages([]); clearError(); }}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-[#FF8000] transition-colors"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
                 title="New conversation"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -685,8 +685,8 @@ export function Chatbot() {
 function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-14 h-14 rounded-lg bg-[#FF8000]/10 flex items-center justify-center mb-4">
-        <Sparkles className="w-7 h-7 text-[#FF8000]" />
+      <div className="w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+        <Sparkles className="w-7 h-7 text-primary" />
       </div>
       <h3 className="text-sm text-foreground mb-1">F1 Diagnostic AI</h3>
       <p className="text-[11px] text-muted-foreground mb-6 max-w-md">
@@ -699,7 +699,7 @@ function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
             type="button"
             key={q}
             onClick={() => onSelect(q)}
-            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
+            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-primary/30 hover:text-foreground transition-all"
           >
             {q}
           </button>

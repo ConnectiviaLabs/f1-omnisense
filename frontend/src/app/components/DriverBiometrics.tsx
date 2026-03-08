@@ -92,7 +92,7 @@ function DeltaKPI({ label, norVal, piaVal, unit, icon, higher = 'neutral' }: {
       {diff !== 0 && !isNaN(diff) && (
         <div className="mt-2 flex items-center gap-1 text-[12px]">
           {norWins
-            ? <ArrowUp className="w-3 h-3 text-[#FF8000]" />
+            ? <ArrowUp className="w-3 h-3 text-primary" />
             : <ArrowDown className="w-3 h-3 text-cyan-400" />
           }
           <span className="text-muted-foreground">
@@ -234,7 +234,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 p-3">
-        <Activity className="w-4 h-4 text-[#FF8000] animate-spin" />
+        <Activity className="w-4 h-4 text-primary animate-spin" />
         <span className="text-[12px] text-muted-foreground">Loading biometric intelligence...</span>
       </div>
     );
@@ -250,7 +250,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-[#FF8000]" />
+          <Activity className="w-3.5 h-3.5 text-primary" />
           Biometric Risk Intelligence
         </h3>
         <div className="flex items-center gap-3 text-[11px]">
@@ -259,7 +259,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
             {avgHealth}%
           </span>
           {actionRaces.length > 0 && (
-            <span className="text-[#FF8000]">{actionRaces.length} race{actionRaces.length > 1 ? 's' : ''} flagged</span>
+            <span className="text-primary">{actionRaces.length} race{actionRaces.length > 1 ? 's' : ''} flagged</span>
           )}
         </div>
       </div>
@@ -315,7 +315,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
                     })}
                   </div>
                 )}
-                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium flex-shrink-0"
+                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
                   style={{ background: `${info.color}15`, color: info.color, border: `1px solid ${info.color}25` }}>
                   {info.label}
                 </div>
@@ -531,7 +531,7 @@ export function DriverBiometrics() {
           ]).map(t => (
             <button type="button" key={t.id} onClick={() => setTab(t.id)}
               className={`text-sm px-4 py-1.5 rounded-md transition-all ${
-                tab === t.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'
+                tab === t.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'
               }`}
             >{t.label}</button>
           ))}
@@ -541,7 +541,7 @@ export function DriverBiometrics() {
           <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
             {[2023, 2024].map(y => (
               <button type="button" key={y} onClick={() => { setYear(y); setRace(y === 2024 ? RACES_2024[0] : RACES_2023[0]); setRace2(y === 2024 ? RACES_2024[1] : RACES_2023[1]); }}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >{y}</button>
             ))}
           </div>
@@ -570,7 +570,7 @@ export function DriverBiometrics() {
           <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
             {['NOR', 'PIA'].map(d => (
               <button type="button" key={d} onClick={() => setDriver(d)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${driver === d ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`text-sm px-3 py-1.5 rounded-md transition-all ${driver === d ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >{d}</button>
             ))}
           </div>
@@ -580,7 +580,7 @@ export function DriverBiometrics() {
           <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
             {([{ id: 'race' as const, label: 'Single Race' }, { id: 'season' as const, label: 'Full Season' }]).map(m => (
               <button type="button" key={m.id} onClick={() => setH2hMode(m.id)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`text-sm px-3 py-1.5 rounded-md transition-all ${h2hMode === m.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >{m.label}</button>
             ))}
           </div>
@@ -590,7 +590,7 @@ export function DriverBiometrics() {
           <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
             {([{ id: 'race' as const, label: 'Race vs Race' }, { id: 'year' as const, label: '2023 vs 2024' }]).map(m => (
               <button type="button" key={m.id} onClick={() => setCompareMode(m.id)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-all ${compareMode === m.id ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`text-sm px-3 py-1.5 rounded-md transition-all ${compareMode === m.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >{m.label}</button>
             ))}
           </div>
@@ -621,7 +621,7 @@ export function DriverBiometrics() {
         <>
           <div className="flex items-center gap-2 mt-2">
             <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
-            <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">VEHICLE HEALTH — {driver}</span>
+            <span className="text-[10px] tracking-[0.25em] text-primary/60 font-semibold">VEHICLE HEALTH — {driver}</span>
             <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
           </div>
 
@@ -668,7 +668,7 @@ export function DriverBiometrics() {
                     </div>
                     {sys.severityProbabilities && (
                       <div className="space-y-1 mb-3">
-                        <div className="text-[9px] text-muted-foreground tracking-wider">SEVERITY DISTRIBUTION</div>
+                        <div className="text-[10px] text-muted-foreground tracking-wider">SEVERITY DISTRIBUTION</div>
                         <div className="flex h-2 rounded-full overflow-hidden">
                           {Object.entries(sys.severityProbabilities)
                             .sort(([,a], [,b]) => (b as number) - (a as number))
@@ -689,7 +689,7 @@ export function DriverBiometrics() {
                     )}
                     {sys.metrics.length > 0 && (
                       <div className="mt-2 space-y-0.5">
-                        <div className="text-[9px] text-muted-foreground tracking-wider">TOP FEATURES</div>
+                        <div className="text-[10px] text-muted-foreground tracking-wider">TOP FEATURES</div>
                         {sys.metrics.slice(0, 3).map((m: { label: string; value: string }) => (
                           <div key={m.label} className="flex items-center justify-between text-[10px]">
                             <span className="text-muted-foreground truncate mr-2">{m.label}</span>
@@ -720,7 +720,7 @@ export function DriverBiometrics() {
                 </ResponsiveContainer>
               </div>
               <div className="flex items-center gap-4 mt-2 justify-center">
-                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#FF8000]" /> Speed</div>
+                <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-primary" /> Speed</div>
                 <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#00d4ff]" /> Lap Pace</div>
                 <div className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#22c55e]" /> Tyre Management</div>
               </div>
@@ -768,7 +768,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading biometrics...</span>
       </div>
     );
@@ -781,8 +781,8 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
         {career && (
           <div className="col-span-4 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-[#FF8000]/10 flex items-center justify-center">
-                <User className="w-5 h-5 text-[#FF8000]" />
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <User className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <h3 className="text-sm text-foreground font-medium">{career.driver_name}</h3>
@@ -791,7 +791,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="text-center">
-                <div className="text-sm font-mono text-[#FF8000]">{career.races}</div>
+                <div className="text-sm font-mono text-primary">{career.races}</div>
                 <div className="text-[11px] text-muted-foreground">RACES</div>
               </div>
               <div className="text-center">
@@ -970,7 +970,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
       {career && (
         <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
-            <Trophy className="w-3 h-3 text-[#FF8000]" />
+            <Trophy className="w-3 h-3 text-primary" />
             McLaren Career Summary — {career.driver_name}
           </h3>
           <div className="grid grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr] gap-px bg-[rgba(255,128,0,0.12)] rounded-lg overflow-hidden">
@@ -999,7 +999,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Computing season summary...</span>
       </div>
     );
@@ -1117,7 +1117,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       {/* Season Summary Table */}
       <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
-          <GitCompareArrows className="w-3 h-3 text-[#FF8000]" />
+          <GitCompareArrows className="w-3 h-3 text-primary" />
           {driver} — {year} Season Biometric Summary
         </h3>
         <div className="overflow-x-auto">
@@ -1127,28 +1127,28 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
             ))}
             {seasonSummary.map((r, i) => (
               <React.Fragment key={i}>
-                <div className={`px-3 py-1.5 text-sm ${r.race === highlightRace ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'bg-card text-foreground'}`}>
+                <div className={`px-3 py-1.5 text-sm ${r.race === highlightRace ? 'bg-primary/10 text-primary' : 'bg-card text-foreground'}`}>
                   {r.race} GP
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.avgHR > seasonAvgHR + 2 ? 'text-red-400' : 'text-foreground'}`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.avgHR > seasonAvgHR + 2 ? 'text-red-400' : 'text-foreground'}`}>
                   {r.avgHR.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.peakHR > 185 ? 'text-rose-500' : 'text-foreground'}`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.peakHR > 185 ? 'text-rose-500' : 'text-foreground'}`}>
                   {r.peakHR.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.avgTemp > 50 ? 'text-amber-400' : 'text-foreground'}`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.avgTemp > 50 ? 'text-amber-400' : 'text-foreground'}`}>
                   {r.avgTemp.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>
                   {r.airTemp.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-foreground`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-foreground`}>
                   {r.trackTemp.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} ${r.battleIntensity > 40 ? 'text-purple-400' : 'text-foreground'}`}>
+                <div className={`px-3 py-1.5 text-sm font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} ${r.battleIntensity > 40 ? 'text-purple-400' : 'text-foreground'}`}>
                   {r.battleIntensity.toFixed(1)}
                 </div>
-                <div className={`px-3 py-1.5 text-[12px] font-mono ${r.race === highlightRace ? 'bg-[#FF8000]/10' : 'bg-card'} text-muted-foreground`}>
+                <div className={`px-3 py-1.5 text-[12px] font-mono ${r.race === highlightRace ? 'bg-primary/10' : 'bg-card'} text-muted-foreground`}>
                   {r.samples.toLocaleString()}
                 </div>
               </React.Fragment>
@@ -1174,7 +1174,7 @@ function HeadToHeadView({ mode, loading, year, race, raceData, seasonNor, season
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading head-to-head data...</span>
       </div>
     );
@@ -1452,7 +1452,7 @@ function RaceCompareView({ mode, loading, year, driver, race1, race2, data1, dat
   if (loading) {
     return (
       <div className="flex items-center justify-center h-[400px]">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-2 text-sm text-muted-foreground">Loading comparison data...</span>
       </div>
     );

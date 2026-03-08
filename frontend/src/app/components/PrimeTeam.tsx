@@ -121,7 +121,7 @@ export function PrimeTeam({ prefetchedVehicles, activePillar }: PrimeTeamProps) 
           <button
             type="button"
             onClick={() => setSelectedTeam(null)}
-            className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-[#FF8000] transition-colors"
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-primary transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> All Teams
           </button>
@@ -132,7 +132,7 @@ export function PrimeTeam({ prefetchedVehicles, activePillar }: PrimeTeamProps) 
             title="Select team"
             value={effectiveTeam}
             onChange={e => setSelectedTeam(e.target.value)}
-            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/30"
+            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/30"
           >
             {TEAMS.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
@@ -145,7 +145,7 @@ export function PrimeTeam({ prefetchedVehicles, activePillar }: PrimeTeamProps) 
             title="Select season"
             value={selectedSeason}
             onChange={e => setSelectedSeason(Number(e.target.value))}
-            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/30"
+            className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/30"
           >
             {[2024, 2023, 2022, 2021, 2020].map(y => (
               <option key={y} value={y}>{y}</option>
@@ -197,7 +197,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" /> Loading teams...
+        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading teams...
       </div>
     );
   }
@@ -230,7 +230,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
         onClick={() => onSelect(teamId)}
         className={`bg-card rounded-lg border text-left transition-all group cursor-pointer relative overflow-hidden ${
           isMcLaren
-            ? 'border-[#FF8000]/30 hover:border-[#FF8000]/50 p-5'
+            ? 'border-primary/30 hover:border-primary/50 p-5'
             : 'border-border hover:border-[rgba(255,128,0,0.3)] p-4'
         }`}
       >
@@ -251,7 +251,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
           </div>
           <div className="flex-1 min-w-0">
             <div className={`font-semibold text-foreground transition-colors truncate ${
-              isMcLaren ? 'text-base group-hover:text-[#FF8000]' : 'text-sm group-hover:text-[#FF8000]'
+              isMcLaren ? 'text-base group-hover:text-primary' : 'text-sm group-hover:text-primary'
             }`}>{name}</div>
             <div className={`text-muted-foreground ${isMcLaren ? 'text-[11px]' : 'text-[10px]'}`}>
               {drivers.map(d => d.code).join(', ')} — {drivers.length} driver{drivers.length > 1 ? 's' : ''}
@@ -281,7 +281,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
 
         {/* Status */}
         {worstLevel !== 'nominal' && (
-          <div className={`flex items-center gap-1 ml-2 ${isMcLaren ? 'mt-3 text-[10px]' : 'mt-2 text-[9px]'}`} style={{ color: worstLevel === 'critical' ? '#ef4444' : '#f59e0b' }}>
+          <div className={`flex items-center gap-1 ml-2 ${isMcLaren ? 'mt-3 text-[10px]' : 'mt-2 text-[10px]'}`} style={{ color: worstLevel === 'critical' ? '#ef4444' : '#f59e0b' }}>
             <span>⚠</span>
             <span>{drivers.filter(d => d.level === 'critical').length} critical</span>
           </div>
@@ -394,7 +394,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" /> Loading team profile...
+        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading team profile...
       </div>
     );
   }
@@ -652,7 +652,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" /> Loading anomaly data...
+        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading anomaly data...
       </div>
     );
   }
@@ -713,7 +713,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
                     <span className="text-[10px] font-mono w-10 text-right" style={{ color: levelColor(sys.level) }}>
                       {sys.health.toFixed(0)}%
                     </span>
-                    <div className="flex items-center gap-0.5 text-[9px] w-20"
+                    <div className="flex items-center gap-0.5 text-[10px] w-20"
                       style={{ color: MI.color }}>
                       <MIcon className="w-2.5 h-2.5" />
                       <span>{MI.label}</span>

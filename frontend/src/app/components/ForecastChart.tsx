@@ -145,7 +145,7 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" />
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
         Forecasting features for {driverCode}...
       </div>
     );
@@ -205,7 +205,7 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
                 <span className="text-[14px] font-semibold text-[#E6EDF3]">{displayLabel}</span>
                 <div className="flex items-center gap-2">
                   {fc.risk_flag && (
-                    <AlertTriangle className="w-3.5 h-3.5 text-[#FF8000]" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-primary" />
                   )}
                   <span
                     className="flex items-center gap-1 text-[12px] font-mono font-semibold px-2 py-0.5 rounded-full"

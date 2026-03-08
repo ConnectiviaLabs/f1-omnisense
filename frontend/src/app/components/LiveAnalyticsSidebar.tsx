@@ -119,10 +119,10 @@ export function LiveAnalyticsSidebar({
     >
       {/* Header */}
       <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
-        <Radio className="w-3 h-3 text-[#FF8000]" />
+        <Radio className="w-3 h-3 text-primary" />
         <span className="text-[12px] tracking-widest text-muted-foreground font-bold">LIVE ANALYTICS</span>
         {currentMaxLap > 0 && (
-          <span className="text-[12px] text-[#FF8000] font-mono ml-auto">LAP {currentMaxLap}</span>
+          <span className="text-[12px] text-primary font-mono ml-auto">LAP {currentMaxLap}</span>
         )}
       </div>
 
@@ -158,7 +158,7 @@ export function LiveAnalyticsSidebar({
                       </span>
                       {/* Fastest lap badge */}
                       {hasFastestLap && (
-                        <span className="text-[9px] font-bold text-purple-400 bg-purple-400/10 px-1 rounded">FL</span>
+                        <span className="text-[10px] font-bold text-purple-400 bg-purple-400/10 px-1 rounded">FL</span>
                       )}
                       {/* Tire compound dot */}
                       {compound && (
@@ -192,7 +192,7 @@ export function LiveAnalyticsSidebar({
             {sectorTimesData.length > 0 ? (
               <div className="space-y-0">
                 {/* Header */}
-                <div className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[9px] text-muted-foreground px-1 pb-0.5 border-b border-[rgba(255,128,0,0.04)]">
+                <div className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[10px] text-muted-foreground px-1 pb-0.5 border-b border-[rgba(255,128,0,0.04)]">
                   <span>DRV</span>
                   <span className="text-right">S1</span>
                   <span className="text-right">S2</span>
@@ -219,7 +219,7 @@ export function LiveAnalyticsSidebar({
                   );
                 })}
                 {/* Legend */}
-                <div className="flex items-center gap-3 px-1 pt-1 text-[9px]">
+                <div className="flex items-center gap-3 px-1 pt-1 text-[10px]">
                   <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Best</span>
                   <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-400" /> PB</span>
                 </div>
@@ -307,7 +307,7 @@ export function LiveAnalyticsSidebar({
                     <div className="min-w-0 flex-1">
                       <span className="text-[10px] text-foreground leading-tight line-clamp-1">{evt.message}</span>
                       {evt.lap_number && (
-                        <span className="text-[9px] text-muted-foreground ml-1">L{evt.lap_number}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">L{evt.lap_number}</span>
                       )}
                     </div>
                   </div>

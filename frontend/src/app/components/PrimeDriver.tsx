@@ -67,7 +67,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" />
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
         Loading anomaly data...
       </div>
     );
@@ -79,7 +79,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
       <div className="flex items-center gap-4 text-[12px]">
         <span className="text-muted-foreground">{vehicles.length} drivers monitored</span>
         <span className="text-red-400">{vehicles.filter(v => v.level === 'critical').length} critical</span>
-        <span className="text-[#FF8000]">{vehicles.filter(v => v.level === 'warning').length} warning</span>
+        <span className="text-primary">{vehicles.filter(v => v.level === 'warning').length} warning</span>
         <span className="text-green-400">{vehicles.filter(v => v.level === 'nominal').length} nominal</span>
       </div>
 
@@ -92,7 +92,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search drivers..."
-              className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[#FF8000]/30"
+              className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/30"
             />
           </div>
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
@@ -102,7 +102,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
                 onClick={() => setSelectedDriver(v.code === selectedDriver ? null : v.code)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all ${
                   v.code === selectedDriver
-                    ? 'bg-[#FF8000]/10 border border-[#FF8000]/30'
+                    ? 'bg-primary/10 border border-primary/30'
                     : 'bg-card border border-transparent hover:border-border'
                 }`}
               >
@@ -221,7 +221,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
                 </div>
               )}
               {/* Model consensus */}
-              <div className="mt-2 text-[9px] text-muted-foreground">
+              <div className="mt-2 text-[10px] text-muted-foreground">
                 {sys.voteCount}/{sys.totalModels} models agree
               </div>
             </div>
@@ -288,7 +288,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-[#FF8000]" />
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
         Loading...
       </div>
     );
@@ -306,7 +306,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
           title="Select driver"
           value={effectiveDriver ?? ''}
           onChange={e => setSelectedDriver(e.target.value)}
-          className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/30"
+          className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/30"
         >
           {driverOptions.map(code => (
             <option key={code} value={code}>{code}</option>
@@ -317,7 +317,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
       {effectiveDriver && (
         <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
-            <TrendingUp className="w-3 h-3 text-[#FF8000]" />
+            <TrendingUp className="w-3 h-3 text-primary" />
             Feature Forecasts — {effectiveDriver}
           </h3>
           <ForecastChart driverCode={effectiveDriver} />

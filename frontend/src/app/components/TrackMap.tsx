@@ -755,7 +755,7 @@ export function TrackMap({
                 <span>Gear: <span className="text-cyan-400 font-mono">{hoveredTurn.gear}</span></span>
               )}
               {hoveredTurn.speedKph && (
-                <span>Speed: <span className="text-[#FF8000] font-mono">{hoveredTurn.speedKph} km/h</span></span>
+                <span>Speed: <span className="text-primary font-mono">{hoveredTurn.speedKph} km/h</span></span>
               )}
             </div>
           </div>
@@ -772,9 +772,9 @@ export function TrackMap({
               const evt = new CustomEvent('trackmap-colormode', { detail: mode });
               window.dispatchEvent(evt);
             }}
-            className={`px-1.5 py-0.5 text-[9px] rounded font-mono transition-colors ${
+            className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition-colors ${
               colorMode === mode
-                ? 'bg-[rgba(255,128,0,0.15)] text-[#FF8000]'
+                ? 'bg-[rgba(255,128,0,0.15)] text-primary'
                 : 'bg-[rgba(255,255,255,0.03)] text-muted-foreground hover:bg-[rgba(255,255,255,0.06)]'
             }`}
           >

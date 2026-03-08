@@ -185,7 +185,7 @@ export function AdvantageTrident() {
             onClick={() => setActiveTab('agent')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
               activeTab === 'agent'
-                ? 'bg-[#FF8000]/15 text-[#FF8000] font-medium'
+                ? 'bg-primary/15 text-primary font-medium'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -196,7 +196,7 @@ export function AdvantageTrident() {
             onClick={() => setActiveTab('history')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
               activeTab === 'history'
-                ? 'bg-[#FF8000]/15 text-[#FF8000] font-medium'
+                ? 'bg-primary/15 text-primary font-medium'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -213,7 +213,7 @@ export function AdvantageTrident() {
               onClick={() => { setScope(value); setEntity(''); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] tracking-wide transition-all border ${
                 scope === value
-                  ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
+                  ? 'border-primary/30 bg-primary/8 text-primary'
                   : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -232,7 +232,7 @@ export function AdvantageTrident() {
           </span>
           {entitiesLoading ? (
             <div className="flex items-center gap-2 py-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#FF8000]/50" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary/50" />
               <span className="text-[11px] text-muted-foreground">Loading entities…</span>
             </div>
           ) : availableEntities.length === 0 ? (
@@ -247,7 +247,7 @@ export function AdvantageTrident() {
                     onClick={() => setEntity(selected ? '' : ent)}
                     className={`px-3 py-1.5 rounded-lg text-[12px] tracking-wide transition-all border ${
                       selected
-                        ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
+                        ? 'border-primary/40 bg-primary/12 text-primary font-medium'
                         : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
                     }`}
                   >
@@ -267,7 +267,7 @@ export function AdvantageTrident() {
             <button
               onClick={() => generate(false)}
               disabled={loading || (scope !== 'grid' && !entity)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-[#FF8000] to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -357,8 +357,8 @@ export function AdvantageTrident() {
           {/* Empty State */}
           {!report && !loading && !error && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-16 h-16 rounded-lg bg-[#FF8000]/8 flex items-center justify-center mb-4">
-                <Layers className="w-7 h-7 text-[#FF8000]/40" />
+              <div className="w-16 h-16 rounded-lg bg-primary/8 flex items-center justify-center mb-4">
+                <Layers className="w-7 h-7 text-primary/40" />
               </div>
               <p className="text-sm text-muted-foreground mb-1">No convergence report yet</p>
               <p className="text-[12px] text-muted-foreground/50">
@@ -372,7 +372,7 @@ export function AdvantageTrident() {
         <div className="space-y-2">
           {historyLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-5 h-5 animate-spin text-[#FF8000]/50" />
+              <Loader2 className="w-5 h-5 animate-spin text-primary/50" />
             </div>
           ) : history.length === 0 ? (
             <div className="text-center py-12 text-sm text-muted-foreground/60">
@@ -386,11 +386,11 @@ export function AdvantageTrident() {
                   className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
                 >
                   {expandedHistoryId === entry.report_id ? (
-                    <ChevronDown className="w-3.5 h-3.5 text-[#FF8000] shrink-0" />
+                    <ChevronDown className="w-3.5 h-3.5 text-primary shrink-0" />
                   ) : (
                     <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   )}
-                  <span className="text-[11px] tracking-widest uppercase px-2 py-0.5 rounded bg-[#FF8000]/10 text-[#FF8000]">
+                  <span className="text-[11px] tracking-widest uppercase px-2 py-0.5 rounded bg-primary/10 text-primary">
                     {entry.scope}
                   </span>
                   {entry.entity && (

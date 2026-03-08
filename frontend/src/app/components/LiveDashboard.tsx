@@ -539,7 +539,7 @@ export function LiveDashboard() {
   if (sessionsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-3 text-muted-foreground text-sm">Loading sessions from OpenF1...</span>
       </div>
     );
@@ -564,11 +564,11 @@ export function LiveDashboard() {
         <div className="flex items-center gap-6">
           <div>
             <div className="text-[12px] text-muted-foreground tracking-widest">{selectedSession.session_type}</div>
-            <div className="text-[#FF8000] text-sm">{selectedSession.circuit_short_name} — {selectedSession.session_name}</div>
+            <div className="text-primary text-sm">{selectedSession.circuit_short_name} — {selectedSession.session_name}</div>
           </div>
           <div className="flex items-center gap-4 text-sm">
             <div className="bg-secondary rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
-              <MapPin className="w-3 h-3 text-[#FF8000]" />
+              <MapPin className="w-3 h-3 text-primary" />
               <span className="text-foreground">{selectedSession.circuit_short_name}</span>
             </div>
             <div className="bg-secondary rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
@@ -615,7 +615,7 @@ export function LiveDashboard() {
 
       {/* Session Control Bar */}
       <div className={`bg-secondary border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 ${
-        isSessionLive ? 'border-green-500/30 border-t-green-500/60' : 'border-[rgba(255,128,0,0.20)] border-t-[#FF8000]/40'
+        isSessionLive ? 'border-green-500/30 border-t-green-500/60' : 'border-[rgba(255,128,0,0.20)] border-t-primary/40'
       }`}>
         <div className="flex items-center gap-4">
           {isSessionLive ? (
@@ -633,7 +633,7 @@ export function LiveDashboard() {
               onClick={toggleReplay}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-mono transition-colors ${
                 replayActive
-                  ? 'bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/30'
+                  ? 'bg-primary/15 text-primary border border-primary/30'
                   : 'bg-secondary text-muted-foreground border border-border hover:text-foreground'
               }`}
             >
@@ -646,9 +646,9 @@ export function LiveDashboard() {
             <>
               <button
                 onClick={() => setPlaying(!playing)}
-                className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center hover:bg-[#FF8000]/20 transition-colors"
+                className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors"
               >
-                {playing ? <Pause className="w-4 h-4 text-[#FF8000]" /> : <Play className="w-4 h-4 text-[#FF8000]" />}
+                {playing ? <Pause className="w-4 h-4 text-primary" /> : <Play className="w-4 h-4 text-primary" />}
               </button>
 
               <div className="flex items-center gap-1">
@@ -658,7 +658,7 @@ export function LiveDashboard() {
                     onClick={() => setReplaySpeed(sp)}
                     className={`px-2 py-1 rounded text-[12px] font-mono transition-colors ${
                       replaySpeed === sp
-                        ? 'bg-[#FF8000] text-[#0D1117]'
+                        ? 'bg-primary text-[#0D1117]'
                         : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                     }`}
                   >
@@ -675,7 +675,7 @@ export function LiveDashboard() {
                   onPointerDown={onScrubDown}
                 >
                   <motion.div
-                    className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-[#FF8000] to-[#FF8000]/70"
+                    className="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-primary to-primary/70"
                     style={{ width: `${scrubPct}%` }}
                   />
                   {flagMarkers.map((m, i) => (
@@ -693,7 +693,7 @@ export function LiveDashboard() {
                     />
                   ))}
                   <motion.div
-                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#FF8000] shadow-[0_0_8px_rgba(255,128,0,0.5)] border-2 border-[#0D1117]"
+                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary shadow-[0_0_8px_rgba(255,128,0,0.5)] border-2 border-[#0D1117]"
                     style={{ left: `calc(${scrubPct}% - 8px)` }}
                     transition={{ type: 'spring', stiffness: 400, damping: 30 }}
                   />
@@ -713,7 +713,7 @@ export function LiveDashboard() {
 
           {!replayActive && !isSessionLive && (
             <div className="flex-1 text-[12px] text-muted-foreground">
-              Click <span className="text-[#FF8000]">RACE REVIEW</span> to replay this session
+              Click <span className="text-primary">RACE REVIEW</span> to replay this session
             </div>
           )}
           {isSessionLive && (
@@ -772,11 +772,11 @@ export function LiveDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-4 gap-3">
         <AnimatedKPI
-          icon={<Gauge className="w-4 h-4 text-[#FF8000]" />}
+          icon={<Gauge className="w-4 h-4 text-primary" />}
           label="Drivers"
           value={`${activePositions?.length ?? '—'}`}
           sub="In session"
-          color="text-[#FF8000]"
+          color="text-primary"
         />
         <AnimatedKPI
           icon={<Timer className="w-4 h-4 text-cyan-400" />}
@@ -908,7 +908,7 @@ export function LiveDashboard() {
       {/* ── ANALYTICS ── */}
       <div className="flex items-center gap-2 mt-2">
         <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
-        <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">ANALYTICS</span>
+        <span className="text-[10px] tracking-[0.25em] text-primary/60 font-semibold">ANALYTICS</span>
         <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
       </div>
 
@@ -1016,7 +1016,7 @@ export function LiveDashboard() {
         )}
         {activeWeather && activeWeather.length > 0 && (
           <div className="flex items-center gap-3 mt-1.5 justify-center text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded bg-[#FF8000]" /> Track</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded bg-primary" /> Track</span>
             <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded bg-[#00d4ff]" /> Air</span>
             <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded bg-[#f59e0b] opacity-70" style={{ borderTop: '1px dashed #f59e0b' }} /> Wind</span>
           </div>

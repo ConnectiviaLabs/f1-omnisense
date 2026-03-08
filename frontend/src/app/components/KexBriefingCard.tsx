@@ -53,7 +53,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
 
       {loading && (
         <div className="flex items-center justify-center gap-2 py-6">
-          <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+          <Loader2 className="w-4 h-4 text-primary animate-spin" />
           <span className="text-[11px] text-muted-foreground">{loadingText || 'Generating intelligence\u2026'}</span>
         </div>
       )}
@@ -105,7 +105,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
                 return (
                   <span
                     key={d.dimension}
-                    className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded"
                     style={{ color, background: `${color}15`, border: `1px solid ${color}25` }}
                   >
                     {d.dimension} {d.value}
@@ -131,11 +131,11 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
                 {Math.round(kex.grounding_score * 100)}% grounded
               </span>
             )}
-            <span className="text-[9px] text-muted-foreground/50 font-mono">
+            <span className="text-[10px] text-muted-foreground/50 font-mono">
               via {kex.model_used || 'auto'}{kex.provider_used ? ` (${kex.provider_used})` : ''}
             </span>
             {kex.generated_at && (
-              <span className="text-[9px] text-muted-foreground/50">
+              <span className="text-[10px] text-muted-foreground/50">
                 {new Date(kex.generated_at * 1000).toLocaleString()}
               </span>
             )}
@@ -144,7 +144,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
           {/* ── Expand toggle ── */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1.5 text-[11px] text-[#FF8000] hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-[#FF8000]/5"
+            className="flex items-center gap-1.5 text-[11px] text-primary hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-primary/5"
           >
             {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             {expanded ? 'Hide Full Briefing' : 'View Full Briefing'}

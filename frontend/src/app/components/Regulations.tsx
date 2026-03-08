@@ -70,7 +70,7 @@ export function Regulations() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-3 text-muted-foreground text-sm">Loading regulations data...</span>
       </div>
     );
@@ -98,7 +98,7 @@ export function Regulations() {
             placeholder="Search regulations, dimensions, equipment..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-card border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[#FF8000]/40"
+            className="w-full bg-card border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40"
           />
         </div>
         {/* Tabs */}
@@ -113,7 +113,7 @@ export function Regulations() {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2 text-[12px] transition-colors ${
                 activeTab === tab.id
-                  ? 'bg-[#FF8000]/10 text-[#FF8000]'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
@@ -135,7 +135,7 @@ export function Regulations() {
               onClick={() => setSelectedCategory(cat)}
               className={`text-[12px] px-2 py-1 rounded-lg whitespace-nowrap transition-all ${
                 selectedCategory === cat
-                  ? 'bg-[#FF8000]/10 text-[#FF8000]'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
@@ -192,7 +192,7 @@ export function Regulations() {
                 <tr key={i} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-secondary transition-colors">
                   <td className="px-4 py-1.5 text-foreground">{dim.component}</td>
                   <td className="px-4 py-1.5 text-muted-foreground truncate max-w-[300px]">{dim.dimension}</td>
-                  <td className="px-4 py-1.5 text-right font-mono text-[#FF8000]">
+                  <td className="px-4 py-1.5 text-right font-mono text-primary">
                     {dim.value != null ? `${dim.value} ${dim.unit || ''}` : '—'}
                   </td>
                   <td className="px-4 py-1.5 text-right font-mono text-muted-foreground">{dim._page}</td>
@@ -214,8 +214,8 @@ export function Regulations() {
           {filteredEquipment.slice(0, 60).map((eq, i) => (
             <div key={i} className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
               <div className="flex items-center gap-2 mb-1">
-                <Hash className="w-3 h-3 text-[#FF8000]" />
-                <span className="text-sm font-mono text-[#FF8000]">{eq.tag}</span>
+                <Hash className="w-3 h-3 text-primary" />
+                <span className="text-sm font-mono text-primary">{eq.tag}</span>
               </div>
               <div className="text-[11px] text-foreground">{eq.type}</div>
               {eq.description && (
@@ -253,10 +253,10 @@ function RuleCard({ rule, expanded, onToggle }: {
         className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-secondary transition-colors"
       >
         {expanded
-          ? <ChevronDown className="w-3 h-3 text-[#FF8000] shrink-0" />
+          ? <ChevronDown className="w-3 h-3 text-primary shrink-0" />
           : <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
         }
-        <span className="text-[12px] font-mono text-[#FF8000] w-14 shrink-0">{rule.id}</span>
+        <span className="text-[12px] font-mono text-primary w-14 shrink-0">{rule.id}</span>
         <span className="text-[12px] px-1.5 py-0.5 rounded-full shrink-0 tracking-wider text-[11px] uppercase ${severityColor}">
           <span className={`${severityColor} px-1.5 py-0.5 rounded-full`}>{rule.severity}</span>
         </span>
@@ -275,7 +275,7 @@ function RuleCard({ rule, expanded, onToggle }: {
             {rule.value && (
               <div>
                 <span className="text-muted-foreground">Value: </span>
-                <span className="font-mono text-[#FF8000]">{rule.value} {rule.unit || ''}</span>
+                <span className="font-mono text-primary">{rule.value} {rule.unit || ''}</span>
               </div>
             )}
             {rule.condition && (

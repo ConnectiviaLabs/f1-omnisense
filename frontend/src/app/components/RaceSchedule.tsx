@@ -167,7 +167,7 @@ export function RaceSchedule() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-32">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
       </div>
     );
   }
@@ -186,7 +186,7 @@ export function RaceSchedule() {
       {/* Season summary strip */}
       <div className="flex items-center gap-5 px-5 py-3 bg-card rounded-lg border border-border">
         <div className="flex items-center gap-2">
-          <Flag className="w-4 h-4 text-[#FF8000]" />
+          <Flag className="w-4 h-4 text-primary" />
           <span className="text-[13px] font-semibold text-foreground tracking-wide">2026 SEASON</span>
         </div>
         <div className="w-px h-5 bg-[rgba(255,128,0,0.12)]" />
@@ -197,7 +197,7 @@ export function RaceSchedule() {
           <span className="font-mono text-green-400">{completedCount}</span> completed
         </span>
         <span className="text-[12px] text-muted-foreground">
-          <span className="font-mono text-[#FF8000]">{weekends.length - completedCount}</span> remaining
+          <span className="font-mono text-primary">{weekends.length - completedCount}</span> remaining
         </span>
         <span className="text-[12px] text-muted-foreground">
           <Zap className="w-3 h-3 inline text-yellow-400 mr-0.5" />
@@ -206,7 +206,7 @@ export function RaceSchedule() {
         {/* Progress bar */}
         <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden ml-2">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-[#FF8000] to-[#FF8000]/60 transition-all duration-700"
+            className="h-full rounded-full bg-gradient-to-r from-primary to-primary/60 transition-all duration-700"
             style={{ width: `${(completedCount / weekends.length) * 100}%` }}
           />
         </div>
@@ -253,15 +253,15 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
       className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-lg overflow-hidden"
     >
       {/* Top accent */}
-      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-primary via-primary/60 to-transparent" />
       {/* Background glow */}
-      <div className="absolute inset-0 opacity-[0.03] bg-gradient-to-br from-[#FF8000] to-transparent pointer-events-none" />
+      <div className="absolute inset-0 opacity-[0.03] bg-gradient-to-br from-primary to-transparent pointer-events-none" />
 
       <div className="relative px-6 py-5 flex items-start gap-6">
         {/* Left: Round badge */}
         <div className="flex flex-col items-center gap-1 shrink-0">
           <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Round</span>
-          <span className="text-[32px] font-black font-mono text-[#FF8000] leading-none">{String(w.round).padStart(2, '0')}</span>
+          <span className="text-[32px] font-black font-mono text-primary leading-none">{String(w.round).padStart(2, '0')}</span>
         </div>
 
         {/* Center: Race info */}
@@ -274,7 +274,7 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
               </span>
             )}
             {!isLive && (
-              <span className="px-2 py-0.5 rounded bg-[#FF8000]/15 border border-[#FF8000]/20 text-[10px] font-bold text-[#FF8000] uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded bg-primary/15 border border-primary/20 text-[10px] font-bold text-primary uppercase tracking-wider">
                 Next Race
               </span>
             )}
@@ -303,9 +303,9 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
             {w.sessions.map((s, i) => (
               <span
                 key={i}
-                className={`text-[9px] font-medium tracking-wide px-2 py-0.5 rounded-md border ${
+                className={`text-[10px] font-medium tracking-wide px-2 py-0.5 rounded-md border ${
                   s === 'Race'
-                    ? 'bg-[#FF8000]/15 border-[#FF8000]/25 text-[#FF8000]'
+                    ? 'bg-primary/15 border-primary/25 text-primary'
                     : s === 'Sprint'
                     ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
                     : 'bg-background border-border text-muted-foreground'
@@ -324,8 +324,8 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
               <div className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Race Day</div>
               <div className="text-[13px] font-semibold text-foreground">{formatFullDate(w.raceDate)}</div>
               <div className="mt-2 flex items-center gap-1.5 justify-end">
-                <Clock className="w-3 h-3 text-[#FF8000]" />
-                <span className="text-[18px] font-black font-mono text-[#FF8000]">{daysUntil}</span>
+                <Clock className="w-3 h-3 text-primary" />
+                <span className="text-[18px] font-black font-mono text-primary">{daysUntil}</span>
                 <span className="text-[11px] text-muted-foreground">{daysUntil === 1 ? 'day' : 'days'} away</span>
               </div>
             </>
@@ -355,7 +355,7 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
       transition={{ duration: 0.25, delay: Math.min(index * 0.025, 0.5) }}
       className={`relative bg-card border rounded-lg overflow-hidden transition-all group ${
         isNext
-          ? 'border-[#FF8000]/30 ring-1 ring-[#FF8000]/10'
+          ? 'border-primary/30 ring-1 ring-primary/10'
           : isLive
           ? 'border-red-500/30'
           : isCompleted
@@ -365,14 +365,14 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
     >
       {/* Top accent line */}
       <div className={`absolute top-0 left-0 right-0 h-[2px] ${
-        isLive ? 'bg-red-500' : isNext ? 'bg-[#FF8000]' : isCompleted ? 'bg-green-500/40' : 'bg-[rgba(255,128,0,0.15)]'
+        isLive ? 'bg-red-500' : isNext ? 'bg-primary' : isCompleted ? 'bg-green-500/40' : 'bg-[rgba(255,128,0,0.15)]'
       }`} />
 
       <div className="p-3.5">
         {/* Header row: round + status */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="text-[18px] font-black font-mono leading-none text-[#FF8000]/30">
+            <span className="text-[18px] font-black font-mono leading-none text-primary/30">
               {String(w.round).padStart(2, '0')}
             </span>
             {COUNTRY_FLAGS[w.countryCode] && (
@@ -385,13 +385,13 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
             )}
             {isCompleted && <CheckCircle2 className="w-3.5 h-3.5 text-green-500/70" />}
             {isLive && (
-              <span className="flex items-center gap-1 text-[9px] font-bold text-red-400">
+              <span className="flex items-center gap-1 text-[10px] font-bold text-red-400">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
                 LIVE
               </span>
             )}
             {isNext && !isLive && (
-              <ChevronRight className="w-3.5 h-3.5 text-[#FF8000]" />
+              <ChevronRight className="w-3.5 h-3.5 text-primary" />
             )}
           </div>
         </div>
@@ -408,7 +408,7 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
             {w.raceDate ? formatDate(w.raceDate) : formatDate(w.dateStart)}
           </span>
           {w.isSprint && (
-            <span className="text-[9px] font-semibold text-yellow-400/80 tracking-wide">SPRINT</span>
+            <span className="text-[10px] font-semibold text-yellow-400/80 tracking-wide">SPRINT</span>
           )}
         </div>
       </div>

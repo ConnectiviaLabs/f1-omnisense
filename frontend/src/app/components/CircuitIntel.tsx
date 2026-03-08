@@ -131,7 +131,7 @@ export function CircuitIntel() {
 
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
   }
 
   return (
@@ -151,7 +151,7 @@ export function CircuitIntel() {
               onClick={() => setSelected(c.circuit_slug)}
               className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between ${
                 selected === c.circuit_slug
-                  ? 'bg-[#FF8000]/10 text-[#FF8000]'
+                  ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
@@ -256,7 +256,7 @@ export function CircuitIntel() {
                 <div className="flex items-center justify-center gap-6 mt-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1"><Thermometer className="w-3 h-3 text-red-400" /> Temperature</span>
                   <span className="flex items-center gap-1"><Droplets className="w-3 h-3 text-blue-400" /> Humidity</span>
-                  <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-[#FF8000]" /> Air Density</span>
+                  <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-primary" /> Air Density</span>
                 </div>
               </div>
             )}
@@ -276,7 +276,7 @@ export function CircuitIntel() {
                   </h3>
                   <div className="flex items-center gap-4 mb-3">
                     <div className="text-center">
-                      <div className="text-2xl font-mono font-bold text-[#FF8000]">{rank}<span className="text-sm text-muted-foreground font-normal">/{total}</span></div>
+                      <div className="text-2xl font-mono font-bold text-primary">{rank}<span className="text-sm text-muted-foreground font-normal">/{total}</span></div>
                       <div className="text-[10px] text-muted-foreground">Slowest pit lane</div>
                     </div>
                     <div className="flex-1">
@@ -287,7 +287,7 @@ export function CircuitIntel() {
                       <div className="h-2.5 bg-background rounded-full overflow-hidden relative">
                         <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #22c55e, #eab308, #ef4444)' , opacity: 0.3 }} />
                         <div
-                          className="absolute top-0 w-3 h-2.5 bg-[#FF8000] rounded-full border-2 border-[#1A1F2E]"
+                          className="absolute top-0 w-3 h-2.5 bg-primary rounded-full border-2 border-[#1A1F2E]"
                           style={{ left: `calc(${pct}% - 6px)` }}
                         />
                       </div>
@@ -300,7 +300,7 @@ export function CircuitIntel() {
             {/* ── Historical Race Performance ─────────────────────────── */}
             {historyLoading && (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" />
+                <Loader2 className="w-5 h-5 text-primary animate-spin" />
                 <span className="text-muted-foreground text-sm ml-2">Loading race history…</span>
               </div>
             )}
@@ -343,7 +343,7 @@ export function CircuitIntel() {
                               <td className="py-2 px-2 text-foreground font-semibold">{w.driver_code}</td>
                               <td className="py-2 px-2 text-muted-foreground">{w.constructor}</td>
                               <td className="py-2 px-2 text-right font-mono">
-                                <span className={w.grid === 1 ? 'text-[#FF8000]' : 'text-foreground'}>
+                                <span className={w.grid === 1 ? 'text-primary' : 'text-foreground'}>
                                   P{w.grid}
                                 </span>
                               </td>
@@ -420,7 +420,7 @@ export function CircuitIntel() {
 function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2">
-      <span className="text-[#FF8000]">{icon}</span>
+      <span className="text-primary">{icon}</span>
       <div>
         <div className="text-[10px] text-muted-foreground">{label}</div>
         <div className="text-sm text-foreground font-mono">{value}</div>

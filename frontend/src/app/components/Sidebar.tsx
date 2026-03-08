@@ -88,11 +88,11 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
       {/* Logo Area — click to go home */}
       <button onClick={onGoHome} className="p-4 border-b border-border text-left hover:bg-card/50 transition-colors">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#FF8000] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <Activity className="w-4 h-4 text-[#0D1117]" />
           </div>
           <div>
-            <div className="text-[#FF8000] text-sm tracking-[0.2em]">F1 OMNISENSE</div>
+            <div className="text-primary text-sm tracking-[0.2em]">F1 OMNISENSE</div>
             <div className="text-[12px] text-foreground tracking-wider">DATASENSE</div>
           </div>
         </div>
@@ -114,7 +114,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 onClick={() => onViewChange(id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === id
-                    ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                    ? 'bg-primary/10 text-primary border-l-primary font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
@@ -137,7 +137,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                     onClick={() => onViewChange(id)}
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                       isActive
-                        ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                        ? 'bg-primary/10 text-primary border-l-primary font-medium'
                         : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                     }`}
                   >
@@ -157,7 +157,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                           onClick={() => onPillarChange(pid as Pillar)}
                           className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] transition-all ${
                             activePillar === pid
-                              ? 'text-[#FF8000] font-medium'
+                              ? 'text-primary font-medium'
                               : 'text-muted-foreground hover:text-foreground'
                           }`}
                         >
@@ -183,7 +183,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 onClick={() => { onViewChange('prime-strategy'); onStrategyTabChange(sid as StrategyTab); }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === 'prime-strategy' && activeStrategyTab === sid
-                    ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                    ? 'bg-primary/10 text-primary border-l-primary font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
@@ -204,7 +204,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 onClick={() => onViewChange(id)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === id
-                    ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                    ? 'bg-primary/10 text-primary border-l-primary font-medium'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
@@ -224,7 +224,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
               onClick={() => onViewChange(id)}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                 activeView === id
-                  ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
+                  ? 'bg-primary/10 text-primary border-l-primary font-medium'
                   : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
               }`}
             >

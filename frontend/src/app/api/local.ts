@@ -72,9 +72,40 @@ export const strategy = {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   }).then(r => { if (!r.ok) throw new Error(`predict-lap: ${r.status}`); return r.json(); }),
+  predictLapBilstm: (params: {
+    circuit: string; driver_code: string; compound: string;
+    lap_start?: number; lap_end?: number; tyre_life_start?: number;
+    position?: number; stint?: number; baseline_pace_s?: number | null;
+    rainfall?: number | null;
+  }) => fetch(`/api/local/strategy/predict-lap-bilstm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`predict-lap-bilstm: ${r.status}`); return r.json(); }),
   battleIntel: (sessionKey?: number) => {
     const p = sessionKey ? `?session_key=${sessionKey}` : '';
     return fetchLocal<any>(`local/strategy/battle-intel${p}`);
+  },
+};
+
+// AutoML (onmichine) API
+export const automl = {
+  run: (params: {
+    target_column: string; collection?: string; query?: Record<string, any>;
+    sample_rows?: number; time_budget_s?: number; max_hpo_trials?: number;
+    task_type?: string; model?: string;
+  }) => fetch('/api/local/automl/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`automl/run: ${r.status}`); return r.json(); }),
+  status: (jobId: string) => fetchLocal<any>(`local/automl/status/${jobId}`),
+  jobs: () => fetchLocal<any>('local/automl/jobs'),
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return fetch('/api/local/automl/upload', { method: 'POST', body: form })
+      .then(r => { if (!r.ok) throw new Error(`automl/upload: ${r.status}`); return r.json(); });
   },
 };
 

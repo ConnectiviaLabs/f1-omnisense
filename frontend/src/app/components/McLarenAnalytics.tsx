@@ -62,7 +62,7 @@ function Divider({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 pt-2">
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
-      <span className="text-[10px] tracking-[0.25em] text-[#FF8000]/60 font-semibold">{label}</span>
+      <span className="text-[10px] tracking-[0.25em] text-primary/60 font-semibold">{label}</span>
       <div className="h-px flex-1 bg-[rgba(255,128,0,0.10)]" />
     </div>
   );
@@ -560,13 +560,13 @@ export function McLarenAnalytics() {
       {/* Header + Year Selector */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] text-[#FF8000]/60 tracking-[0.25em] font-semibold">MCLAREN F1 TEAM</p>
+          <p className="text-[10px] text-primary/60 tracking-[0.25em] font-semibold">MCLAREN F1 TEAM</p>
           <h2 className="text-sm text-foreground">Competitive Intelligence</h2>
         </div>
         <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
           {availableYears.map(y => (
             <button key={y} onClick={() => setYear(y)}
-              className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}>
+              className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
               {y}
             </button>
           ))}
@@ -575,10 +575,10 @@ export function McLarenAnalytics() {
 
       {/* Section 1: KPI Strip */}
       {dataLoading ? (
-        <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
+        <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
       ) : (
         <div className="grid grid-cols-4 gap-3">
-          <KPI icon={<Users className="w-4 h-4 text-[#FF8000]" />} label={kpiStats.d1Code} value={`P${kpiStats.d1Pos}`} detail={`${kpiStats.d1Pts} pts`} />
+          <KPI icon={<Users className="w-4 h-4 text-primary" />} label={kpiStats.d1Code} value={`P${kpiStats.d1Pos}`} detail={`${kpiStats.d1Pts} pts`} />
           <KPI icon={<Users className="w-4 h-4 text-cyan-400" />} label={kpiStats.d2Code} value={`P${kpiStats.d2Pos}`} detail={`${kpiStats.d2Pts} pts`} />
           <KPI icon={<Trophy className="w-4 h-4 text-green-400" />} label="Constructors" value={`P${kpiStats.teamPos}`} detail={`${kpiStats.teamPts} pts`} />
           <KPI icon={<Flag className="w-4 h-4 text-amber-400" />} label="Last Race" value={`+${kpiStats.lastGained}`} detail="pts gained" />
@@ -618,7 +618,7 @@ export function McLarenAnalytics() {
           <Divider label="WISE ANALYSIS" />
           {kexLoading ? (
             <div className="flex items-center justify-center gap-2 py-4">
-              <Loader2 className="w-4 h-4 text-[#FF8000] animate-spin" />
+              <Loader2 className="w-4 h-4 text-primary animate-spin" />
               <span className="text-[11px] text-muted-foreground">Generating WISE insights…</span>
             </div>
           ) : (
@@ -674,7 +674,7 @@ export function McLarenAnalytics() {
                               </div>
                               <span className="text-[11px] font-mono w-8 text-right" style={{ color: levelColor(sys.level) }}>{sys.health}%</span>
                               {sys.maintenanceAction && sys.maintenanceAction !== 'none' && (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: `${maint.color}15`, color: maint.color }}>{maint.label}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: `${maint.color}15`, color: maint.color }}>{maint.label}</span>
                               )}
                             </div>
                           );
@@ -737,10 +737,10 @@ export function McLarenAnalytics() {
               const isMcLaren = (team.constructor_id || '').toLowerCase().includes('mclaren');
               const name = teamDisplayNames[team.constructor_id] || team.constructor_name || team.constructor_id;
               return (
-                <div key={team.constructor_id || i} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-[#FF8000]/10 border border-[#FF8000]/20' : ''}`}>
+                <div key={team.constructor_id || i} className={`flex items-center gap-2 p-2 rounded-lg ${isMcLaren ? 'bg-primary/10 border border-primary/20' : ''}`}>
                   <span className="text-[12px] text-muted-foreground w-5 font-mono">P{team.position}</span>
                   <div className="w-2 h-5 rounded-full" style={{ backgroundColor: teamColors[team.constructor_id] ?? '#555' }} />
-                  <span className={`text-sm flex-1 truncate ${isMcLaren ? 'text-[#FF8000] font-medium' : 'text-foreground'}`}>{name}</span>
+                  <span className={`text-sm flex-1 truncate ${isMcLaren ? 'text-primary font-medium' : 'text-foreground'}`}>{name}</span>
                   <span className="text-sm font-mono text-foreground">{pts}</span>
                   {i > 0 && <span className="text-[11px] font-mono text-muted-foreground w-12 text-right">{pts - leaderPts}</span>}
                 </div>
@@ -753,7 +753,7 @@ export function McLarenAnalytics() {
       {/* Section 4: Car Telemetry Intelligence */}
       <Divider label="CAR TELEMETRY INTELLIGENCE" />
       {telLoading ? (
-        <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
+        <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-primary animate-spin" /></div>
       ) : telemetryData.length > 0 && mcLarenDrivers.length >= 2 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-card border border-border rounded-lg p-4">
@@ -811,7 +811,7 @@ export function McLarenAnalytics() {
       <Divider label="PIT WALL STRATEGY" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-[#FF8000]" />Pit Stop Duration</h3>
+          <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-primary" />Pit Stop Duration</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Average per race (seconds)</p>
           <div className="h-[220px]">
             {pitStopData.length > 0 ? (
@@ -834,7 +834,7 @@ export function McLarenAnalytics() {
         </div>
 
         <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-[#FF8000]" />Tire Strategy</h3>
+          <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-primary" />Tire Strategy</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Compound selection per race</p>
           {tireGrid.races.length > 0 ? (
             <div className="overflow-x-auto">
@@ -876,7 +876,7 @@ export function McLarenAnalytics() {
       {worldComparison.pointsPerRace.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-card border border-border rounded-lg p-4">
-            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />Points Per Race</h3>
+            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-primary" />Points Per Race</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — avg points per GP</p>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -896,7 +896,7 @@ export function McLarenAnalytics() {
           </div>
 
           <div className="bg-card border border-border rounded-lg p-4">
-            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Users className="w-3.5 h-3.5 text-[#FF8000]" />Average Finish Position</h3>
+            <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Users className="w-3.5 h-3.5 text-primary" />Average Finish Position</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — lower is better</p>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -932,7 +932,7 @@ export function McLarenAnalytics() {
           {raceResultsTable.map(r => (
             <div key={r.round} className="grid gap-2 px-2 py-1.5 rounded-lg hover:bg-secondary transition-colors text-sm items-center"
               style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>
-              <span className="text-[#FF8000] font-mono">R{r.round}</span>
+              <span className="text-primary font-mono">R{r.round}</span>
               <span className="text-foreground truncate">{r.gp}</span>
               {mcLarenDrivers.map((d, i) => (
                 <span key={d} className="font-mono" style={{ color: driverColors[i] }}>P{r[d]}</span>
