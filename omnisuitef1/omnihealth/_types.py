@@ -214,6 +214,19 @@ class MaintenanceTask:
             d["health_score"] = self.health_score.to_dict()
         return d
 
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "MaintenanceTask":
+        d = dict(d)
+        d["priority"] = MaintenancePriority(d["priority"])
+        d["action"] = MaintenanceAction(d["action"])
+        ra = d.pop("risk_assessment", None)
+        if ra is not None:
+            ra = RiskAssessment.from_dict(ra)
+        hs = d.pop("health_score", None)
+        if hs is not None:
+            hs = HealthScore.from_dict(hs)
+        return cls(**d, risk_assessment=ra, health_score=hs)
+
 
 @dataclass
 class MaintenanceSchedule:
@@ -231,6 +244,15 @@ class MaintenanceSchedule:
             "tasks": [t.to_dict() for t in self.tasks],
             "summary": self.summary,
         }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "MaintenanceSchedule":
+        d = dict(d)
+        d["tasks"] = [
+            MaintenanceTask.from_dict(t) if isinstance(t, dict) else t
+            for t in d.get("tasks", [])
+        ]
+        return cls(**d)
 
 
 @dataclass
@@ -251,3 +273,22 @@ class HealthReport:
             "overall_risk": self.overall_risk.value,
             "generated_at": self.generated_at,
         }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "HealthReport":
+        return cls(
+            components=[
+                HealthScore.from_dict(c) if isinstance(c, dict) else c
+                for c in d.get("components", [])
+            ],
+            risk_assessments=[
+                RiskAssessment.from_dict(r) if isinstance(r, dict) else r
+                for r in d.get("risk_assessments", [])
+            ],
+            schedule=MaintenanceSchedule.from_dict(d["schedule"])
+            if isinstance(d.get("schedule"), dict)
+            else d.get("schedule"),
+            overall_health=d.get("overall_health", 0.0),
+            overall_risk=RiskLevel(d["overall_risk"]) if isinstance(d.get("overall_risk"), str) else d.get("overall_risk", RiskLevel.LOW),
+            generated_at=d.get("generated_at", ""),
+        )

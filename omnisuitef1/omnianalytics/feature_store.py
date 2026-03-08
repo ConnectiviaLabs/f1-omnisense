@@ -72,6 +72,32 @@ def put(db, session_key: int, driver_number: int, computation: str, result) -> b
         return False
 
 
+def invalidate(db, session_key: int, driver_number: int = None, computation: str = None) -> int:
+    """Delete cached entries.  Returns count of deleted documents.
+
+    Granularity levels:
+      invalidate(db, 9573)                         → all cache for session 9573
+      invalidate(db, 9573, driver_number=4)         → all cache for session+driver
+      invalidate(db, 9573, computation="telemetry_raw")  → just telemetry for session
+      invalidate(db, 9573, 4, "anomaly_scores")    → single entry
+    """
+    if db is None:
+        return 0
+    try:
+        query: dict = {"session_key": session_key}
+        if driver_number is not None:
+            query["driver_number"] = driver_number
+        if computation is not None:
+            query["computation"] = computation
+        result = db[COLLECTION].delete_many(query)
+        deleted = result.deleted_count
+        logger.info("feature_store.invalidate deleted %d entries (query=%s)", deleted, query)
+        return deleted
+    except Exception:
+        logger.exception("feature_store.invalidate failed for session=%s", session_key)
+        return 0
+
+
 def ensure_indexes(db) -> None:
     """Create the compound unique index if it doesn't already exist."""
     if db is None:

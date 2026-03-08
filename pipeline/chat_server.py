@@ -594,6 +594,12 @@ def get_data_db():
         _data_db = _data_client[os.getenv("MONGODB_DB", "marip_f1")]
         # Share this connection with the opponents profiler
         init_profiler_with_db(_data_db)
+        # Ensure feature_store index for cross-model caching
+        try:
+            from omnianalytics.feature_store import ensure_indexes
+            ensure_indexes(_data_db)
+        except Exception:
+            pass
     return _data_db
 
 import base64 as _b64

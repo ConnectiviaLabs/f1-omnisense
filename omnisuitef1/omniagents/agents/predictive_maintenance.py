@@ -18,6 +18,7 @@ import pandas as pd
 
 from omniagents._types import EventSeverity
 from omniagents.base import F1Agent
+from omnianalytics.telemetry_loader import load_session_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,9 @@ class PredictiveMaintenanceAgent(F1Agent):
     ) -> Dict[str, Any]:
         """Run predictive maintenance analysis on car telemetry."""
 
-        # 1. Load telemetry from MongoDB
+        # 1. Load telemetry (shared loader with feature_store caching)
         telemetry_df = await asyncio.to_thread(
-            self._load_telemetry, session_key, driver_number
+            load_session_telemetry, self._db, session_key, driver_number
         )
         if telemetry_df.empty:
             return {"status": "no_data", "session_key": session_key}
@@ -103,6 +104,9 @@ class PredictiveMaintenanceAgent(F1Agent):
                 horizon=30,
                 include_schedule=True,
                 include_timeseries=True,
+                session_key=session_key,
+                driver_number=driver_number,
+                db=self._db,
             )
         except Exception:
             logger.exception("[predictive_maintenance] omnihealth.assess() failed for session %s", session_key)

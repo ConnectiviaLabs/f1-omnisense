@@ -71,6 +71,9 @@ def assess(
     include_schedule: bool = True,
     include_timeseries: bool = False,
     anomaly_weights: Optional[Dict[str, float]] = None,
+    session_key: Optional[int] = None,
+    driver_number: Optional[int] = None,
+    db=None,
 ) -> HealthReport:
     """One-call pipeline: health scoring -> risk assessment -> scheduling.
 
@@ -88,6 +91,17 @@ def assess(
     -------
     HealthReport with components, risk assessments, schedule, and overall metrics.
     """
+    # ── Feature store cache check ──
+    if session_key is not None and driver_number is not None and db is not None:
+        from omnianalytics import feature_store
+        cached = feature_store.get(db, session_key, driver_number, "health_report")
+        if cached is not None:
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "feature_store HIT: health_report session=%s driver=%s", session_key, driver_number
+            )
+            return HealthReport.from_dict(cached)
+
     # Step 1: Health scoring
     health_scores = assess_components(data, component_map, weights=anomaly_weights)
 
@@ -210,7 +224,7 @@ def assess(
     else:
         overall_risk = RiskLevel.LOW
 
-    return HealthReport(
+    report = HealthReport(
         components=health_scores,
         risk_assessments=risk_assessments,
         schedule=schedule,
@@ -218,6 +232,19 @@ def assess(
         overall_risk=overall_risk,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
+
+    # ── Cache result in feature store ──
+    if session_key is not None and driver_number is not None and db is not None:
+        from omnianalytics import feature_store as _fs
+        try:
+            _fs.put(db, session_key, driver_number, "health_report", report.to_dict())
+        except Exception:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "Failed to cache health_report for session=%s driver=%s", session_key, driver_number
+            )
+
+    return report
 
 
 __all__ = [

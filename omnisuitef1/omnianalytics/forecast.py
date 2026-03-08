@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from omnidata._types import TabularDataset
+from omnianalytics import feature_store
 from omnianalytics._types import ForecastResult
 
 logger = logging.getLogger(__name__)
@@ -370,6 +371,9 @@ def forecast(
     *,
     horizon: int = 10,
     method: str = "auto",
+    session_key: Optional[int] = None,
+    driver_number: Optional[int] = None,
+    db=None,
 ) -> ForecastResult:
     """Forecast a single metric column.
 
@@ -377,6 +381,14 @@ def forecast(
     method="arima": slower but more accurate for long series.
     method="ets": Holt-Winters exponential smoothing (~50ms).
     """
+    # ── Feature store cache check ──
+    cache_computation = f"forecast:{column}:{horizon}:{method}"
+    if session_key is not None and driver_number is not None and db is not None:
+        cached = feature_store.get(db, session_key, driver_number, cache_computation)
+        if cached is not None:
+            logger.info("feature_store HIT: %s session=%s driver=%s", cache_computation, session_key, driver_number)
+            return ForecastResult.from_dict(cached)
+
     if column not in dataset.df.columns:
         raise ValueError(f"Column '{column}' not in dataset")
 
@@ -395,23 +407,33 @@ def forecast(
             timestamps = [str(t) for t in future_ts]
 
     if method == "arima":
-        return forecast_arima(series, horizon=horizon, timestamps=timestamps)
+        result = forecast_arima(series, horizon=horizon, timestamps=timestamps)
     elif method == "linear":
-        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+        result = forecast_linear(series, horizon=horizon, timestamps=timestamps)
     elif method == "ets":
-        return forecast_ets(series, horizon=horizon, timestamps=timestamps)
+        result = forecast_ets(series, horizon=horizon, timestamps=timestamps)
     elif method == "statsforecast" or method == "sf":
-        return forecast_sf(series, horizon=horizon, timestamps=timestamps)
+        result = forecast_sf(series, horizon=horizon, timestamps=timestamps)
     elif method == "lightgbm":
         feature_cols = [c for c in dataset.profile.metric_cols if c != column]
         if feature_cols:
-            return forecast_lightgbm(
+            result = forecast_lightgbm(
                 dataset.df, column, feature_cols, horizon=horizon, timestamps=timestamps,
             )
-        return forecast_linear(series, horizon=horizon, timestamps=timestamps)
+        else:
+            result = forecast_linear(series, horizon=horizon, timestamps=timestamps)
     else:
         # auto: StatsForecast ensemble (AutoETS + AutoARIMA + AutoTheta), falls back to ETS/linear
-        return forecast_sf(series, horizon=horizon, timestamps=timestamps)
+        result = forecast_sf(series, horizon=horizon, timestamps=timestamps)
+
+    # ── Cache result in feature store ──
+    if session_key is not None and driver_number is not None and db is not None:
+        try:
+            feature_store.put(db, session_key, driver_number, cache_computation, result.to_dict())
+        except Exception:
+            logger.debug("Failed to cache %s for session=%s driver=%s", cache_computation, session_key, driver_number)
+
+    return result
 
 
 def forecast_anomaly_features(

@@ -587,6 +587,11 @@ const DATA = [
   { name: "pipeline_log", docs: 29, sizeMB: 0.0, idxCount: 2, category: "system", status: "meta",
     writers: ["data_quality_fixes.py", "profile_refresher.py", "updater.py"], readers: ["—"], frontend: ["—"],
     notes: "Internal pipeline audit log." },
+  { name: "feature_store", docs: 0, sizeMB: 0.0, idxCount: 1, category: "system", status: "active",
+    writers: ["omnianalytics/anomaly.py", "omnianalytics/forecast.py", "omnianalytics/telemetry_loader.py", "omnihealth/__init__.py"],
+    readers: ["omnianalytics/anomaly.py", "omnianalytics/forecast.py", "omnianalytics/telemetry_loader.py", "omnihealth/__init__.py"],
+    frontend: ["—"],
+    notes: "Cross-model feature cache. Keyed by (session_key, driver_number, computation). Stores anomaly_scores, forecasts, health_reports, telemetry_raw. Session-pinned — no TTL (historical data is immutable)." },
 ];
 
 // ── Category config ──

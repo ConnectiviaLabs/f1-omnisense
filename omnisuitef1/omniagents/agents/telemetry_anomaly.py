@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler
 
 from omniagents._types import EventSeverity
 from omniagents.base import F1Agent
+from omnianalytics.telemetry_loader import load_session_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,9 @@ class TelemetryAnomalyAgent(F1Agent):
     ) -> Dict[str, Any]:
         """Run anomaly detection on car telemetry for a session."""
 
-        # 1. Load telemetry from MongoDB
+        # 1. Load telemetry (shared loader with feature_store caching)
         telemetry_df = await asyncio.to_thread(
-            self._load_telemetry, session_key, driver_number
+            load_session_telemetry, self._db, session_key, driver_number
         )
         if telemetry_df.empty:
             return {"status": "no_data", "session_key": session_key}

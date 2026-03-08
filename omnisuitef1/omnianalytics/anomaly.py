@@ -18,6 +18,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 from omnidata._types import TabularDataset
+from omnianalytics import feature_store
 from omnianalytics._types import (
     AnomalyResult, AnomalyScore, SeverityLevel,
 )
@@ -76,12 +77,22 @@ class AnomalyEnsemble:
         weights: Optional[Dict[str, float]] = None,
         explain_critical: bool = True,
         top_k_features: int = 3,
+        session_key: Optional[int] = None,
+        driver_number: Optional[int] = None,
+        db=None,
     ) -> AnomalyResult:
         """Run full ensemble on dataset metric columns.
 
         If explain_critical=True, runs SHAP on HIGH/CRITICAL anomalies
         and stores top_k contributing feature names in each AnomalyScore.model_scores.
         """
+        # ── Feature store cache check ──
+        if session_key is not None and driver_number is not None and db is not None:
+            cached = feature_store.get(db, session_key, driver_number, "anomaly_scores")
+            if cached is not None:
+                logger.info("feature_store HIT: anomaly_scores session=%s driver=%s", session_key, driver_number)
+                return AnomalyResult.from_dict(cached)
+
         from omnidata.profiler import profile as run_profile
 
         if not dataset.profile.columns:
@@ -173,7 +184,7 @@ class AnomalyEnsemble:
             scores.append(s)
             severity_dist[severities[i].value] += 1
 
-        return AnomalyResult(
+        result = AnomalyResult(
             scores=scores,
             contamination_estimate=round(contam, 4),
             threshold=round(float(threshold), 4),
@@ -182,6 +193,15 @@ class AnomalyEnsemble:
             severity_distribution=severity_dist,
             model_weights={m: round(w.get(m, 0.5), 2) for m in model_names},
         )
+
+        # ── Cache result in feature store ──
+        if session_key is not None and driver_number is not None and db is not None:
+            try:
+                feature_store.put(db, session_key, driver_number, "anomaly_scores", result.to_dict())
+            except Exception:
+                logger.debug("Failed to cache anomaly_scores for session=%s driver=%s", session_key, driver_number)
+
+        return result
 
     def _run_isolation_forest(self, scaled: np.ndarray, contamination: float) -> Tuple[np.ndarray, np.ndarray]:
         model = IsolationForest(
