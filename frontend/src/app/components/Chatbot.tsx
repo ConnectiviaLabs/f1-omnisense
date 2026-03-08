@@ -415,7 +415,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
       <div className={`space-y-3 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
         {/* ── Gen UI Widgets (top section) ──────────────────────── */}
         {hasVisuals && (
-          <div className="rounded-xl bg-background border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
+          <div className="rounded-lg bg-background border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
             {/* Metric cards grid */}
             {metricCards.length > 0 && (
               <div className={`grid gap-2 ${metricCards.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -440,7 +440,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
             if (!content.trim()) return null;
             return (
               <FadeIn key={key}>
-                <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
+                <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
                   {content}
                 </div>
               </FadeIn>
@@ -451,7 +451,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
           if (!text) return null;
           return (
             <FadeIn key={key}>
-              <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
+              <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
                 {text}
               </div>
             </FadeIn>
@@ -470,7 +470,7 @@ function UserMessage({ message }: { message: UIMessage }) {
         <User className="w-4 h-4 text-blue-400" />
       </div>
       <div className="max-w-[75%]">
-        <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-blue-500/10 border border-blue-500/20 text-foreground">
+        <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-blue-500/10 border border-blue-500/20 text-foreground">
           {text?.text ?? ''}
         </div>
       </div>
@@ -488,7 +488,7 @@ function ErrorBanner({ error, onRetry }: { error: Error; onRetry: () => void }) 
       <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
         <XCircle className="w-4 h-4 text-red-400" />
       </div>
-      <div className="bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3 max-w-[75%]">
+      <div className="bg-red-500/5 border border-red-500/20 rounded-lg px-4 py-3 max-w-[75%]">
         <p className="text-[11px] text-red-400 mb-2">
           {error.message.includes('GROQ_API_KEY')
             ? 'Groq API key not configured. Add GROQ_API_KEY to your .env file.'
@@ -630,7 +630,7 @@ export function Chatbot() {
               input.value = '';
             }
           }}
-          className="flex items-center gap-2 bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors"
+          className="flex items-center gap-2 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors"
         >
           <input
             ref={inputRef}
@@ -699,7 +699,7 @@ function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
             type="button"
             key={q}
             onClick={() => onSelect(q)}
-            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
+            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
           >
             {q}
           </button>

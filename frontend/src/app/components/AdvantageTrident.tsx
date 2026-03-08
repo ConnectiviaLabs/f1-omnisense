@@ -314,7 +314,7 @@ export function AdvantageTrident() {
                 return (
                   <div
                     key={key}
-                    className="rounded-xl border border-border overflow-hidden transition-all hover:border-[rgba(255,128,0,0.15)]"
+                    className="rounded-lg border border-border overflow-hidden transition-all hover:border-[rgba(255,128,0,0.15)]"
                     style={{ background: bg }}
                   >
                     {/* Card Header */}

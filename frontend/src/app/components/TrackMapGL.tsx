@@ -200,14 +200,14 @@ export function TrackMapGL({
   // ─── Render ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className={`bg-card rounded-xl border border-border flex items-center justify-center ${className}`} style={{ height }}>
+      <div className={`bg-card rounded-lg border border-border flex items-center justify-center ${className}`} style={{ height }}>
         <div className="text-muted-foreground text-sm animate-pulse">Loading track map...</div>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className={`relative bg-card rounded-xl border border-border overflow-hidden ${className}`} style={{ height }}>
+    <div ref={containerRef} className={`relative bg-card rounded-lg border border-border overflow-hidden ${className}`} style={{ height }}>
       {/* Header overlay */}
       <div className="absolute top-0 left-0 right-0 z-10 p-3 bg-gradient-to-b from-[#0D1117ee] to-transparent pointer-events-none">
         <div className="flex items-center gap-2">

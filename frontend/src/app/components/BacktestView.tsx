@@ -171,7 +171,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 function MetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-4 text-center">
+    <div className="bg-card border border-border rounded-lg p-4 text-center">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
       <div className="text-2xl font-bold font-mono" style={{ color: color || '#FF8000' }}>{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
@@ -191,7 +191,7 @@ function ConfusionMatrixDisplay({ cm }: { cm: ConfusionMatrix }) {
     </div>
   );
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="bg-card border border-border rounded-lg p-4">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Confusion Matrix</div>
       <div className="grid grid-cols-2 gap-2">
         {cell(cm.true_positive, 'True Positive', true)}
@@ -224,7 +224,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
     ? '#ef4444' : cs.composite_risk_level === 'medium' ? '#f59e0b' : '#05DF72';
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="bg-card border border-border rounded-lg p-4">
       {/* Header row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -517,7 +517,7 @@ export function BacktestView() {
   return (
     <div className="space-y-4">
       {/* ── Header + Controls ── */}
-      <div className="bg-card border border-border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <FlaskConical className="w-5 h-5 text-[#FF8000]" />
@@ -641,7 +641,7 @@ export function BacktestView() {
 
           {/* ── Composite Risk Distribution ── */}
           {m.composite_risk_distribution && Object.keys(m.composite_risk_distribution).length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-[#FF8000]" />
                 Composite Risk Distribution
@@ -693,7 +693,7 @@ export function BacktestView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ConfusionMatrixDisplay cm={m.confusion_matrix} />
 
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Outcome Distribution</div>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={outcomeData} layout="vertical" margin={{ left: 10, right: 10 }}>
@@ -711,7 +711,7 @@ export function BacktestView() {
           {/* ── Team Accuracy + System Prediction Value ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {teamAccData.length > 0 && (
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Per-Team Accuracy</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={teamAccData} margin={{ left: 0, right: 10 }}>
@@ -727,7 +727,7 @@ export function BacktestView() {
             )}
 
             {systemData.length > 0 && (
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">System Prediction Value</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <RadarChart data={systemData} cx="50%" cy="50%" outerRadius="68%">

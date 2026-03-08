@@ -70,7 +70,7 @@ function Divider({ label }: { label: string }) {
 
 function KPI({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-3">
+    <div className="bg-card border border-border rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -599,7 +599,7 @@ export function McLarenAnalytics() {
               const sc = sentimentColors[ins.sentiment];
               const Icon = ins.icon;
               return (
-                <div key={i} className="rounded-xl p-3" style={{ border: `1px solid ${sc.border}`, background: sc.bg }}>
+                <div key={i} className="rounded-lg p-3" style={{ border: `1px solid ${sc.border}`, background: sc.bg }}>
                   <div className="flex items-center gap-2 mb-1.5">
                     <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: sc.icon }} />
                     <span className="text-[12px] font-medium text-foreground">{ins.title}</span>
@@ -651,7 +651,7 @@ export function McLarenAnalytics() {
               if (!v) return null;
               const color = driverColors[idx];
               return (
-                <div key={v.code} className="bg-card border border-border rounded-xl p-4">
+                <div key={v.code} className="bg-card border border-border rounded-lg p-4">
                   <div className="flex items-center gap-4">
                     <HealthGauge value={v.overallHealth} size={60} strokeWidth={5} showLabel={false} />
                     <div className="flex-1">
@@ -692,7 +692,7 @@ export function McLarenAnalytics() {
       {/* Section 3: Championship Trajectory */}
       <Divider label="CHAMPIONSHIP TRAJECTORY" />
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-8 bg-card border border-border rounded-xl p-4">
+        <div className="col-span-8 bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm text-foreground mb-1">Points Progression</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers.join(' + ')} + Constructors cumulative</p>
           <div className="h-[260px]">
@@ -727,7 +727,7 @@ export function McLarenAnalytics() {
           </div>
         </div>
 
-        <div className="col-span-4 bg-card border border-border rounded-xl p-4">
+        <div className="col-span-4 bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm text-foreground mb-1">Constructors Gap</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Points to nearest rivals</p>
           <div className="space-y-2">
@@ -756,7 +756,7 @@ export function McLarenAnalytics() {
         <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
       ) : telemetryData.length > 0 && mcLarenDrivers.length >= 2 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <h3 className="text-sm text-foreground mb-1">Top Speed</h3>
             <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers[0]} vs {mcLarenDrivers[1]} — km/h per race</p>
             <div className="h-[220px]">
@@ -773,7 +773,7 @@ export function McLarenAnalytics() {
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <h3 className="text-sm text-foreground mb-1">Driving Style</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Season avg throttle / brake / DRS %</p>
             <div className="h-[220px]">
@@ -810,7 +810,7 @@ export function McLarenAnalytics() {
       {/* Section 5: Pit Wall Strategy */}
       <Divider label="PIT WALL STRATEGY" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-[#FF8000]" />Pit Stop Duration</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Average per race (seconds)</p>
           <div className="h-[220px]">
@@ -833,7 +833,7 @@ export function McLarenAnalytics() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-[#FF8000]" />Tire Strategy</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Compound selection per race</p>
           {tireGrid.races.length > 0 ? (
@@ -875,7 +875,7 @@ export function McLarenAnalytics() {
       <Divider label="MCLAREN VS THE WORLD" />
       {worldComparison.pointsPerRace.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />Points Per Race</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — avg points per GP</p>
             <div className="h-[320px]">
@@ -895,7 +895,7 @@ export function McLarenAnalytics() {
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Users className="w-3.5 h-3.5 text-[#FF8000]" />Average Finish Position</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — lower is better</p>
             <div className="h-[320px]">
@@ -921,7 +921,7 @@ export function McLarenAnalytics() {
 
       {/* Section 7: Race Results */}
       <Divider label="RACE RESULTS" />
-      <div className="bg-card border border-border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-lg p-4">
         <div className="space-y-1">
           <div className={`grid gap-2 px-2 py-1 text-[11px] text-muted-foreground tracking-wider`}
             style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>

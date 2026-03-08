@@ -30,7 +30,7 @@ export function Home_v1({ onSelectPlatform }: HomeProps) {
       {/* Header */}
       <div className="relative z-10 flex flex-col items-center pt-12 pb-8">
         <div className="flex items-center gap-4 mb-3">
-          <div className="w-11 h-11 rounded-xl bg-[#FF8000] flex items-center justify-center shadow-[0_0_24px_rgba(255,128,0,0.4)]">
+          <div className="w-11 h-11 rounded-lg bg-[#FF8000] flex items-center justify-center shadow-[0_0_24px_rgba(255,128,0,0.4)]">
             <Activity className="w-5 h-5 text-[#0D1117]" />
           </div>
           <div>

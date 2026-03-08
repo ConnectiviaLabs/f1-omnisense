@@ -137,7 +137,7 @@ export function CircuitIntel() {
   return (
     <div className="flex gap-4 h-[calc(100vh-200px)]">
       {/* Left: Circuit List */}
-      <div className="w-72 shrink-0 bg-card border border-border rounded-xl overflow-y-auto">
+      <div className="w-72 shrink-0 bg-card border border-border rounded-lg overflow-y-auto">
         <div className="p-3 border-b border-border">
           <h3 className="text-sm text-muted-foreground flex items-center gap-2">
             <MapPin className="w-4 h-4" />
@@ -179,7 +179,7 @@ export function CircuitIntel() {
         ) : (
           <>
             {/* Header */}
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <h2 className="text-foreground text-lg font-semibold">{selectedCircuit?.circuit_name}</h2>
               <div className="flex flex-wrap gap-4 mt-3">
                 <InfoChip icon={<MapPin className="w-3.5 h-3.5" />} label="Length" value={`${((selectedCircuit?.computed_length_m || 0) / 1000).toFixed(2)} km`} />
@@ -201,7 +201,7 @@ export function CircuitIntel() {
               const ci = SLUG_TO_CIRCUIT.get(slug) ?? SLUG_TO_CIRCUIT.get(NAME_ALIASES[slug] ?? '');
               if (!ci) return null;
               return (
-                <div className="bg-card border border-border rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <TrackMap
                     geojsonPath={ci.geojsonPath}
                     circuitName={ci.circuitName}
@@ -219,7 +219,7 @@ export function CircuitIntel() {
 
             {/* Pit Loss */}
             {selectedPitLoss && (
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Timer className="w-4 h-4" /> Pit Stop Analysis</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <PitCard label="Pit Lane Loss" value={selectedPitLoss.est_pit_lane_loss_s} unit="s" />
@@ -239,7 +239,7 @@ export function CircuitIntel() {
 
             {/* Air Density History */}
             {selectedAirData.length > 0 && (
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Wind className="w-4 h-4" /> Environmental Conditions by Year</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={selectedAirData}>
@@ -270,7 +270,7 @@ export function CircuitIntel() {
               const slowest = pitLossRanking[0].est_pit_lane_loss_s;
               const pct = ((val - fastest) / (slowest - fastest)) * 100;
               return (
-                <div className="bg-card border border-border rounded-xl p-4">
+                <div className="bg-card border border-border rounded-lg p-4">
                   <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                     <Timer className="w-4 h-4" /> Pit Lane Loss Rank
                   </h3>
@@ -308,7 +308,7 @@ export function CircuitIntel() {
             {history && (
               <>
                 {/* KPI row */}
-                <div className="bg-card border border-border rounded-xl p-4">
+                <div className="bg-card border border-border rounded-lg p-4">
                   <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                     <Trophy className="w-4 h-4" /> Race History Overview
                   </h3>
@@ -322,7 +322,7 @@ export function CircuitIntel() {
 
                 {/* Winners Table */}
                 {history.winners.length > 0 && (
-                  <div className="bg-card border border-border rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-lg p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <Flag className="w-4 h-4" /> Race Winners
                     </h3>
@@ -357,7 +357,7 @@ export function CircuitIntel() {
 
                 {/* Constructor Dominance */}
                 {history.top_constructors.length > 0 && (
-                  <div className="bg-card border border-border rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-lg p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <Users className="w-4 h-4" /> Constructor Points at This Circuit
                     </h3>
@@ -379,7 +379,7 @@ export function CircuitIntel() {
 
                 {/* Podium Kings */}
                 {history.top_podiums.length > 0 && (
-                  <div className="bg-card border border-border rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-lg p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <TrendingUp className="w-4 h-4" /> Most Podiums at This Circuit
                     </h3>

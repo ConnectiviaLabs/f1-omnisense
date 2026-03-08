@@ -50,7 +50,7 @@ function Divider({ label }: { label: string }) {
 
 function KPI({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-3">
+    <div className="bg-card border border-border rounded-lg p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -249,7 +249,7 @@ export function RaceStrategy() {
 
       {/* ── Section 2: Stint Timeline ── */}
       <Divider label="STINT TIMELINE" />
-      <div className="bg-card border border-border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center gap-4 mb-3">
           <h3 className="text-foreground font-semibold text-sm">Pit Strategy Tracker</h3>
           <div className="flex items-center gap-3 text-[11px]">
@@ -369,7 +369,7 @@ export function RaceStrategy() {
           <Divider label="BATTLE INTEL" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Undercut threats */}
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="w-4 h-4 text-red-400" />
                 <h3 className="text-foreground font-semibold text-sm">Undercut Threats</h3>
@@ -409,7 +409,7 @@ export function RaceStrategy() {
             </div>
 
             {/* Gap trends */}
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-green-400" />
                 <h3 className="text-foreground font-semibold text-sm">Gap Trends</h3>
@@ -459,7 +459,7 @@ export function RaceStrategy() {
       {opponentData?.drivers?.length > 0 && (
         <>
           <Divider label="OPPONENT STRATEGY PATTERNS" />
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Shield className="w-4 h-4 text-purple-400" />
               <h3 className="text-foreground font-semibold text-sm">Rival Strategy Profiles</h3>
@@ -512,7 +512,7 @@ export function RaceStrategy() {
           <Divider label="OPTIMAL STRATEGIES" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Table */}
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="text-foreground font-semibold text-sm mb-3">Simulated Optimal Strategy</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
@@ -550,7 +550,7 @@ export function RaceStrategy() {
             </div>
 
             {/* Gap chart */}
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <h3 className="text-foreground font-semibold text-sm mb-3">Gap to Leader</h3>
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart
@@ -578,7 +578,7 @@ export function RaceStrategy() {
       {degCurveData.length > 0 && (
         <>
           <Divider label="TYRE DEGRADATION" />
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-3 mb-3">
               <h3 className="text-foreground font-semibold text-sm">Degradation Curves — {degData?.circuit}</h3>
               <div className="flex items-center gap-3 text-[11px] ml-auto">
@@ -636,7 +636,7 @@ export function RaceStrategy() {
 
         {/* SC Probability */}
         {scData?.metadata && (
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-4 h-4 text-yellow-500" />
               <h3 className="text-foreground font-semibold text-sm">Safety Car Probability</h3>
@@ -705,7 +705,7 @@ export function RaceStrategy() {
 
         {/* SC Rates by Circuit */}
         {scRateData.length > 0 && (
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-4 h-4 text-yellow-500" />
               <h3 className="text-foreground font-semibold text-sm">SC Rate by Circuit</h3>
@@ -749,7 +749,7 @@ export function RaceStrategy() {
 
           {/* XGBoost Lap Predictor */}
           {xgbData?.metadata && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Brain className="w-4 h-4 text-[#FF8000]" />
                 <h3 className="text-foreground font-semibold text-sm">XGBoost Lap Predictor</h3>
@@ -792,7 +792,7 @@ export function RaceStrategy() {
 
           {/* BiLSTM Lap Predictor */}
           {bilstmData?.metadata && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Cpu className="w-4 h-4 text-purple-400" />
                 <h3 className="text-foreground font-semibold text-sm">BiLSTM Temporal Predictor</h3>
@@ -863,7 +863,7 @@ export function RaceStrategy() {
 
       {/* ── Lap Time Predictor ── */}
       {xgbData?.metadata && (
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
             <Brain className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">Lap Time Predictor</h3>
@@ -967,7 +967,7 @@ export function RaceStrategy() {
 
       {/* XGBoost Circuit Accuracy */}
       {xgbCircuitData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Flag className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">XGBoost Accuracy by Circuit</h3>
@@ -1004,7 +1004,7 @@ export function RaceStrategy() {
 
       {/* Model Confidence */}
       {modelHealth && (
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity className="w-4 h-4 text-cyan-400" />
             <h3 className="text-foreground font-semibold text-sm">Model Confidence</h3>
@@ -1042,7 +1042,7 @@ export function RaceStrategy() {
 
       {/* ELT Driver Deltas */}
       {driverDeltaData.length > 0 && (
-        <div className="bg-card border border-border rounded-xl p-4">
+        <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">Driver Pace Deltas (ELT Model)</h3>

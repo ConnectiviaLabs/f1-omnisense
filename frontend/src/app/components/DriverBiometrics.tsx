@@ -53,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 function KPI({ icon, label, value, detail, color = 'text-foreground' }: { icon: React.ReactNode; label: string; value: string; detail: string; color?: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -74,7 +74,7 @@ function DeltaKPI({ label, norVal, piaVal, unit, icon, higher = 'neutral' }: {
   const absDiff = Math.abs(diff).toFixed(1);
   const norWins = diff > 0;
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -247,7 +247,7 @@ function BiometricIntelligence({ driverCode }: { driverCode: string }) {
   const worstRace = races.reduce((a, b) => a.health < b.health ? a : b);
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -626,7 +626,7 @@ export function DriverBiometrics() {
           </div>
 
           <div className="grid grid-cols-12 gap-4">
-            <div className="col-span-3 bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4 flex flex-col items-center justify-center gap-3">
+            <div className="col-span-3 bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4 flex flex-col items-center justify-center gap-3">
               <HealthGauge value={selectedVehicle.overallHealth} size={100} label="Overall" />
               <StatusBadge status={selectedVehicle.level} />
               <div className="w-full space-y-2 mt-2">
@@ -652,7 +652,7 @@ export function DriverBiometrics() {
                 const Icon = sys.icon;
                 const maint = sys.maintenanceAction ? MAINTENANCE_LABELS[sys.maintenanceAction] ?? MAINTENANCE_LABELS.none : null;
                 return (
-                  <div key={sys.name} className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
+                  <div key={sys.name} className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: levelBg(sys.level) }}>
                         <Icon className="w-4 h-4" style={{ color: levelColor(sys.level) }} />
@@ -705,7 +705,7 @@ export function DriverBiometrics() {
           </div>
 
           {healthTrendData.length > 1 && (
-            <div className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
+            <div className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4">
               <h3 className="text-sm text-foreground tracking-widest mb-3 font-medium">HEALTH TREND</h3>
               <div className="h-[160px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -779,7 +779,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
       {/* Bio Card + KPIs */}
       <div className="grid grid-cols-12 gap-3">
         {career && (
-          <div className="col-span-4 bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="col-span-4 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-[#FF8000]/10 flex items-center justify-center">
                 <User className="w-5 h-5 text-[#FF8000]" />
@@ -854,7 +854,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
       {/* Heart Rate Trace + Temperature */}
       {hrTrace.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Heart Rate Trace</h3>
             <p className="text-[12px] text-muted-foreground mb-3">BPM over race — zones: green &lt;150, amber 150-170, red &gt;170</p>
             <div className="h-[220px]">
@@ -878,7 +878,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
             </div>
           </div>
 
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Temperature Profile</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Cockpit vs air vs track temperature</p>
             <div className="h-[220px]">
@@ -901,7 +901,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
       {/* HR vs Speed + Battle Intensity */}
       {hrTrace.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Heart Rate vs Speed</h3>
             <p className="text-[12px] text-muted-foreground mb-3">HR spikes correlated with speed changes</p>
             <div className="h-[220px]">
@@ -920,7 +920,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
           </div>
 
           {battlePerLap.length > 0 && (
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
               <h3 className="text-sm text-foreground mb-1">Battle Intensity by Lap</h3>
               <p className="text-[12px] text-muted-foreground mb-3">Close racing metric — % of intervals under 1 second</p>
               <div className="h-[220px]">
@@ -941,7 +941,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
 
       {/* Avg HR per Lap */}
       {hrPerLap.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Average Heart Rate by Lap</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Lap-by-lap average BPM showing fatigue and adrenaline patterns</p>
           <div className="h-[200px]">
@@ -968,7 +968,7 @@ function RaceDetailView({ career, kpis, hrTrace, tempTrace, battlePerLap, hrPerL
 
       {/* Career Stats Table */}
       {career && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
             <Trophy className="w-3 h-3 text-[#FF8000]" />
             McLaren Career Summary — {career.driver_name}
@@ -1032,7 +1032,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Average Heart Rate by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — {year} season, BPM per race</p>
           <div className="h-[260px]">
@@ -1053,7 +1053,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Peak Heart Rate by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Maximum BPM recorded per race</p>
           <div className="h-[260px]">
@@ -1075,7 +1075,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Cockpit Temperature by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Average cockpit vs air temperature per race</p>
           <div className="h-[260px]">
@@ -1092,7 +1092,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Battle Intensity by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Close racing metric — higher = more wheel-to-wheel</p>
           <div className="h-[260px]">
@@ -1115,7 +1115,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       {/* Season Summary Table */}
-      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
           <GitCompareArrows className="w-3 h-3 text-[#FF8000]" />
           {driver} — {year} Season Biometric Summary
@@ -1249,7 +1249,7 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
 
       {/* HR Trace Overlay */}
       {mergedHrTrace.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Heart Rate Overlay — {race} GP {year}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">
             <span style={{ color: NOR_COLOR }}>■</span> NOR vs <span style={{ color: PIA_COLOR }}>■</span> PIA
@@ -1274,7 +1274,7 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
       {/* Avg HR per Lap + Battle Intensity */}
       <div className="grid grid-cols-2 gap-3">
         {mergedHrPerLap.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Average HR per Lap</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Lap-by-lap comparison</p>
             <div className="h-[240px]">
@@ -1292,7 +1292,7 @@ function H2HRaceView({ raceData, race, year }: { raceData: Record<string, string
           </div>
         )}
         {mergedBattle.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Battle Intensity per Lap</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Close racing comparison</p>
             <div className="h-[240px]">
@@ -1360,7 +1360,7 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: RaceSummary[
 
       {/* Avg HR by Race — dual bars */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Average HR by Race — NOR vs PIA</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season comparison</p>
           <div className="h-[280px]">
@@ -1377,7 +1377,7 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: RaceSummary[
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Peak HR by Race — NOR vs PIA</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Max BPM per race</p>
           <div className="h-[280px]">
@@ -1397,7 +1397,7 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: RaceSummary[
 
       {/* Battle + Temp comparison */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Battle Intensity — NOR vs PIA</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Who races closer wheel-to-wheel?</p>
           <div className="h-[280px]">
@@ -1414,7 +1414,7 @@ function H2HSeasonView({ seasonNor, seasonPia, year }: { seasonNor: RaceSummary[
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Cockpit Temperature — NOR vs PIA</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Avg cockpit temp per race</p>
           <div className="h-[280px]">
@@ -1520,7 +1520,7 @@ function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
       {/* HR and Battle overlay */}
       <div className="grid grid-cols-2 gap-3">
         {mergedHr.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Avg HR per Lap — {race1} vs {race2}</h3>
             <p className="text-[12px] text-muted-foreground mb-3">{driver} — {year}</p>
             <div className="h-[260px]">
@@ -1538,7 +1538,7 @@ function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
           </div>
         )}
         {mergedBattle.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Battle Intensity — {race1} vs {race2}</h3>
             <p className="text-[12px] text-muted-foreground mb-3">{driver} — {year}</p>
             <div className="h-[260px]">
@@ -1612,7 +1612,7 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Avg HR by Race — 2023 vs 2024</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1629,7 +1629,7 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Peak HR by Race — 2023 vs 2024</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1648,7 +1648,7 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Battle Intensity — 2023 vs 2024</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1665,7 +1665,7 @@ function YearVsYearView({ driver, season23, season24 }: { driver: string; season
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Cockpit Temp — 2023 vs 2024</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">

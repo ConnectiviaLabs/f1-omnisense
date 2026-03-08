@@ -44,7 +44,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
       {/* Header */}
       <div className="relative z-10 flex flex-col items-center pt-12 pb-8">
         <div className="flex items-center gap-4 mb-3">
-          <div className="w-11 h-11 rounded-xl bg-[#FF8000] flex items-center justify-center shadow-[0_0_24px_rgba(255,128,0,0.4)]">
+          <div className="w-11 h-11 rounded-lg bg-[#FF8000] flex items-center justify-center shadow-[0_0_24px_rgba(255,128,0,0.4)]">
             <Activity className="w-5 h-5 text-[#0D1117]" />
           </div>
           <div>
@@ -105,7 +105,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
           {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {raceDayStats.map(({ value, label }) => (
-              <div key={label} className="rounded-xl bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
+              <div key={label} className="rounded-lg bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
                 <span className="text-lg font-bold text-[#FF8000] leading-none mb-1">{value}</span>
                 <span className="text-[9px] text-white/25 tracking-wide uppercase">{label}</span>
               </div>
@@ -188,7 +188,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
           {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {primeStats.map(({ value, label }) => (
-              <div key={label} className="rounded-xl bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
+              <div key={label} className="rounded-lg bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
                 <span className="text-lg font-bold text-[#FF8000] leading-none mb-1">{value}</span>
                 <span className="text-[9px] text-white/25 tracking-wide uppercase">{label}</span>
               </div>

@@ -177,7 +177,7 @@ export function Regulations() {
 
       {/* Dimensions Tab */}
       {activeTab === 'dimensions' && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
           <table className="w-full text-[11px]">
             <thead>
               <tr className="border-b border-border">
@@ -212,7 +212,7 @@ export function Regulations() {
       {activeTab === 'equipment' && (
         <div className="grid grid-cols-2 gap-2">
           {filteredEquipment.slice(0, 60).map((eq, i) => (
-            <div key={i} className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
+            <div key={i} className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Hash className="w-3 h-3 text-[#FF8000]" />
                 <span className="text-sm font-mono text-[#FF8000]">{eq.tag}</span>
@@ -247,7 +247,7 @@ function RuleCard({ rule, expanded, onToggle }: {
     : 'text-cyan-400 bg-cyan-500/10';
 
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
       <button
         onClick={onToggle}
         className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-secondary transition-colors"

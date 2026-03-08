@@ -196,7 +196,7 @@ export function DriverIntel({ showTabBar = true, prefetchedVehicles }: { showTab
   return (
     <div className="space-y-5">
       {showTabBar && (
-        <div className="flex items-center gap-1 bg-background/60 p-1 rounded-xl w-fit border border-border">
+        <div className="flex items-center gap-1 bg-background/60 p-1 rounded-lg w-fit border border-border">
           {tabs.map(t => (
             <button
               key={t.id}
@@ -351,7 +351,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
     <div className="space-y-4">
       {/* Fleet Summary Bar */}
       {anomalyVehicles.length > 0 && (
-        <div className="flex items-center gap-4 px-4 py-2.5 bg-background rounded-xl border border-border text-[12px]">
+        <div className="flex items-center gap-4 px-4 py-2.5 bg-background rounded-lg border border-border text-[12px]">
           <span className="text-muted-foreground font-medium">{anomalyVehicles.length} drivers monitored</span>
           <div className="w-px h-4 bg-[rgba(255,128,0,0.12)]" />
           <span className="flex items-center gap-1.5">
@@ -421,7 +421,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.4) }}
               onClick={() => onSelect(d.driver_id)}
-              className={`text-left rounded-xl transition-all group relative overflow-hidden ${
+              className={`text-left rounded-lg transition-all group relative overflow-hidden ${
                 isMcLaren
                   ? 'bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]'
                   : 'bg-card border border-border hover:border-[rgba(255,128,0,0.25)]'
@@ -665,7 +665,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
   return (
     <div className="space-y-5">
       {/* ── Hero Header ── */}
-      <div className="relative bg-card border border-[rgba(255,128,0,0.10)] rounded-xl overflow-hidden">
+      <div className="relative bg-card border border-[rgba(255,128,0,0.10)] rounded-lg overflow-hidden">
         {/* Team color gradient accent */}
         <div className="absolute inset-0 opacity-[0.04]" style={{ background: `linear-gradient(135deg, ${teamColor} 0%, transparent 60%)` }} />
         <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: `linear-gradient(90deg, ${teamColor}, ${teamColor}40, transparent)` }} />
@@ -724,7 +724,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
         <div className="lg:col-span-5 space-y-4">
 
           {/* Radar Chart */}
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <SectionHeader icon={Target} label="Performance Radar" sub="Normalized 0–100 across 6 dimensions" />
             {radarData.length > 0 ? (
               <>
@@ -752,7 +752,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
           {/* Compound Breakdown */}
           {compounds.length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <SectionHeader icon={Disc} label="Compound Profiles" sub="Per-tyre performance breakdown" />
               <div className="space-y-2">
                 {['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET']
@@ -799,7 +799,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
           {/* Overtake Chart */}
           {overtakeBarData.length > 0 && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <SectionHeader icon={TrendingUp} label="Overtaking" sub="vs grid average" />
               <ResponsiveContainer width="100%" height={160}>
                 <BarChart data={overtakeBarData} layout="vertical">
@@ -818,7 +818,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
         <div className="lg:col-span-7 space-y-4">
 
           {/* Key Metrics */}
-          <div className="bg-card border border-border rounded-xl p-4">
+          <div className="bg-card border border-border rounded-lg p-4">
             <SectionHeader icon={Zap} label="Key Metrics" />
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5">
               <StatCard label="Tyre Degradation" value={m?.degradation_slope_s_per_lap} unit="s/lap" precision={3} accent />
@@ -834,7 +834,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
           {/* Telemetry Style */}
           {t && (
-            <div className="bg-card border border-border rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <SectionHeader icon={Activity} label="Telemetry Style" />
               <div className="grid grid-cols-2 xl:grid-cols-3 gap-2.5">
                 <StatCard label="Avg Speed" value={t.avg_race_speed_kmh} unit="km/h" precision={1} />
@@ -851,7 +851,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
           {onCompare && (
             <button
               onClick={onCompare}
-              className="w-full bg-card border border-dashed border-[rgba(255,128,0,0.20)] rounded-xl p-3.5 flex items-center justify-center gap-3 hover:border-[#FF8000]/40 hover:bg-[#FF8000]/[0.03] transition-all group"
+              className="w-full bg-card border border-dashed border-[rgba(255,128,0,0.20)] rounded-lg p-3.5 flex items-center justify-center gap-3 hover:border-[#FF8000]/40 hover:bg-[#FF8000]/[0.03] transition-all group"
             >
               <GitCompare className="w-4 h-4 text-[#FF8000]/50 group-hover:text-[#FF8000]" />
               <span className="text-[13px] text-muted-foreground group-hover:text-foreground transition-colors">
@@ -868,7 +868,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
               <div className="grid grid-cols-12 gap-3">
                 {/* Overall gauge */}
-                <div className="col-span-3 bg-card border border-border rounded-xl p-4 flex flex-col items-center justify-center gap-2">
+                <div className="col-span-3 bg-card border border-border rounded-lg p-4 flex flex-col items-center justify-center gap-2">
                   <HealthGauge value={selectedVehicle.overallHealth} size={90} label="Overall" />
                   <StatusBadge status={selectedVehicle.level} />
                   <div className="w-full space-y-1.5 mt-1.5">
@@ -891,7 +891,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
                     const Icon = sys.icon;
                     const maint = sys.maintenanceAction ? MAINTENANCE_LABELS[sys.maintenanceAction] ?? MAINTENANCE_LABELS.none : null;
                     return (
-                      <div key={sys.name} className="bg-card border border-border rounded-xl p-3">
+                      <div key={sys.name} className="bg-card border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2 mb-2.5">
                           <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: levelBg(sys.level) }}>
                             <Icon className="w-3.5 h-3.5" style={{ color: levelColor(sys.level) }} />
@@ -950,7 +950,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
 
               {/* Health Trend */}
               {healthTrendData.length > 1 && (
-                <div className="bg-card border border-border rounded-xl p-4">
+                <div className="bg-card border border-border rounded-lg p-4">
                   <SectionHeader icon={TrendingUp} label="Health Trend" sub="Last 10 races" />
                   <div className="h-[140px]">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1189,7 +1189,7 @@ function CompareDrivers() {
   return (
     <div className="space-y-4">
       {/* Selected drivers bar */}
-      <div className="flex items-center gap-2 flex-wrap min-h-[40px] bg-background/40 rounded-xl px-4 py-2 border border-border">
+      <div className="flex items-center gap-2 flex-wrap min-h-[40px] bg-background/40 rounded-lg px-4 py-2 border border-border">
         {selected.length === 0 ? (
           <span className="text-[12px] text-muted-foreground">Pick 2–4 drivers to compare</span>
         ) : (
@@ -1310,7 +1310,7 @@ function CompareDrivers() {
           ) : (
             <>
               {/* Radar */}
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <SectionHeader icon={Target} label="Driver Profile Overlay" sub="Individual strengths side-by-side — each shape is one driver" />
                 {/* Legend */}
                 <div className="flex items-center justify-center gap-4 mb-2">
@@ -1372,7 +1372,7 @@ function CompareDrivers() {
               />
 
               {/* Stats Table */}
-              <div className="bg-card border border-border rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <SectionHeader icon={Gauge} label="Head-to-Head" />
                 <div className="overflow-x-auto">
                   <table className="w-full text-[11px]">

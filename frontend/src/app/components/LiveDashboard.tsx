@@ -614,7 +614,7 @@ export function LiveDashboard() {
       </div>
 
       {/* Session Control Bar */}
-      <div className={`bg-secondary border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 ${
+      <div className={`bg-secondary border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 ${
         isSessionLive ? 'border-green-500/30 border-t-green-500/60' : 'border-[rgba(255,128,0,0.20)] border-t-[#FF8000]/40'
       }`}>
         <div className="flex items-center gap-4">
@@ -746,7 +746,7 @@ export function LiveDashboard() {
 
       {/* Debug Panel */}
       {showDebug && (
-        <div className="bg-background border border-amber-500/30 rounded-xl p-3 text-[12px] font-mono space-y-1">
+        <div className="bg-background border border-amber-500/30 rounded-lg p-3 text-[12px] font-mono space-y-1">
           <div className="text-amber-400 font-semibold mb-1">DEBUG — Data Pipeline</div>
           <div className="text-muted-foreground">
             Session: <span className="text-foreground">{sessionKey}</span> |
@@ -805,7 +805,7 @@ export function LiveDashboard() {
       {(() => {
         const circuit = selectedSession ? getCircuitByShortName(selectedSession.circuit_short_name) : undefined;
         if (!circuit) return (
-          <div className="bg-card rounded-xl border border-border p-6 text-center">
+          <div className="bg-card rounded-lg border border-border p-6 text-center">
             <div className="text-amber-400 text-sm">No track map for circuit: "{selectedSession?.circuit_short_name}"</div>
           </div>
         );
@@ -852,7 +852,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -917,7 +917,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -954,7 +954,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm text-foreground tracking-widest font-medium">TIRE STRATEGY</h3>
@@ -988,7 +988,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4"
+        className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4"
       >
         <h3 className="text-sm text-muted-foreground tracking-widest mb-3">WEATHER TREND</h3>
         {activeWeather && activeWeather.length > 0 ? (
@@ -1054,7 +1054,7 @@ function AnimatedKPI({ icon, label, value, sub, color }: {
   icon: React.ReactNode; label: string; value: string; sub: string; color: string;
 }) {
   return (
-    <div className="bg-card border border-border border-t-2 border-t-[rgba(255,128,0,0.25)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+    <div className="bg-card border border-border border-t-2 border-t-[rgba(255,128,0,0.25)] rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-widest uppercase">{label}</span>

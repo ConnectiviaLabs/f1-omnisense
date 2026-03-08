@@ -228,7 +228,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
         type="button"
         key={teamId}
         onClick={() => onSelect(teamId)}
-        className={`bg-card rounded-xl border text-left transition-all group cursor-pointer relative overflow-hidden ${
+        className={`bg-card rounded-lg border text-left transition-all group cursor-pointer relative overflow-hidden ${
           isMcLaren
             ? 'border-[#FF8000]/30 hover:border-[#FF8000]/50 p-5'
             : 'border-border hover:border-[rgba(255,128,0,0.3)] p-4'
@@ -424,7 +424,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   const kpi = (label: string, value: string | number | undefined, icon: React.ElementType) => {
     const Icon = icon;
     return (
-      <div className="bg-card rounded-xl border border-border p-3">
+      <div className="bg-card rounded-lg border border-border p-3">
         <div className="flex items-center gap-2 mb-1">
           <Icon className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</span>
@@ -437,7 +437,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   return (
     <div className="space-y-4">
       {/* Team Header */}
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${teamColor}20`, border: `1px solid ${teamColor}40` }}>
             {TEAM_LOGOS[teamId] ? (
@@ -468,7 +468,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
       {/* Driver Lineup + Qualifying + Pit Stops */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* Driver Lineup */}
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
             <Users className="w-3.5 h-3.5" style={{ color: teamColor }} /> Driver Lineup
           </h3>
@@ -488,7 +488,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
         </div>
 
         {/* Qualifying */}
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
             <Gauge className="w-3.5 h-3.5" style={{ color: teamColor }} /> Qualifying
           </h3>
@@ -501,7 +501,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
         </div>
 
         {/* Race Stats */}
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
             <Timer className="w-3.5 h-3.5" style={{ color: teamColor }} /> Race Stats
           </h3>
@@ -516,7 +516,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
 
       {/* Fleet Telemetry Bars */}
       {(profile.fleet_avg_speed || profile.fleet_avg_throttle || profile.fleet_avg_brake_pct) && (
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3">Fleet Telemetry Averages</h3>
           <div className="space-y-2">
             {[
@@ -539,7 +539,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
 
       {/* Points Progression */}
       {progression.length > 1 && (
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3">Points Progression</h3>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={progression}>
@@ -554,7 +554,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
 
       {/* ── Intra-Team Driver Similarity ── */}
       {intraPairs.length > 0 && (
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-lg border border-border p-4">
           <h3 className="text-[12px] font-medium text-foreground mb-1 flex items-center gap-1.5">
             <GitCompare className="w-3.5 h-3.5" style={{ color: teamColor }} /> Intra-Team Driver Similarity
           </h3>
@@ -580,7 +580,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
 
       {/* ── Similar Teams ── */}
       {similarTeams.length > 0 && (
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-lg border border-border p-4">
           <h3 className="text-[12px] font-medium text-foreground mb-1 flex items-center gap-1.5">
             <Users className="w-3.5 h-3.5" style={{ color: teamColor }} /> Similar Teams
           </h3>
@@ -668,7 +668,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
   return (
     <div className="space-y-4">
       {/* Team Health Summary */}
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex items-center gap-4">
           <HealthGauge value={avgHealth} size={64} />
           {TEAM_LOGOS[teamId] && <img src={TEAM_LOGOS[teamId]} alt={teamName} className="h-8 object-contain" />}
@@ -687,7 +687,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
       {/* Driver Comparison */}
       <div className={`grid gap-3 ${teamDrivers.length >= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
         {teamDrivers.map(v => (
-          <div key={v.code} className="bg-card rounded-xl border border-border p-4">
+          <div key={v.code} className="bg-card rounded-lg border border-border p-4">
             <div className="flex items-center gap-3 mb-3">
               <HealthGauge value={v.overallHealth} size={48} />
               <div>
@@ -728,7 +728,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
 
       {/* System-by-System Comparison Table */}
       {teamDrivers.length >= 2 && (
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2">System Comparison</h3>
           <table className="w-full text-[11px]">
             <thead>
@@ -776,7 +776,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
         });
 
         return (
-          <div className="bg-card rounded-xl border border-border p-3">
+          <div className="bg-card rounded-lg border border-border p-3">
             <h3 className="text-[12px] font-medium text-foreground mb-3">Race-by-Race Health Trend</h3>
             <ResponsiveContainer width="100%" height={160}>
               <AreaChart data={trendData}>
@@ -873,7 +873,7 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
 
       {/* Forecast panels per driver */}
       {driverCodes.map(code => (
-        <div key={code} className="bg-card rounded-xl border border-border p-3">
+        <div key={code} className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" style={{ color: teamColor }} />
             Feature Forecasts — {code}

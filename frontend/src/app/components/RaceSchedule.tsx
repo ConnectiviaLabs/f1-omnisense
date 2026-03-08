@@ -184,7 +184,7 @@ export function RaceSchedule() {
   return (
     <div className="space-y-5 pt-4">
       {/* Season summary strip */}
-      <div className="flex items-center gap-5 px-5 py-3 bg-card rounded-xl border border-border">
+      <div className="flex items-center gap-5 px-5 py-3 bg-card rounded-lg border border-border">
         <div className="flex items-center gap-2">
           <Flag className="w-4 h-4 text-[#FF8000]" />
           <span className="text-[13px] font-semibold text-foreground tracking-wide">2026 SEASON</span>
@@ -250,7 +250,7 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-xl overflow-hidden"
+      className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-lg overflow-hidden"
     >
       {/* Top accent */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
@@ -353,7 +353,7 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(index * 0.025, 0.5) }}
-      className={`relative bg-card border rounded-xl overflow-hidden transition-all group ${
+      className={`relative bg-card border rounded-lg overflow-hidden transition-all group ${
         isNext
           ? 'border-[#FF8000]/30 ring-1 ring-[#FF8000]/10'
           : isLive

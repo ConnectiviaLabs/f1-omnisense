@@ -14,7 +14,7 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
   const config = statusConfig[status];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full ${config.bg} ${config.text} ${
+      className={`inline-flex items-center gap-1.5 rounded-md ${config.bg} ${config.text} ${
         size === 'sm' ? 'px-2 py-0.5 text-[12px]' : 'px-3 py-1 text-sm'
       } tracking-wider`}
     >
@@ -32,7 +32,7 @@ export function SeverityBadge({ severity }: { severity: 'low' | 'medium' | 'high
     critical: { bg: 'bg-red-500/15', text: 'text-red-400' },
   }[severity];
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[12px] tracking-wider uppercase ${config.bg} ${config.text}`}>
+    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[12px] tracking-wider uppercase ${config.bg} ${config.text}`}>
       {severity}
     </span>
   );

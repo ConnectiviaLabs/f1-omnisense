@@ -515,7 +515,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: i * 0.05 }}
                 onClick={() => setSelectedCar(v)}
-                className="text-left rounded-xl transition-all group relative overflow-hidden bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
+                className="text-left rounded-lg transition-all group relative overflow-hidden bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
               >
                 <div className="absolute top-0 left-0 bottom-0 w-[4px] rounded-l-xl" style={{ background: color }} />
                 <div className="p-5 pl-6">
@@ -596,7 +596,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.4) }}
                   onClick={() => setSelectedCar(v)}
-                  className="text-left rounded-xl transition-all group relative overflow-hidden bg-card border border-border hover:border-[rgba(255,128,0,0.25)]"
+                  className="text-left rounded-lg transition-all group relative overflow-hidden bg-card border border-border hover:border-[rgba(255,128,0,0.25)]"
                 >
                   <div className="absolute top-0 left-0 bottom-0 w-[2px] rounded-l-xl" style={{ background: color }} />
                   <div className="p-2.5 pl-3.5">
@@ -657,11 +657,11 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
         return (
         <div className="space-y-4">
           {/* Driver Profile Header */}
-          <div className="bg-card rounded-xl border border-[#FF8000]/20 overflow-hidden">
+          <div className="bg-card rounded-lg border border-[#FF8000]/20 overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
             <div className="px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-xl bg-[#FF8000]/10 border border-[#FF8000]/30 flex items-center justify-center">
+                <div className="w-14 h-14 rounded-lg bg-[#FF8000]/10 border border-[#FF8000]/30 flex items-center justify-center">
                   <span className="text-xl font-bold font-mono text-[#FF8000]">#{selectedCar.number}</span>
                 </div>
                 <div>
@@ -742,7 +742,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           {activeTab === 'telemetry' && (<>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* 3D Car Viewer — 2/3 */}
-            <div className="lg:col-span-2 bg-card rounded-xl border border-border p-4">
+            <div className="lg:col-span-2 bg-card rounded-lg border border-border p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                   <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -820,7 +820,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <div className="lg:col-span-1 space-y-3">
               {/* Performance Metrics */}
               {(s.avgTopSpeed || s.throttleSmoothness || s.overtakesMade) && (
-                <div className="bg-card rounded-xl border border-border p-3">
+                <div className="bg-card rounded-lg border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
                     <Activity className="w-3 h-3 text-[#FF8000]" />
                     Performance Profile
@@ -872,7 +872,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
               {/* Overtake Stats */}
               {s.overtakesMade != null && (
-                <div className="bg-card rounded-xl border border-border p-3">
+                <div className="bg-card rounded-lg border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-[#FF8000]" />
                     Overtake Profile
@@ -897,7 +897,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               )}
 
               {/* System Health — stacked in sidebar */}
-              <div className="bg-card rounded-xl border border-border p-3">
+              <div className="bg-card rounded-lg border border-border p-3">
                 <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
                   <Gauge className="w-3 h-3 text-[#FF8000]" />
                   System Health
@@ -943,7 +943,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             const sorted = [...stints].sort((a, b) => a.stint_number - b.stint_number);
             const totalLaps = sorted.reduce((s, t) => s + t.stint_laps, 0);
             return (
-            <div className="bg-card rounded-xl border border-border p-4">
+            <div className="bg-card rounded-lg border border-border p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
                   <Fuel className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -1012,7 +1012,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           {/* ANOMALY TAB */}
           {activeTab === 'anomaly' && (<>
           {/* 3D Stress Model */}
-          <div className="bg-card rounded-xl border border-border p-4">
+          <div className="bg-card rounded-lg border border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -1041,7 +1041,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               const MaintenanceInfo = MAINTENANCE_LABELS[sys.maintenanceAction ?? 'none'] ?? MAINTENANCE_LABELS.none;
               const MIcon = MaintenanceInfo.icon;
               return (
-                <div key={sys.name} className="bg-card rounded-xl border border-border p-3">
+                <div key={sys.name} className="bg-card rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
                     <span className="text-[11px] font-mono" style={{ color: levelColor(sys.level) }}>
@@ -1086,7 +1086,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
           {/* OmniHealth Component Assessment */}
           {omniComponents.length > 0 && (
-            <div className="bg-card rounded-xl border border-border p-4">
+            <div className="bg-card rounded-lg border border-border p-4">
               <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
                 <Shield className="w-3 h-3 text-[#FF8000]" />
                 OmniHealth Assessment
@@ -1135,7 +1135,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
           {/* Season Health Trend Table */}
           {trendData.length > 0 && (
-            <div className="bg-card rounded-xl border border-border p-3">
+            <div className="bg-card rounded-lg border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
                   <TrendingUp className="w-3 h-3 text-[#FF8000]" />

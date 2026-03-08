@@ -514,7 +514,7 @@ export function AdvantageCrossover() {
           )}
 
           {matrixData && (
-            <div className="rounded-xl border border-border bg-card/30 overflow-hidden">
+            <div className="rounded-lg border border-border bg-card/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <span className="text-sm text-foreground font-medium">
                   {matrixData.count} {entityType}s — {matrixData.source}
@@ -613,7 +613,7 @@ export function AdvantageCrossover() {
           {clusterData && (
             <div className="space-y-4">
               {/* Scatter Plot */}
-              <div className="rounded-xl border border-border bg-card/30 p-4">
+              <div className="rounded-lg border border-border bg-card/30 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-foreground font-medium">PCA Projection</span>
                   <div className="flex items-center gap-3">
@@ -755,7 +755,7 @@ export function AdvantageCrossover() {
 
               {/* Discriminating Features — what separates these clusters */}
               {clusterData.discriminators && clusterData.discriminators.length > 0 && (
-                <div className="rounded-xl border border-border bg-card/30 p-4">
+                <div className="rounded-lg border border-border bg-card/30 p-4">
                   <div className="text-sm font-medium text-foreground mb-3">
                     What Separates These Clusters
                   </div>
@@ -847,7 +847,7 @@ export function AdvantageCrossover() {
               </div>
 
               {/* LLM Insight */}
-              <div className="rounded-xl border border-border bg-[rgba(255,128,0,0.04)] p-4">
+              <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.04)] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Brain className="w-4 h-4 text-[#FF8000]" />
                   <span className="text-sm font-medium text-[#FF8000]">Pattern Analysis</span>
@@ -877,7 +877,7 @@ export function AdvantageCrossover() {
       {activeView === 'compare' && (
         <div className="space-y-4">
           {/* Entity Selector */}
-          <div className="rounded-xl border border-border bg-card/30 p-4">
+          <div className="rounded-lg border border-border bg-card/30 p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-foreground">
                 Select {entityType}s to compare <span className="text-muted-foreground/50 text-[11px]">(2-8)</span>
@@ -975,7 +975,7 @@ export function AdvantageCrossover() {
               </div>
 
               {/* Pairwise cards */}
-              <div className="rounded-xl border border-border bg-card/30 p-4">
+              <div className="rounded-lg border border-border bg-card/30 p-4">
                 <div className="text-sm font-medium text-foreground mb-3">Pairwise Similarity</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
                   {compareData.pairs.map((p, i) => {
@@ -1000,7 +1000,7 @@ export function AdvantageCrossover() {
 
           {/* ── Cross-Entity Intelligence Panel ──────────── */}
           {compareData && (
-            <div className="rounded-xl border border-border bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
+            <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Brain className="w-4 h-4 text-[#FF8000]" />
                 <span className="text-sm font-medium text-[#FF8000]">Cross-Entity Intelligence</span>
@@ -1044,7 +1044,7 @@ export function AdvantageCrossover() {
 
               {/* Insight display — KeX briefing style */}
               {crossInsight && (
-                <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+                <div className="bg-card border border-border rounded-lg p-4 space-y-3">
                   {/* Correlation pills */}
                   {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">

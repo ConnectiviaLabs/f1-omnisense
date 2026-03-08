@@ -114,7 +114,7 @@ export function LiveAnalyticsSidebar({
 
   return (
     <div
-      className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col"
+      className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col"
       style={{ height }}
     >
       {/* Header */}

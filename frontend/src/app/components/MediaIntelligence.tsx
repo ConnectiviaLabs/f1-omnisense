@@ -532,7 +532,7 @@ export function MediaIntelligence() {
     <div className="space-y-3">
 
       {/* ── HEADER BAR ── */}
-      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
@@ -569,7 +569,7 @@ export function MediaIntelligence() {
 
       {/* ── VIDEO STRIP ── */}
       <div
-        className={`bg-card border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
+        className={`bg-card border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
           uploadDragging ? 'border-[#FF8000]' : 'border-border'
         }`}
         onDragOver={e => { e.preventDefault(); setUploadDragging(true); }}
@@ -656,7 +656,7 @@ export function MediaIntelligence() {
             {/* LEFT — Video Player + Controls (col-span-8) */}
             <div className="col-span-8 space-y-3">
               {/* Controls bar — above player so it's always visible */}
-              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+              <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
                 <div className="flex items-center gap-4 flex-wrap">
                   {/* Analyze button */}
                   <button
@@ -722,7 +722,7 @@ export function MediaIntelligence() {
               </div>
 
               {/* Video Player */}
-              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+              <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                 <AnnotatedVideoPlayer
                   key={selectedVideo}
                   videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
@@ -739,7 +739,7 @@ export function MediaIntelligence() {
             <div className="col-span-4 space-y-3">
 
               {/* AI Insights */}
-              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+              <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                 <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                   <Brain className="w-3 h-3" />
                   AI INSIGHTS
@@ -796,7 +796,7 @@ export function MediaIntelligence() {
 
               {/* Detection Summary */}
               {summary.length > 0 && (
-                <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                   <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                     <Scan className="w-3 h-3" />
                     DETECTION SUMMARY
@@ -824,7 +824,7 @@ export function MediaIntelligence() {
 
               {/* Classification */}
               {(vmae || tsf) && (
-                <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                   <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                     <Video className="w-3 h-3" />
                     CLASSIFICATION
@@ -867,7 +867,7 @@ export function MediaIntelligence() {
       })()}
 
       {/* ── CLIP VISUAL SEARCH (collapsible) ── */}
-      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
         <button
           type="button"
           onClick={() => setClipExpanded(!clipExpanded)}

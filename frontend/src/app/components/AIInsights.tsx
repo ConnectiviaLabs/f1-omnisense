@@ -142,7 +142,7 @@ export function AIInsights() {
   return (
     <div className="space-y-4">
       {/* Pipeline Stats Bar */}
-      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
@@ -183,7 +183,7 @@ export function AIInsights() {
       {/* OmniKeX Insights Panel */}
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">KNOWLEDGE EXTRACTION (OmniKeX)</h3>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-purple-400" />
@@ -253,7 +253,7 @@ export function AIInsights() {
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">UPLOAD DOCUMENTS</h3>
         <div
-          className={`bg-card border-2 border-dashed rounded-xl p-6 transition-colors ${
+          className={`bg-card border-2 border-dashed rounded-lg p-6 transition-colors ${
             dragging
               ? 'border-[#FF8000] bg-[#FF8000]/5'
               : 'border-[rgba(255,128,0,0.2)] hover:border-[rgba(255,128,0,0.4)]'
@@ -368,7 +368,7 @@ export function AIInsights() {
           {/* Regulation Categories */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">REGULATION CATEGORIES</h3>
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
               <div className="space-y-2">
                 {categoryBreakdown.map(([cat, count]) => {
                   const pct = Math.round((count / s.total_rules) * 100);
@@ -395,7 +395,7 @@ export function AIInsights() {
           {/* Equipment Types */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">EQUIPMENT TYPES</h3>
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
               {equipmentTypes.map(([type, count]) => (
                 <div key={type} className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-2">
@@ -414,7 +414,7 @@ export function AIInsights() {
           {/* Dimensional Data Sample */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">DIMENSIONAL SPECS (sample)</h3>
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.dimensional_data.slice(0, 8).map((dim, i) => (
                 <div key={i} className="flex items-center justify-between text-[11px]">
                   <span className="text-foreground truncate max-w-[200px]">{dim.component}</span>
@@ -437,7 +437,7 @@ export function AIInsights() {
           {/* Material Specs */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">MATERIAL SPECS</h3>
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.material_specs.slice(0, 6).map((mat, i) => (
                 <div key={i} className="text-[11px]">
                   <div className="flex items-center gap-2">
@@ -471,7 +471,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
   const totalCost = doc.passes.reduce((s, p) => s + p.cost_usd, 0);
 
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
       <button
         onClick={onToggle}
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary transition-colors"

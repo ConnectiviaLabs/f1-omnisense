@@ -31,7 +31,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
       {/* Header */}
       <div className="relative z-10 flex flex-col items-center mb-10">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-[#FF8000] flex items-center justify-center shadow-[0_0_20px_rgba(255,128,0,0.5)]">
+          <div className="w-10 h-10 rounded-lg bg-[#FF8000] flex items-center justify-center shadow-[0_0_20px_rgba(255,128,0,0.5)]">
             <Activity className="w-5 h-5 text-[#0D1117]" />
           </div>
           <span className="text-[#FF8000] text-xl font-bold tracking-[0.2em]">F1 OMNISENSE</span>
@@ -111,7 +111,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
             {/* Launch button */}
             <button
               onClick={() => onSelectPlatform('dashboard')}
-              className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer hover:brightness-110"
+              className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer hover:brightness-110"
               style={{
                 background: hovered === 'raceday' ? '#FF8000' : 'rgba(255,128,0,0.08)',
                 color: hovered === 'raceday' ? '#0D1117' : 'rgba(255,128,0,0.5)',
@@ -192,7 +192,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
             {/* Launch button */}
             <button
               onClick={() => onSelectPlatform('prime-driver')}
-              className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer hover:brightness-110"
+              className="mt-6 w-full flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold tracking-wide transition-all duration-300 cursor-pointer hover:brightness-110"
               style={{
                 background: hovered === 'prime' ? '#FF8000' : 'rgba(255,128,0,0.08)',
                 color: hovered === 'prime' ? '#0D1117' : 'rgba(255,128,0,0.5)',

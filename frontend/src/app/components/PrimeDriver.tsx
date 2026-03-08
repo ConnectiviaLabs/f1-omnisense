@@ -163,7 +163,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-card rounded-xl border border-border p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex items-center gap-4">
           <HealthGauge value={vehicle.overallHealth} size={64} />
           <div>
@@ -183,7 +183,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
           const MaintenanceInfo = MAINTENANCE_LABELS[sys.maintenanceAction ?? 'none'] ?? MAINTENANCE_LABELS.none;
           const MIcon = MaintenanceInfo.icon;
           return (
-            <div key={sys.name} className="bg-card rounded-xl border border-border p-3">
+            <div key={sys.name} className="bg-card rounded-lg border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
                 <span className="text-[11px] font-mono" style={{ color: levelColor(sys.level) }}>
@@ -231,7 +231,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
 
       {/* Race History — last 10 */}
       {recentRaces.length > 1 && (
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2">Race-by-Race Health <span className="text-muted-foreground font-normal">(last {recentRaces.length})</span></h3>
           <div className="overflow-x-auto">
             <table className="w-full text-[11px]">
@@ -315,7 +315,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
       </div>
 
       {effectiveDriver && (
-        <div className="bg-card rounded-xl border border-border p-3">
+        <div className="bg-card rounded-lg border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3 text-[#FF8000]" />
             Feature Forecasts — {effectiveDriver}

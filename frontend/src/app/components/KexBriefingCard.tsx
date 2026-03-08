@@ -46,7 +46,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
     : [];
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4">
+    <div className="bg-card border border-border rounded-lg p-4">
       <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
         <IconComponent className="w-4 h-4" /> {title}
       </h3>

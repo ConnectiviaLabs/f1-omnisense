@@ -54,7 +54,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 function KPI({ icon, label, value, detail, color = 'text-foreground' }: { icon: React.ReactNode; label: string; value: string; detail: string; color?: string }) {
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -75,7 +75,7 @@ function DeltaKPI({ label, val1, val2, label1, label2, unit, icon, color1 = '#FF
   const absDiff = Math.abs(diff).toFixed(1);
   const firstWins = diff > 0;
   return (
-    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -411,7 +411,7 @@ export function CarTelemetry() {
   return (
     <div className="space-y-4">
       {/* ── Hero Header ── */}
-      <div className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-xl overflow-hidden">
+      <div className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-lg overflow-hidden">
         <div className="absolute inset-0 opacity-[0.07]" style={{ background: 'linear-gradient(135deg, #FF8000 0%, transparent 60%)' }} />
         <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #FF8000, rgba(255,128,0,0.4), transparent)' }} />
         <div className="relative flex items-center gap-4 p-4">
@@ -652,7 +652,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
 
       {speedTrace.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Speed Trace</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Speed (km/h) over distance</p>
             <div className="h-[220px]">
@@ -673,7 +673,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">RPM & Gear</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Engine RPM and gear selection</p>
             <div className="h-[220px]">
@@ -695,7 +695,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
 
       {speedTrace.length > 0 && (
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Throttle & Brake</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Throttle application (%) and brake zones</p>
             <div className="h-[220px]">
@@ -718,7 +718,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
             </div>
           </div>
           {lapTimes.length > 0 && (
-            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
               <h3 className="text-sm text-foreground mb-1">Lap Time Progression</h3>
               <p className="text-[12px] text-muted-foreground mb-3">Lap time by compound</p>
               <div className="h-[220px]">
@@ -743,7 +743,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
 
       <div className="grid grid-cols-2 gap-3">
         {drsPerLap.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">DRS Usage by Lap</h3>
             <p className="text-[12px] text-muted-foreground mb-3">DRS activation samples per lap</p>
             <div className="h-[200px]">
@@ -760,7 +760,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
           </div>
         )}
         {raceStints.length > 0 && (
-          <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+          <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
             <h3 className="text-sm text-foreground mb-1">Tire Strategy</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Stint breakdown — compound, laps & age</p>
             <div className="space-y-2">
@@ -785,7 +785,7 @@ function RaceDetailView({ kpis, speedTrace, lapTimes, drsPerLap, raceStints, top
 
       {/* Speed Trap — top speed per lap */}
       {topSpeedPerLap.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Speed Trap</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Max speed recorded per lap (km/h)</p>
           <div className="h-[200px]">
@@ -836,7 +836,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Top Speed by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — {year} season</p>
           <div className="h-[260px]">
@@ -853,7 +853,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Average Speed by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Mean speed across all telemetry samples</p>
           <div className="h-[260px]">
@@ -874,7 +874,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Throttle vs Brake by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Average throttle % and braking %</p>
           <div className="h-[260px]">
@@ -890,7 +890,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">DRS Usage by Race</h3>
           <p className="text-[12px] text-muted-foreground mb-3">% of telemetry samples with DRS open</p>
           <div className="h-[260px]">
@@ -910,7 +910,7 @@ function SeasonCompareView({ seasonSummary, loading, year, driver, highlightRace
       </div>
 
       {/* Season Summary Table */}
-      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <h3 className="text-sm text-foreground mb-3 flex items-center gap-2">
           <GitCompareArrows className="w-3 h-3 text-[#FF8000]" />{driver} — {year} Season Telemetry Summary
         </h3>
@@ -1005,7 +1005,7 @@ function H2HRaceView({ raceData, race, year, driver1, driver2 }: { raceData: Rec
       </div>
 
       {mergedSpeed.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Speed Trace Overlay — {race} GP {year}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">
             <span style={{ color: D1_COLOR }}>■</span> {driver1} vs <span style={{ color: D2_COLOR }}>■</span> {driver2} — km/h over distance
@@ -1026,7 +1026,7 @@ function H2HRaceView({ raceData, race, year, driver1, driver2 }: { raceData: Rec
       )}
 
       {mergedLapTimes.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Lap Times — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Lap time (seconds) per lap</p>
           <div className="h-[260px]">
@@ -1080,7 +1080,7 @@ function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: 
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Top Speed by Race — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
@@ -1096,7 +1096,7 @@ function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: 
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Avg Speed by Race — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
@@ -1115,7 +1115,7 @@ function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: 
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Throttle % — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
@@ -1131,7 +1131,7 @@ function H2HSeasonView({ season1, season2, year, driver1, driver2 }: { season1: 
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Braking % — {driver1} vs {driver2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{year} season</p>
           <div className="h-[280px]">
@@ -1204,7 +1204,7 @@ function RaceVsRaceView({ driver, year, race1, race2, data1, data2 }: {
       </div>
 
       {mergedLaps.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Lap Times — {race1} vs {race2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — {year}</p>
           <div className="h-[280px]">
@@ -1277,7 +1277,7 @@ function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Top Speed — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1293,7 +1293,7 @@ function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Avg Speed — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1312,7 +1312,7 @@ function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Throttle % — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
@@ -1328,7 +1328,7 @@ function YearVsYearView({ driver, year1, year2, season1, season2, years, onYear2
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <h3 className="text-sm text-foreground mb-1">Braking % — {year1} vs {year2}</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{driver} — common circuits</p>
           <div className="h-[280px]">
