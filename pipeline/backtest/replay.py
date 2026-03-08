@@ -468,12 +468,6 @@ def run_backtest(
             except Exception as e:
                 logger.debug(f"  {driver_code} BiLSTM laps failed: {e}")
 
-            # ── Composite risk score ──
-            from pipeline.backtest.models import compute_composite_risk
-            composite = compute_composite_risk(
-                anomaly["overall_health"], elt_result, strategy_result, cliff_result,
-            )
-
             # Determine flagged systems from anomaly
             flagged_systems = []
             for sys_name, sys_data in anomaly.get("systems", {}).items():
@@ -485,6 +479,14 @@ def run_backtest(
             degrading_systems = [
                 s for s, t in anomaly.get("trends", {}).items() if t == "degrading"
             ]
+
+            # ── Composite risk score ──
+            from pipeline.backtest.models import compute_composite_risk
+            composite = compute_composite_risk(
+                anomaly["overall_health"], elt_result, strategy_result, cliff_result,
+                degrading_count=len(degrading_systems),
+                total_systems=len(anomaly.get("systems", {})) or 7,
+            )
 
             # Risk from composite (replaces simple anomaly-only check)
             predicted_risk = composite["risk_level"] in ("high", "critical")

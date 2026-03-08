@@ -481,73 +481,80 @@ def compute_composite_risk(
     elt_result: dict | None,
     strategy_result: dict | None,
     cliff_result: dict | None,
+    degrading_count: int = 0,
+    total_systems: int = 7,
 ) -> dict:
     """Combine all model signals into a single weighted risk score.
 
     Risk score: 0 (safe) to 100 (critical)
 
-    Weights:
-      - Anomaly health (inverted):  40%  — car systems degradation
-      - ELT confidence gap:         20%  — pace prediction uncertainty
-      - Strategy suboptimality:     25%  — running wrong strategy
-      - Tyre cliff proximity:       15%  — pushing past predicted limits
+    Calibration notes (2024 backtest):
+      - Strategy simulator doesn't model SC/traffic/rain → always 40-100 risk.
+        Disabled (weight=0) until simulator is race-realistic.
+      - Cliff warnings are always 0 for McLaren 2024. Minimal weight.
+      - ELT confidence is noisy (always 46-100). Capped and reduced weight.
+      - Anomaly health is the primary discriminating signal.
+      - Degrading system count added as amplifier.
     """
     signals = {}
-    # Strategy weight reduced — current sim doesn't capture race events (SC, traffic),
-    # so it inflates risk uniformly. Anomaly is the most discriminating signal.
-    weights = {"anomaly": 0.50, "elt": 0.20, "strategy": 0.10, "cliff": 0.20}
+    weights = {
+        "anomaly": 0.65,
+        "elt": 0.20,
+        "degradation": 0.15,
+        "strategy": 0.0,   # disabled — simulator not race-realistic
+        "cliff": 0.0,      # disabled — always 0 for McLaren 2024
+    }
 
     # Anomaly: invert health (100 = safe → 0 risk, 50 = medium → 50 risk)
     anomaly_risk = max(0, min(100, 100 - anomaly_health))
     signals["anomaly"] = anomaly_risk
 
-    # ELT: low confidence = higher risk
+    # ELT: low confidence = higher risk, capped at 60 to prevent domination
     if elt_result:
         conf_std = elt_result.get("confidence_std", 1.0)
         deg_r2 = elt_result.get("deg_r2", 0.5)
-        # High std = uncertain = risky; low R² = bad model fit = risky
-        elt_risk = min(100, conf_std * 30 + (1 - deg_r2) * 40)
+        elt_risk = min(60, conf_std * 20 + (1 - deg_r2) * 30)
         signals["elt"] = round(elt_risk, 1)
     else:
-        signals["elt"] = 50  # unknown = moderate risk
-        weights["elt"] = 0.10  # reduce weight if no data
+        signals["elt"] = 30
+        weights["elt"] = 0.10
 
-    # Strategy: time delta to optimal
+    # Degradation: fraction of systems trending worse
+    deg_risk = min(100, (degrading_count / max(total_systems, 1)) * 100)
+    signals["degradation"] = round(deg_risk, 1)
+
+    # Strategy: kept in signals dict for visibility but zero-weighted
     if strategy_result and strategy_result.get("time_delta_s") is not None:
         delta = abs(strategy_result["time_delta_s"])
-        # 0s = 0 risk, ~30s = 50 risk, ~60s+ = 100 risk (tanh curve)
-        strat_risk = min(100, float(100 * np.tanh(delta / 60)))
-        signals["strategy"] = round(strat_risk, 1)
+        signals["strategy"] = round(min(100, float(100 * np.tanh(delta / 60))), 1)
     else:
-        signals["strategy"] = 30  # unknown = slight risk
-        weights["strategy"] = 0.10
+        signals["strategy"] = 0
 
-    # Tyre cliff: pushed past cliff = high risk
+    # Cliff: kept in signals dict but zero-weighted
     if cliff_result:
         warnings = cliff_result.get("cliff_warnings", 0)
         total = cliff_result.get("total_stints", 1)
-        cliff_risk = min(100, (warnings / max(total, 1)) * 100)
-        signals["cliff"] = round(cliff_risk, 1)
+        signals["cliff"] = round(min(100, (warnings / max(total, 1)) * 100), 1)
     else:
-        signals["cliff"] = 20
-        weights["cliff"] = 0.05
+        signals["cliff"] = 0
 
-    # Normalize weights
-    total_weight = sum(weights.values())
-    normalized_weights = {k: v / total_weight for k, v in weights.items()}
+    # Normalize weights (only non-zero)
+    active_weights = {k: v for k, v in weights.items() if v > 0}
+    total_weight = sum(active_weights.values())
+    normalized_weights = {k: v / total_weight for k, v in active_weights.items()}
 
-    # Weighted composite
-    composite = sum(signals[k] * normalized_weights[k] for k in signals)
+    # Weighted composite (only active signals)
+    composite = sum(signals[k] * normalized_weights[k] for k in normalized_weights)
 
-    # Risk level — calibrated for multi-signal composite
-    # With 4 signals, 40+ indicates significant risk across dimensions
-    if composite >= 60:
+    # Risk level — recalibrated for 2-signal composite (anomaly + ELT + degradation)
+    # Thresholds lowered: with fewer active signals, raw scores are lower
+    if composite >= 50:
         level = "critical"
-    elif composite >= 40:
+    elif composite >= 35:
         level = "high"
-    elif composite >= 25:
+    elif composite >= 20:
         level = "medium"
-    elif composite >= 12:
+    elif composite >= 10:
         level = "low"
     else:
         level = "normal"
