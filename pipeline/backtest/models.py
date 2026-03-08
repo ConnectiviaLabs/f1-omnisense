@@ -1021,3 +1021,565 @@ def compute_rich_anomaly_health(
         "feature_importance": trained["feature_importance"],
         "model_prob_bad": round(prob_bad, 4),
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+# 6. XGBoost Lap Prediction Evaluator (McLaren only)
+# ══════════════════════════════════════════════════════════════════
+
+_xgb_model_cache = None
+_xgb_meta_cache = None
+
+
+def _load_xgb_for_backtest():
+    """Load XGBoost model and metadata for backtest (no HTTPException)."""
+    global _xgb_model_cache, _xgb_meta_cache
+    if _xgb_model_cache is not None:
+        return _xgb_model_cache, _xgb_meta_cache
+
+    import pickle as _pickle
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    pkl_path = root / "colabModels" / "xgboost_predictor" / "output" / "xgboost_lap_predictor.pkl"
+    meta_path = root / "colabModels" / "xgboost_predictor" / "output" / "xgboost_metadata.json"
+
+    if not pkl_path.exists():
+        logger.warning("XGBoost model not found at %s", pkl_path)
+        return None, None
+
+    import json as _json
+    with open(pkl_path, "rb") as f:
+        _xgb_model_cache = _pickle.load(f)
+    with open(meta_path) as f:
+        _xgb_meta_cache = _json.load(f)
+
+    logger.info("XGBoost lap predictor loaded for backtest")
+    return _xgb_model_cache, _xgb_meta_cache
+
+
+def _get_race_context(race_name: str, year: int, driver_code: str) -> dict | None:
+    """Fetch shared context data for lap prediction (weather, speeds, etc.)."""
+    db = get_db()
+
+    # Encodings from XGBoost metadata (shared with BiLSTM)
+    _, meta = _load_xgb_for_backtest()
+    if not meta:
+        return None
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+
+    circuit_code = circuit_rank.get(race_name)
+    driver_code_enc = driver_rank.get(driver_code.upper())
+    if circuit_code is None or driver_code_enc is None:
+        return None
+
+    team_code = team_rank.get("McLaren", 3)
+
+    # Total laps
+    race_doc = db["jolpica_race_results"].find_one(
+        {"race_name": race_name, "season": year, "position": 1},
+        {"_id": 0, "laps": 1},
+    )
+    total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
+
+    # Weather
+    weather_doc = db["fastf1_weather"].find_one(
+        {"Race": race_name, "Year": year, "SessionType": "R"},
+        {"_id": 0, "TrackTemp": 1, "AirTemp": 1, "Humidity": 1, "Rainfall": 1},
+    )
+    if not weather_doc:
+        weather_doc = db["fastf1_weather"].find_one(
+            {"Race": race_name, "SessionType": "R"},
+            {"_id": 0, "TrackTemp": 1, "AirTemp": 1, "Humidity": 1, "Rainfall": 1},
+            sort=[("Year", -1)],
+        )
+    air_doc = db["race_air_density"].find_one({"race": race_name}, {"_id": 0}, sort=[("year", -1)])
+
+    air_temp = (weather_doc or {}).get("AirTemp") or (air_doc or {}).get("avg_temp_c") or 28.0
+    track_temp = (weather_doc or {}).get("TrackTemp") or air_temp + 15
+    humidity = (weather_doc or {}).get("Humidity") or 40.0
+    rainfall = (weather_doc or {}).get("Rainfall") or 0.0
+    air_density = (air_doc or {}).get("air_density_kg_m3") or 1.18
+
+    # Sector speeds
+    ss_agg = list(db["fastf1_laps"].aggregate([
+        {"$match": {"Driver": driver_code.upper(), "Race": race_name,
+                     "SpeedI1": {"$gt": 0}, "SessionType": "R"}},
+        {"$group": {"_id": None, "SpeedI1": {"$avg": "$SpeedI1"}, "SpeedI2": {"$avg": "$SpeedI2"},
+                    "SpeedFL": {"$avg": "$SpeedFL"}, "SpeedST": {"$avg": "$SpeedST"},
+                    "s1": {"$avg": "$Sector1Time"}, "s2": {"$avg": "$Sector2Time"},
+                    "s3": {"$avg": "$Sector3Time"}}},
+    ]))
+    telem_doc = db["telemetry_race_summary"].find_one(
+        {"Driver": driver_code.upper(), "Race": race_name},
+        {"_id": 0, "avg_speed": 1, "top_speed": 1}, sort=[("Year", -1)],
+    )
+    avg_speed = (telem_doc or {}).get("avg_speed", 200.0)
+    top_speed = (telem_doc or {}).get("top_speed", 310.0)
+
+    ss = ss_agg[0] if ss_agg else {}
+    speed_i1 = ss.get("SpeedI1") or avg_speed * 0.95
+    speed_i2 = ss.get("SpeedI2") or avg_speed
+    speed_fl = ss.get("SpeedFL") or avg_speed * 1.05
+    speed_st = ss.get("SpeedST") or top_speed * 0.95
+
+    # Baseline pace
+    bl_agg = list(db["fastf1_laps"].aggregate([
+        {"$match": {"Driver": driver_code.upper(), "Race": race_name,
+                    "LapTime": {"$gt": 50, "$lt": 200}, "SessionType": "R"}},
+        {"$group": {"_id": None, "avg": {"$avg": "$LapTime"}}},
+    ]))
+    baseline = bl_agg[0]["avg"] if bl_agg and bl_agg[0].get("avg") else 90.0
+
+    s1_avg = ss.get("s1") or baseline / 3
+    s2_avg = ss.get("s2") or baseline / 3
+    s3_avg = ss.get("s3") or baseline / 3
+
+    return {
+        "compound_map": compound_map,
+        "circuit_code": circuit_code,
+        "driver_code_enc": driver_code_enc,
+        "team_code": team_code,
+        "total_laps": total_laps,
+        "air_temp": float(air_temp),
+        "track_temp": float(track_temp),
+        "humidity": float(humidity),
+        "rainfall": float(rainfall),
+        "air_density": float(air_density),
+        "speed_i1": float(speed_i1),
+        "speed_i2": float(speed_i2),
+        "speed_fl": float(speed_fl),
+        "speed_st": float(speed_st),
+        "avg_speed": float(avg_speed),
+        "top_speed": float(top_speed),
+        "baseline": float(baseline),
+        "s1_avg": float(s1_avg),
+        "s2_avg": float(s2_avg),
+        "s3_avg": float(s3_avg),
+    }
+
+
+def _get_deg_delta(race_name: str, compound: str, tyre_life: int) -> float:
+    """Calculate expected degradation delta from tyre curves."""
+    db = get_db()
+    deg_doc = db["tyre_degradation_curves"].find_one(
+        {"circuit": race_name, "compound": compound.upper(), "temp_band": "all"},
+        {"_id": 0, "coefficients": 1, "intercept": 1},
+    )
+    if not deg_doc:
+        deg_doc = db["tyre_degradation_curves"].find_one(
+            {"circuit": race_name, "compound": compound.upper()},
+            {"_id": 0, "coefficients": 1, "intercept": 1},
+        )
+    if not deg_doc or not deg_doc.get("coefficients"):
+        return 0.0
+    val = deg_doc.get("intercept", 0)
+    for i, c in enumerate(deg_doc["coefficients"]):
+        val += c * (tyre_life ** (i + 1))
+    return float(val)
+
+
+def _get_actual_laps_with_stints(
+    race_name: str, year: int, driver_code: str,
+) -> list[dict]:
+    """Get actual race laps with stint/compound info for comparison."""
+    db = get_db()
+
+    laps = list(db["fastf1_laps"].find(
+        {"Race": race_name, "Year": year, "Driver": driver_code.upper(),
+         "IsAccurate": True, "SessionType": "R"},
+        {"_id": 0, "LapNumber": 1, "LapTime": 1, "TyreLife": 1,
+         "Stint": 1, "Compound": 1, "Position": 1,
+         "Sector1Time": 1, "Sector2Time": 1, "Sector3Time": 1},
+    ).sort("LapNumber", 1))
+
+    result = []
+    for lap in laps:
+        lt = lap.get("LapTime")
+        if lt is None:
+            continue
+        lt = float(lt) if isinstance(lt, (int, float)) else None
+        if lt is None or lt < 60 or lt > 200:
+            continue
+        result.append({
+            "lap": int(lap.get("LapNumber", 0)),
+            "actual_s": lt,
+            "tyre_life": int(lap.get("TyreLife", 1)),
+            "stint": int(lap.get("Stint", 1)),
+            "compound": lap.get("Compound", "MEDIUM"),
+            "position": int(lap.get("Position", 10)),
+            "s1": float(lap["Sector1Time"]) if lap.get("Sector1Time") else None,
+            "s2": float(lap["Sector2Time"]) if lap.get("Sector2Time") else None,
+            "s3": float(lap["Sector3Time"]) if lap.get("Sector3Time") else None,
+        })
+
+    return result
+
+
+def evaluate_xgboost_laps(
+    race_name: str, year: int, driver_code: str,
+) -> dict | None:
+    """Evaluate XGBoost lap time predictions against actual race laps.
+
+    Loads actual laps from fastf1_laps, predicts each lap using the
+    XGBoost model with the same context, compares predicted vs actual.
+
+    Returns MAE, RMSE, R², per-stint breakdown, and per-lap predictions.
+    """
+    model, meta = _load_xgb_for_backtest()
+    if model is None:
+        return None
+
+    ctx = _get_race_context(race_name, year, driver_code)
+    if not ctx:
+        return None
+
+    actual_laps = _get_actual_laps_with_stints(race_name, year, driver_code)
+    if len(actual_laps) < 5:
+        return None
+
+    features_order = meta["features"]
+    compound_map = ctx["compound_map"]
+
+    predictions = []
+    prev_laps = [ctx["baseline"]] * 3
+    prev_sectors = [ctx["s1_avg"], ctx["s2_avg"], ctx["s3_avg"]]
+
+    for lap_data in actual_laps:
+        compound_code = compound_map.get(lap_data["compound"].upper(), 1)
+        tyre_life = lap_data["tyre_life"]
+        lap_num = lap_data["lap"]
+        race_progress = lap_num / ctx["total_laps"]
+        deg_delta = _get_deg_delta(race_name, lap_data["compound"], tyre_life)
+
+        feature_dict = {
+            "TyreLife": tyre_life,
+            "CompoundCode": compound_code,
+            "LapNumber": lap_num,
+            "Position": lap_data["position"],
+            "Stint": lap_data["stint"],
+            "FreshTyre": 1 if tyre_life == 1 else 0,
+            "RaceProgress": race_progress,
+            "FuelLoad": 1.0 - race_progress,
+            "TotalLaps": ctx["total_laps"],
+            "SpeedI1": ctx["speed_i1"],
+            "SpeedI2": ctx["speed_i2"],
+            "SpeedFL": ctx["speed_fl"],
+            "SpeedST": ctx["speed_st"],
+            "LapTime_lag1": prev_laps[0],
+            "LapTime_lag2": prev_laps[1],
+            "LapTime_lag3": prev_laps[2],
+            "LapTime_roll3": sum(prev_laps) / 3,
+            "Sector1Time_lag1": prev_sectors[0],
+            "Sector2Time_lag1": prev_sectors[1],
+            "Sector3Time_lag1": prev_sectors[2],
+            "ExpectedDegDelta": deg_delta,
+            "TrackTemp": ctx["track_temp"],
+            "AirTemp": ctx["air_temp"],
+            "Humidity": ctx["humidity"],
+            "Rainfall": ctx["rainfall"],
+            "AirDensity": ctx["air_density"],
+            "avg_speed": ctx["avg_speed"],
+            "top_speed": ctx["top_speed"],
+            "CircuitCode": ctx["circuit_code"],
+            "DriverCode": ctx["driver_code_enc"],
+            "TeamCode": ctx["team_code"],
+            "TyreAgeAtStart": 0 if lap_data["stint"] == 1 else tyre_life,
+            "StintNumber_of1": lap_data["stint"],
+            "IsUsedTyre": 0 if lap_data["stint"] == 1 else 1,
+        }
+
+        row = [feature_dict.get(f, 0) for f in features_order]
+        pred = float(model.predict(np.array([row]))[0])
+
+        error = pred - lap_data["actual_s"]
+        predictions.append({
+            "lap": lap_num,
+            "predicted_s": round(pred, 3),
+            "actual_s": round(lap_data["actual_s"], 3),
+            "error_s": round(error, 3),
+            "compound": lap_data["compound"],
+            "stint": lap_data["stint"],
+            "tyre_life": tyre_life,
+        })
+
+        # Use ACTUAL lap time for lag features (teacher forcing for fair eval)
+        actual = lap_data["actual_s"]
+        prev_laps = [actual, prev_laps[0], prev_laps[1]]
+        s1 = lap_data["s1"] or ctx["s1_avg"]
+        s2 = lap_data["s2"] or ctx["s2_avg"]
+        s3 = lap_data["s3"] or ctx["s3_avg"]
+        prev_sectors = [s1, s2, s3]
+
+    # Compute metrics
+    errors = np.array([p["error_s"] for p in predictions])
+    actuals = np.array([p["actual_s"] for p in predictions])
+    preds = np.array([p["predicted_s"] for p in predictions])
+
+    mae = float(np.mean(np.abs(errors)))
+    rmse = float(np.sqrt(np.mean(errors ** 2)))
+    ss_res = np.sum((actuals - preds) ** 2)
+    ss_tot = np.sum((actuals - np.mean(actuals)) ** 2)
+    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+    # Per-stint breakdown
+    stint_groups = {}
+    for p in predictions:
+        key = (p["stint"], p["compound"])
+        stint_groups.setdefault(key, []).append(p["error_s"])
+
+    per_stint = []
+    for (stint_num, compound), errs in sorted(stint_groups.items()):
+        per_stint.append({
+            "stint": stint_num,
+            "compound": compound,
+            "mae": round(float(np.mean(np.abs(errs))), 3),
+            "n_laps": len(errs),
+        })
+
+    return {
+        "model": "xgboost",
+        "mae": round(mae, 3),
+        "rmse": round(rmse, 3),
+        "r2": round(r2, 4),
+        "n_laps": len(predictions),
+        "per_stint": per_stint,
+        "predictions": predictions,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+# 7. BiLSTM Lap Prediction Evaluator (McLaren only)
+# ══════════════════════════════════════════════════════════════════
+
+_bilstm_model_cache = None
+_bilstm_scalers_cache = None
+_bilstm_meta_cache = None
+
+
+def _load_bilstm_for_backtest():
+    """Load BiLSTM model, scalers, and metadata for backtest."""
+    global _bilstm_model_cache, _bilstm_scalers_cache, _bilstm_meta_cache
+    if _bilstm_model_cache is not None:
+        return _bilstm_model_cache, _bilstm_scalers_cache, _bilstm_meta_cache
+
+    import pickle as _pickle
+    import json as _json
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[2]
+    pt_path = root / "colabModels" / "bilstm_temporal" / "output" / "bilstm_best.pt"
+    scaler_path = root / "colabModels" / "bilstm_temporal" / "output" / "bilstm_scalers.pkl"
+    meta_path = root / "colabModels" / "bilstm_temporal" / "output" / "bilstm_metadata.json"
+
+    if not pt_path.exists():
+        logger.warning("BiLSTM model not found at %s", pt_path)
+        return None, None, None
+
+    import torch
+    import torch.nn as nn
+
+    with open(meta_path) as f:
+        _bilstm_meta_cache = _json.load(f)
+    with open(scaler_path, "rb") as f:
+        _bilstm_scalers_cache = _pickle.load(f)
+
+    arch = _bilstm_meta_cache["architecture"]
+
+    class BiLSTMLapPredictor(nn.Module):
+        def __init__(self, input_size, hidden_size=128, num_layers=2, dropout=0.3):
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_size=input_size, hidden_size=hidden_size,
+                num_layers=num_layers, batch_first=True,
+                bidirectional=True, dropout=dropout if num_layers > 1 else 0,
+            )
+            self.head = nn.Sequential(
+                nn.Linear(hidden_size * 2, 64), nn.ReLU(),
+                nn.Dropout(dropout), nn.Linear(64, 1),
+            )
+
+        def forward(self, x):
+            lstm_out, _ = self.lstm(x)
+            return self.head(lstm_out[:, -1, :]).squeeze(-1)
+
+    _bilstm_model_cache = BiLSTMLapPredictor(
+        input_size=arch["input_size"],
+        hidden_size=arch["hidden_size"],
+        num_layers=arch["num_layers"],
+        dropout=arch["dropout"],
+    )
+    _bilstm_model_cache.load_state_dict(
+        torch.load(pt_path, map_location="cpu", weights_only=True)
+    )
+    _bilstm_model_cache.eval()
+    logger.info("BiLSTM model loaded for backtest")
+    return _bilstm_model_cache, _bilstm_scalers_cache, _bilstm_meta_cache
+
+
+def evaluate_bilstm_laps(
+    race_name: str, year: int, driver_code: str,
+) -> dict | None:
+    """Evaluate BiLSTM lap time predictions against actual race laps.
+
+    Uses a 10-lap rolling window. First window_size laps use baseline-
+    initialized context, then actual laps feed into the window.
+    """
+    import torch
+
+    model, scalers, meta = _load_bilstm_for_backtest()
+    if model is None:
+        return None
+
+    ctx = _get_race_context(race_name, year, driver_code)
+    if not ctx:
+        return None
+
+    actual_laps = _get_actual_laps_with_stints(race_name, year, driver_code)
+    if len(actual_laps) < 5:
+        return None
+
+    features = meta["features"]  # 30 features
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+    window_size = meta["architecture"]["window_size"]
+
+    circuit_code = circuit_rank.get(race_name)
+    driver_code_enc = driver_rank.get(driver_code.upper())
+    if circuit_code is None or driver_code_enc is None:
+        return None
+    team_code = team_rank.get("McLaren", 3)
+
+    if isinstance(scalers, dict):
+        feature_scaler = scalers.get("feature_scaler") or scalers.get("scaler_X")
+        target_scaler = scalers.get("target_scaler") or scalers.get("scaler_y")
+    else:
+        feature_scaler, target_scaler = scalers[0], scalers[1]
+
+    def build_row(lap_data, lap_time_val):
+        compound_code = compound_map.get(lap_data["compound"].upper(), 1)
+        tyre_life = lap_data["tyre_life"]
+        lap_num = lap_data["lap"]
+        race_progress = lap_num / ctx["total_laps"]
+        deg_delta = _get_deg_delta(race_name, lap_data["compound"], tyre_life)
+
+        row_dict = {
+            "LapTime": lap_time_val,
+            "TyreLife": tyre_life,
+            "CompoundCode": compound_code,
+            "LapNumber": lap_num,
+            "Position": lap_data["position"],
+            "Stint": lap_data["stint"],
+            "FreshTyre": 1 if tyre_life == 1 else 0,
+            "RaceProgress": race_progress,
+            "FuelLoad": 1.0 - race_progress,
+            "SpeedI1": ctx["speed_i1"],
+            "SpeedI2": ctx["speed_i2"],
+            "SpeedFL": ctx["speed_fl"],
+            "SpeedST": ctx["speed_st"],
+            "Sector1Time": lap_data["s1"] or ctx["s1_avg"],
+            "Sector2Time": lap_data["s2"] or ctx["s2_avg"],
+            "Sector3Time": lap_data["s3"] or ctx["s3_avg"],
+            "ExpectedDegDelta": deg_delta,
+            "TrackTemp": ctx["track_temp"],
+            "AirTemp": ctx["air_temp"],
+            "Humidity": ctx["humidity"],
+            "Rainfall": ctx["rainfall"],
+            "AirDensity": ctx["air_density"],
+            "avg_speed": ctx["avg_speed"],
+            "top_speed": ctx["top_speed"],
+            "CircuitCode": circuit_code,
+            "DriverCode": driver_code_enc,
+            "TeamCode": team_code,
+            "TyreAgeAtStart": 0 if lap_data["stint"] == 1 else tyre_life,
+            "StintNumber_of1": lap_data["stint"],
+            "IsUsedTyre": 0 if lap_data["stint"] == 1 else 1,
+        }
+        return [row_dict.get(f, 0) for f in features]
+
+    # Initialize window with baseline rows
+    baseline_row_data = {
+        "lap": 0, "actual_s": ctx["baseline"], "tyre_life": 1,
+        "stint": 1, "compound": actual_laps[0]["compound"] if actual_laps else "MEDIUM",
+        "position": 10, "s1": ctx["s1_avg"], "s2": ctx["s2_avg"], "s3": ctx["s3_avg"],
+    }
+    baseline_row = build_row(baseline_row_data, ctx["baseline"])
+    window = [baseline_row[:] for _ in range(window_size)]
+
+    predictions = []
+
+    for lap_data in actual_laps:
+        # Scale window and predict
+        window_arr = np.array(window, dtype=np.float32)
+        if feature_scaler is not None:
+            window_scaled = feature_scaler.transform(window_arr)
+        else:
+            window_scaled = window_arr
+
+        with torch.no_grad():
+            inp = torch.tensor(window_scaled, dtype=torch.float32).unsqueeze(0)
+            pred_scaled = model(inp).item()
+
+        # Inverse scale prediction
+        if target_scaler is not None:
+            pred = float(target_scaler.inverse_transform([[pred_scaled]])[0][0])
+        else:
+            pred = pred_scaled
+
+        error = pred - lap_data["actual_s"]
+        predictions.append({
+            "lap": lap_data["lap"],
+            "predicted_s": round(pred, 3),
+            "actual_s": round(lap_data["actual_s"], 3),
+            "error_s": round(error, 3),
+            "compound": lap_data["compound"],
+            "stint": lap_data["stint"],
+            "tyre_life": lap_data["tyre_life"],
+        })
+
+        # Slide window: add actual lap as new row (teacher forcing)
+        new_row = build_row(lap_data, lap_data["actual_s"])
+        window = window[1:] + [new_row]
+
+    # Compute metrics
+    errors = np.array([p["error_s"] for p in predictions])
+    actuals = np.array([p["actual_s"] for p in predictions])
+    preds = np.array([p["predicted_s"] for p in predictions])
+
+    mae = float(np.mean(np.abs(errors)))
+    rmse = float(np.sqrt(np.mean(errors ** 2)))
+    ss_res = np.sum((actuals - preds) ** 2)
+    ss_tot = np.sum((actuals - np.mean(actuals)) ** 2)
+    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+    # Per-stint breakdown
+    stint_groups = {}
+    for p in predictions:
+        key = (p["stint"], p["compound"])
+        stint_groups.setdefault(key, []).append(p["error_s"])
+
+    per_stint = []
+    for (stint_num, compound), errs in sorted(stint_groups.items()):
+        per_stint.append({
+            "stint": stint_num,
+            "compound": compound,
+            "mae": round(float(np.mean(np.abs(errs))), 3),
+            "n_laps": len(errs),
+        })
+
+    return {
+        "model": "bilstm",
+        "mae": round(mae, 3),
+        "rmse": round(rmse, 3),
+        "r2": round(r2, 4),
+        "n_laps": len(predictions),
+        "per_stint": per_stint,
+        "predictions": predictions,
+    }

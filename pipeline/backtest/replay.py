@@ -311,15 +311,30 @@ def classify_result(result: dict) -> dict:
     }
 
 
+def _load_cached_results(season: int) -> dict[tuple[str, int], dict]:
+    """Load existing backtest results for a season, keyed by (driver_code, round)."""
+    db = get_db()
+    doc = db["backtest_results"].find_one({"season": season}, {"results": 1})
+    if not doc or not doc.get("results"):
+        return {}
+    return {
+        (r["driver_code"], r["round"]): r
+        for r in doc["results"]
+        if "driver_code" in r and "round" in r
+    }
+
+
 def run_backtest(
     season: int = BACKTEST_SEASON,
     driver_filter: Optional[str] = None,
     team_filter: Optional[str] = None,
     round_filter: Optional[int] = None,
+    force: bool = False,
 ) -> dict:
     """Run full backtest for a season.
 
     Returns structured results comparing pre-race predictions to actual outcomes.
+    Skips (driver, round) combos that already have cached results unless force=True.
     """
     calendar = get_race_calendar(season)
     if not calendar:
@@ -330,6 +345,11 @@ def run_backtest(
         calendar = [r for r in calendar if r["round"] == round_filter]
 
     logger.info(f"Backtest: {season} season, {len(calendar)} races")
+
+    # Load cached results for skip logic
+    cached = _load_cached_results(season) if not force else {}
+    if cached:
+        logger.info(f"Found {len(cached)} cached results (use --force to recompute)")
 
     # Get grid for the season
     db = get_db()
@@ -368,6 +388,13 @@ def run_backtest(
                 None,
             )
             if not driver_actual:
+                continue
+
+            # Skip if cached results exist for this (driver, round)
+            cache_key = (driver_code, round_num)
+            if cache_key in cached:
+                logger.info(f"  {driver_code}: Cached — skipping")
+                results.append(cached[cache_key])
                 continue
 
             actual = classify_result(driver_actual)
@@ -418,6 +445,28 @@ def run_backtest(
                 cliff_result = evaluate_tyre_cliff(race_name, season, driver_code)
             except Exception as e:
                 logger.debug(f"  {driver_code} Cliff failed: {e}")
+
+            # ── Model 5: XGBoost lap predictions (McLaren only) ──
+            xgb_laps_result = None
+            try:
+                from pipeline.backtest.models import evaluate_xgboost_laps
+                xgb_laps_result = evaluate_xgboost_laps(race_name, season, driver_code)
+                if xgb_laps_result:
+                    logger.info(f"  {driver_code}: XGBoost laps MAE={xgb_laps_result['mae']:.3f}s "
+                                f"R²={xgb_laps_result['r2']:.4f} ({xgb_laps_result['n_laps']} laps)")
+            except Exception as e:
+                logger.debug(f"  {driver_code} XGBoost laps failed: {e}")
+
+            # ── Model 6: BiLSTM lap predictions (McLaren only) ──
+            bilstm_laps_result = None
+            try:
+                from pipeline.backtest.models import evaluate_bilstm_laps
+                bilstm_laps_result = evaluate_bilstm_laps(race_name, season, driver_code)
+                if bilstm_laps_result:
+                    logger.info(f"  {driver_code}: BiLSTM laps  MAE={bilstm_laps_result['mae']:.3f}s "
+                                f"R²={bilstm_laps_result['r2']:.4f} ({bilstm_laps_result['n_laps']} laps)")
+            except Exception as e:
+                logger.debug(f"  {driver_code} BiLSTM laps failed: {e}")
 
             # ── Composite risk score ──
             from pipeline.backtest.models import compute_composite_risk
@@ -487,6 +536,20 @@ def run_backtest(
                 "composite_weights": composite["weights"],
                 "predicted_risk": predicted_risk,
 
+                # XGBoost lap predictions
+                "xgb_laps_mae": xgb_laps_result["mae"] if xgb_laps_result else None,
+                "xgb_laps_rmse": xgb_laps_result["rmse"] if xgb_laps_result else None,
+                "xgb_laps_r2": xgb_laps_result["r2"] if xgb_laps_result else None,
+                "xgb_laps_n": xgb_laps_result["n_laps"] if xgb_laps_result else None,
+                "xgb_laps_per_stint": xgb_laps_result["per_stint"] if xgb_laps_result else None,
+
+                # BiLSTM lap predictions
+                "bilstm_laps_mae": bilstm_laps_result["mae"] if bilstm_laps_result else None,
+                "bilstm_laps_rmse": bilstm_laps_result["rmse"] if bilstm_laps_result else None,
+                "bilstm_laps_r2": bilstm_laps_result["r2"] if bilstm_laps_result else None,
+                "bilstm_laps_n": bilstm_laps_result["n_laps"] if bilstm_laps_result else None,
+                "bilstm_laps_per_stint": bilstm_laps_result["per_stint"] if bilstm_laps_result else None,
+
                 # Actual
                 "actual_grid": actual["grid"],
                 "actual_position": actual["position"],
@@ -516,9 +579,15 @@ def run_backtest(
             if strategy_result and strategy_result.get("time_delta_s") is not None:
                 strat_info = f" Strat={strategy_result['time_delta_s']:+.1f}s"
 
+            lap_info = ""
+            if xgb_laps_result:
+                lap_info += f" XGB={xgb_laps_result['mae']:.2f}s"
+            if bilstm_laps_result:
+                lap_info += f" BiL={bilstm_laps_result['mae']:.2f}s"
+
             logger.info(
                 f"  {driver_code}: Health={anomaly['overall_health']}% "
-                f"Composite={composite['composite_risk']:.0f} ({composite['risk_level']}){strat_info} | "
+                f"Composite={composite['composite_risk']:.0f} ({composite['risk_level']}){strat_info}{lap_info} | "
                 f"Grid={actual['grid']} Pos={actual['position']} "
                 f"[{actual['outcome']}] {tag}"
             )
@@ -535,14 +604,17 @@ def run_backtest(
 
 
 def push_backtest_results(backtest_data: dict):
-    """Store backtest results in MongoDB."""
+    """Store backtest results in MongoDB (upsert by season)."""
     db = get_db()
     doc = {
         **backtest_data,
         "stored_at": datetime.now(timezone.utc).isoformat(),
     }
-    db["backtest_results"].insert_one(doc)
-    logger.info(f"Stored backtest results in backtest_results collection")
+    season = doc.get("season", 2024)
+    db["backtest_results"].replace_one(
+        {"season": season}, doc, upsert=True,
+    )
+    logger.info(f"Stored backtest results in backtest_results (season={season})")
 
 
 def main():
@@ -551,12 +623,14 @@ def main():
     parser.add_argument("--team", help="Filter by team (e.g. McLaren)")
     parser.add_argument("--race", type=int, help="Single round number (e.g. 11)")
     parser.add_argument("--no-store", action="store_true", help="Don't push to MongoDB")
+    parser.add_argument("--force", action="store_true", help="Recompute all, ignore cached results")
     args = parser.parse_args()
 
     backtest_data = run_backtest(
         driver_filter=args.driver,
         team_filter=args.team,
         round_filter=args.race,
+        force=args.force,
     )
 
     if not backtest_data or not backtest_data.get("results"):

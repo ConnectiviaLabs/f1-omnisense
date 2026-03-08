@@ -6,7 +6,7 @@ import {
 import {
   FlaskConical, Loader2, Target, AlertTriangle,
   ChevronDown, ChevronUp, Play, Shield,
-  Zap, Timer, TrendingDown, Layers, RotateCcw,
+  Zap, Timer, TrendingDown, Layers, RotateCcw, Brain,
 } from 'lucide-react';
 import KexBriefingCard from './KexBriefingCard';
 
@@ -49,6 +49,15 @@ interface BacktestEntry {
   composite_risk_level: string | null;
   composite_signals: Record<string, number>;
   composite_weights: Record<string, number>;
+  // Lap prediction models
+  xgb_laps_mae: number | null;
+  xgb_laps_rmse: number | null;
+  xgb_laps_r2: number | null;
+  xgb_laps_n: number | null;
+  bilstm_laps_mae: number | null;
+  bilstm_laps_rmse: number | null;
+  bilstm_laps_r2: number | null;
+  bilstm_laps_n: number | null;
   // Actual
   actual_grid: number;
   actual_position: number;
@@ -88,6 +97,11 @@ interface CaseStudy {
   strategy_match: boolean | null;
   strategy_time_delta_s: number | null;
   cliff_warnings: number;
+  // Lap prediction accuracy
+  xgb_laps_mae: number | null;
+  xgb_laps_r2: number | null;
+  bilstm_laps_mae: number | null;
+  bilstm_laps_r2: number | null;
   predicted_systems: Record<string, SystemHealth>;
 }
 
@@ -116,6 +130,11 @@ interface BacktestMetrics {
   cliff_warnings_total: number;
   elt_coverage: number;
   models_active: Record<string, boolean>;
+  // Lap prediction model metrics
+  xgb_laps_avg_mae: number | null;
+  xgb_laps_avg_r2: number | null;
+  bilstm_laps_avg_mae: number | null;
+  bilstm_laps_avg_r2: number | null;
 }
 
 interface BacktestData {
@@ -353,6 +372,22 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
         {(cs.cliff_warnings ?? 0) > 0 && (
           <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
             <TrendingDown className="w-2.5 h-2.5 inline mr-0.5" />{cs.cliff_warnings} cliff warn
+          </span>
+        )}
+        {cs.xgb_laps_mae != null && (
+          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded border ${
+            cs.xgb_laps_mae < 1 ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+          }`}>
+            <Brain className="w-2.5 h-2.5 inline mr-0.5" />XGB: {cs.xgb_laps_mae.toFixed(3)}s
+            {cs.xgb_laps_r2 != null && ` R²=${cs.xgb_laps_r2.toFixed(3)}`}
+          </span>
+        )}
+        {cs.bilstm_laps_mae != null && (
+          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded border ${
+            cs.bilstm_laps_mae < 2 ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+          }`}>
+            <Brain className="w-2.5 h-2.5 inline mr-0.5" />BiL: {cs.bilstm_laps_mae.toFixed(3)}s
+            {cs.bilstm_laps_r2 != null && ` R²=${cs.bilstm_laps_r2.toFixed(3)}`}
           </span>
         )}
       </div>
@@ -639,6 +674,36 @@ export function BacktestView() {
             />
           </div>
 
+          {/* ── Lap Prediction Models ── */}
+          {(m.xgb_laps_avg_mae != null || m.bilstm_laps_avg_mae != null) && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <MetricCard
+                label="XGBoost Avg MAE"
+                value={m.xgb_laps_avg_mae != null ? `${m.xgb_laps_avg_mae.toFixed(3)}s` : '—'}
+                sub="Lap time prediction error"
+                color={m.xgb_laps_avg_mae != null && m.xgb_laps_avg_mae < 1 ? '#05DF72' : '#f59e0b'}
+              />
+              <MetricCard
+                label="XGBoost Avg R²"
+                value={m.xgb_laps_avg_r2 != null ? `${m.xgb_laps_avg_r2.toFixed(4)}` : '—'}
+                sub="Explained variance"
+                color={m.xgb_laps_avg_r2 != null && m.xgb_laps_avg_r2 > 0 ? '#05DF72' : '#ef4444'}
+              />
+              <MetricCard
+                label="BiLSTM Avg MAE"
+                value={m.bilstm_laps_avg_mae != null ? `${m.bilstm_laps_avg_mae.toFixed(3)}s` : '—'}
+                sub="Temporal model error"
+                color={m.bilstm_laps_avg_mae != null && m.bilstm_laps_avg_mae < 2 ? '#05DF72' : '#f59e0b'}
+              />
+              <MetricCard
+                label="BiLSTM Avg R²"
+                value={m.bilstm_laps_avg_r2 != null ? `${m.bilstm_laps_avg_r2.toFixed(4)}` : '—'}
+                sub="Explained variance"
+                color={m.bilstm_laps_avg_r2 != null && m.bilstm_laps_avg_r2 > 0 ? '#05DF72' : '#ef4444'}
+              />
+            </div>
+          )}
+
           {/* ── Composite Risk Distribution ── */}
           {m.composite_risk_distribution && Object.keys(m.composite_risk_distribution).length > 0 && (
             <div className="bg-card border border-border rounded-lg p-4">
@@ -683,6 +748,8 @@ export function BacktestView() {
                   {model === 'elt' && <Timer className="w-2.5 h-2.5 inline mr-1" />}
                   {model === 'strategy' && <Target className="w-2.5 h-2.5 inline mr-1" />}
                   {model === 'cliff' && <TrendingDown className="w-2.5 h-2.5 inline mr-1" />}
+                  {model === 'xgboost_laps' && <Brain className="w-2.5 h-2.5 inline mr-1" />}
+                  {model === 'bilstm_laps' && <Brain className="w-2.5 h-2.5 inline mr-1" />}
                   {model}
                 </span>
               ))}

@@ -106,7 +106,26 @@ def compute_metrics(results: list[dict]) -> dict:
             "elt": elt_available > 0,
             "strategy": len(strategy_deltas) > 0,
             "cliff": cliff_warnings_total >= 0,
+            "xgboost_laps": any(r.get("xgb_laps_mae") is not None for r in results),
+            "bilstm_laps": any(r.get("bilstm_laps_mae") is not None for r in results),
         },
+        # Lap prediction model metrics
+        "xgb_laps_avg_mae": round(
+            sum(r["xgb_laps_mae"] for r in results if r.get("xgb_laps_mae") is not None)
+            / max(1, sum(1 for r in results if r.get("xgb_laps_mae") is not None)), 3
+        ) if any(r.get("xgb_laps_mae") is not None for r in results) else None,
+        "xgb_laps_avg_r2": round(
+            sum(r["xgb_laps_r2"] for r in results if r.get("xgb_laps_r2") is not None)
+            / max(1, sum(1 for r in results if r.get("xgb_laps_r2") is not None)), 4
+        ) if any(r.get("xgb_laps_r2") is not None for r in results) else None,
+        "bilstm_laps_avg_mae": round(
+            sum(r["bilstm_laps_mae"] for r in results if r.get("bilstm_laps_mae") is not None)
+            / max(1, sum(1 for r in results if r.get("bilstm_laps_mae") is not None)), 3
+        ) if any(r.get("bilstm_laps_mae") is not None for r in results) else None,
+        "bilstm_laps_avg_r2": round(
+            sum(r["bilstm_laps_r2"] for r in results if r.get("bilstm_laps_r2") is not None)
+            / max(1, sum(1 for r in results if r.get("bilstm_laps_r2") is not None)), 4
+        ) if any(r.get("bilstm_laps_r2") is not None for r in results) else None,
     }
 
 
@@ -205,6 +224,11 @@ def find_case_studies(results: list[dict], team_filter: str = "mclaren") -> list
                 "strategy_time_delta_s": r.get("strategy_time_delta_s"),
                 # Cliff
                 "cliff_warnings": r.get("cliff_warnings", 0),
+                # Lap prediction accuracy
+                "xgb_laps_mae": r.get("xgb_laps_mae"),
+                "xgb_laps_r2": r.get("xgb_laps_r2"),
+                "bilstm_laps_mae": r.get("bilstm_laps_mae"),
+                "bilstm_laps_r2": r.get("bilstm_laps_r2"),
                 # Systems detail
                 "predicted_systems": r.get("predicted_systems", {}),
             })
@@ -297,6 +321,14 @@ def print_summary(backtest_data: dict):
         print(f"\n  ELT Coverage:          {metrics['elt_coverage']}%")
     if metrics.get("cliff_warnings_total", 0) > 0:
         print(f"  Tyre cliff warnings:   {metrics['cliff_warnings_total']}")
+
+    # Lap prediction models
+    if metrics.get("xgb_laps_avg_mae") is not None or metrics.get("bilstm_laps_avg_mae") is not None:
+        print(f"\n  Lap Prediction Models:")
+        if metrics.get("xgb_laps_avg_mae") is not None:
+            print(f"    XGBoost  — Avg MAE: {metrics['xgb_laps_avg_mae']:.3f}s  Avg R²: {metrics.get('xgb_laps_avg_r2', 0):.4f}")
+        if metrics.get("bilstm_laps_avg_mae") is not None:
+            print(f"    BiLSTM   — Avg MAE: {metrics['bilstm_laps_avg_mae']:.3f}s  Avg R²: {metrics.get('bilstm_laps_avg_r2', 0):.4f}")
 
     if correlations:
         print(f"\n  System Prediction Value:")

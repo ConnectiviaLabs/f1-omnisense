@@ -6,7 +6,8 @@ anomaly detection, and outputs per-driver per-race per-system anomaly
 scores as JSON for the Fleet Overview UI.
 
 Usage:
-    python -m pipeline.anomaly.run_f1_anomaly                # all grid drivers
+    python -m pipeline.anomaly.run_f1_anomaly                # all grid drivers, all years
+    python -m pipeline.anomaly.run_f1_anomaly --year 2024    # 2024 season only (recommended)
     python -m pipeline.anomaly.run_f1_anomaly --team McLaren # specific team
     python -m pipeline.anomaly.run_f1_anomaly --driver VER   # single driver
 
@@ -55,14 +56,17 @@ SYSTEM_FEATURES = {
 }
 
 
-def load_car_race_data(driver_code: str) -> pd.DataFrame:
+def load_car_race_data(driver_code: str, year: int | None = None) -> pd.DataFrame:
     """Load per-race telemetry for any driver from MongoDB.
 
     Merges fastf1_laps aggregates (speed traps, sectors, tyre) with
     telemetry_race_summary (RPM, throttle, brake, DRS) on (Year, Race).
+
+    When year is specified, only loads data from that season to avoid
+    mixing different car regulation eras.
     """
-    laps_df = load_driver_race_telemetry(driver_code)
-    summary_df = load_race_summary_features(driver_code)
+    laps_df = load_driver_race_telemetry(driver_code, year=year)
+    summary_df = load_race_summary_features(driver_code, year=year)
 
     if laps_df.empty:
         return laps_df
@@ -211,17 +215,21 @@ def compute_system_health(system_results: dict, merged_df: pd.DataFrame) -> list
     return per_race
 
 
-def run_driver(driver_code: str, driver_info: dict | None = None) -> dict:
-    """Full pipeline for a single driver."""
+def run_driver(driver_code: str, driver_info: dict | None = None, year: int | None = None) -> dict:
+    """Full pipeline for a single driver.
+
+    When year is specified, only processes data from that season to avoid
+    mixing different car regulation eras (e.g. 2018 vs 2024).
+    """
     name = driver_info.get("name", driver_code) if driver_info else driver_code
     number = driver_info.get("number", 0) if driver_info else 0
     team = driver_info.get("team", "Unknown") if driver_info else "Unknown"
 
     logger.info(f"\n{'='*60}")
-    logger.info(f"Processing {name} ({driver_code}) — {team}")
+    logger.info(f"Processing {name} ({driver_code}) — {team}" + (f" [{year}]" if year else " [all years]"))
     logger.info(f"{'='*60}")
 
-    merged = load_car_race_data(driver_code)
+    merged = load_car_race_data(driver_code, year=year)
 
     if merged.empty:
         logger.warning(f"No data for {driver_code}")
@@ -272,13 +280,21 @@ def run_driver(driver_code: str, driver_info: dict | None = None) -> dict:
 
 
 def _push_to_mongo(output_data: dict):
-    """Push anomaly scores to MongoDB."""
+    """Push anomaly scores to MongoDB, keyed by season if specified."""
     try:
         from updater._db import get_db
         db = get_db()
-        db["anomaly_scores_snapshot"].drop()
-        db["anomaly_scores_snapshot"].insert_one(output_data)
-        logger.info("Pushed to MongoDB marip_f1.anomaly_scores_snapshot")
+        season = output_data.get("metadata", {}).get("season")
+        if season:
+            # Per-season: upsert by season key (preserves other seasons)
+            db["anomaly_scores_snapshot"].replace_one(
+                {"metadata.season": season}, output_data, upsert=True,
+            )
+        else:
+            # Legacy all-time: replace the single snapshot
+            db["anomaly_scores_snapshot"].drop()
+            db["anomaly_scores_snapshot"].insert_one(output_data)
+        logger.info("Pushed to MongoDB marip_f1.anomaly_scores_snapshot (season=%s)", season)
     except Exception as e:
         logger.warning(f"MongoDB push failed: {e}")
 
@@ -288,11 +304,14 @@ def main():
     parser = argparse.ArgumentParser(description="F1 Anomaly Scoring Pipeline")
     parser.add_argument("--driver", help="Single driver code (e.g. VER)")
     parser.add_argument("--team", help="Filter by team (e.g. McLaren)")
+    parser.add_argument("--year", type=int, help="Season year filter (e.g. 2024). "
+                        "Avoids mixing different regulation eras.")
     args = parser.parse_args()
 
-    logger.info("F1 Anomaly Scoring Pipeline — Active Grid")
+    season_label = f" [{args.year}]" if args.year else " [all years]"
+    logger.info(f"F1 Anomaly Scoring Pipeline — Active Grid{season_label}")
 
-    grid = get_grid_drivers()
+    grid = get_grid_drivers(year=args.year)
     logger.info(f"Grid: {len(grid)} qualified drivers")
 
     if args.driver:
@@ -310,10 +329,11 @@ def main():
         "systems": list(SYSTEM_FEATURES.keys()),
         "models": ["IsolationForest", "OneClassSVM", "KNN", "PCA_Reconstruction"],
         "model_weights": {"IsolationForest": 1.0, "OneClassSVM": 0.6, "KNN": 0.8, "PCA_Reconstruction": 0.9},
+        "season": args.year,
     }}
 
     for driver_info in grid:
-        result = run_driver(driver_info["code"], driver_info)
+        result = run_driver(driver_info["code"], driver_info, year=args.year)
         if result:
             output_data["drivers"].append(result)
 
