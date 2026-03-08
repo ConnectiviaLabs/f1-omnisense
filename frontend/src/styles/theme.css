@@ -24,9 +24,9 @@
   --destructive: #FB2C36;
   --destructive-foreground: #ffffff;
 
-  /* Borders — 3-tier system */
-  --border: rgba(255, 128, 0, 0.12);
-  --border-strong: rgba(255, 128, 0, 0.20);
+  /* Borders — 3-tier system (neutral resting, orange signal-only) */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.10);
   --border-accent: rgba(255, 128, 0, 0.35);
 
   /* Inputs */
@@ -89,7 +89,7 @@
   --sidebar-primary-foreground: #0D1117;
   --sidebar-accent: #222838;
   --sidebar-accent-foreground: #E8E8F0;
-  --sidebar-border: rgba(255, 128, 0, 0.12);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-ring: #FF8000;
   --sidebar-hover: rgba(255, 128, 0, 0.05);
 
