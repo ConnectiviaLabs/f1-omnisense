@@ -101,14 +101,14 @@ export default function App() {
   // Home — full-width, no sidebar
   if (activeView === 'home') {
     return (
-      <div className="h-full bg-[#0D1117] font-['Inter',sans-serif]">
+      <div className="h-full bg-background font-['Inter',sans-serif]">
         <Home onSelectPlatform={setActiveView} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex bg-[#0D1117] font-['Inter',sans-serif] overflow-hidden">
+    <div className="h-full flex bg-background font-['Inter',sans-serif] overflow-hidden">
       <Sidebar
         activeView={activeView}
         onViewChange={setActiveView}
@@ -123,7 +123,7 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
-        <header className="h-12 border-b border-[rgba(255,128,0,0.12)] bg-[#0D1117] flex items-center justify-between px-4 shrink-0">
+        <header className="h-12 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
           <nav className="flex items-center gap-1.5 text-[11px] tracking-wide leading-none">
             <span className="text-muted-foreground">F1 OmniSense</span>
             <ChevronRight className="w-3 h-3 text-[rgba(255,128,0,0.3)] shrink-0" />
@@ -142,7 +142,7 @@ export default function App() {
                 <span className="text-muted-foreground">OpenF1 + Jolpica</span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 bg-[#222838] rounded-lg px-3 py-1">
+            <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-3 py-1">
               <Clock className="w-3 h-3 text-[#FF8000]" />
               <span className="text-[10px] font-mono text-foreground">
                 {currentTime.toLocaleTimeString('en-GB', { hour12: false })}
@@ -152,7 +152,7 @@ export default function App() {
         </header>
 
         {/* Page Header */}
-        <div className="px-5 pt-5 pb-3 shrink-0 border-b border-[rgba(255,128,0,0.08)]">
+        <div className="px-5 pt-5 pb-3 shrink-0 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-1 h-7 rounded-full bg-[#FF8000]" />
             <div>

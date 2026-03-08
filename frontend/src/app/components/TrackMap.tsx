@@ -322,7 +322,7 @@ export function TrackMap({
 
   if (loading) {
     return (
-      <div className={`flex items-center justify-center bg-[#0D1117] rounded-lg ${className}`} style={{ height }}>
+      <div className={`flex items-center justify-center bg-background rounded-lg ${className}`} style={{ height }}>
         <span className="text-[12px] text-muted-foreground animate-pulse">Loading track...</span>
       </div>
     );
@@ -330,16 +330,16 @@ export function TrackMap({
 
   if (projected.length === 0) {
     return (
-      <div className={`flex items-center justify-center bg-[#0D1117] rounded-lg ${className}`} style={{ height }}>
+      <div className={`flex items-center justify-center bg-background rounded-lg ${className}`} style={{ height }}>
         <span className="text-[12px] text-muted-foreground">No track data</span>
       </div>
     );
   }
 
   return (
-    <div className={`bg-[#0D1117] rounded-lg border border-[rgba(255,128,0,0.12)] overflow-hidden relative ${className}`}>
+    <div className={`bg-background rounded-lg border border-border overflow-hidden relative ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[rgba(255,128,0,0.12)]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <MapPin className="w-3.5 h-3.5" style={{ color: accentColor }} />
           <span className="text-[11px] font-semibold text-foreground tracking-wide">{circuitName}</span>
@@ -746,7 +746,7 @@ export function TrackMap({
             transform: 'translateX(-50%)',
           }}
         >
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.2)] rounded-lg px-3 py-2 shadow-xl">
+          <div className="bg-card border border-[rgba(255,128,0,0.2)] rounded-lg px-3 py-2 shadow-xl">
             <div className="text-[12px] font-semibold text-foreground">
               T{hoveredTurn.number} — {hoveredTurn.name || `Turn ${hoveredTurn.number}`}
             </div>

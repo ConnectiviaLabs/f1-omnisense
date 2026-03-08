@@ -127,7 +127,7 @@ function SeverityBar({ probabilities }: { probabilities?: Record<string, number>
   const total = Object.values(probabilities).reduce((a, b) => a + b, 0);
   if (total < 0.01) return null;
   return (
-    <div className="flex h-1.5 rounded-full overflow-hidden bg-[#0D1117]" title="Risk distribution">
+    <div className="flex h-1.5 rounded-full overflow-hidden bg-background" title="Risk distribution">
       {order.map(sev => {
         const pct = (probabilities[sev] ?? 0) * 100;
         if (pct < 1) return null;
@@ -469,7 +469,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
     <div className="space-y-4">
       {/* Fleet status bar */}
       <div className="flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2 bg-[#1A1F2E] rounded-lg px-3 py-2 border border-[rgba(255,128,0,0.12)]">
+        <div className="flex items-center gap-2 bg-card rounded-lg px-3 py-2 border border-border">
           <CircleDot className="w-3 h-3 text-[#FF8000]" />
           <span className="text-[12px] text-muted-foreground">{vehicles.length} drivers monitored</span>
           {liveSource && (
@@ -515,7 +515,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25, delay: i * 0.05 }}
                 onClick={() => setSelectedCar(v)}
-                className="text-left rounded-xl transition-all group relative overflow-hidden bg-[#1A1F2E] border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
+                className="text-left rounded-xl transition-all group relative overflow-hidden bg-card border border-[#FF8000]/25 hover:border-[#FF8000]/50 shadow-[0_0_20px_rgba(255,128,0,0.06)]"
               >
                 <div className="absolute top-0 left-0 bottom-0 w-[4px] rounded-l-xl" style={{ background: color }} />
                 <div className="p-5 pl-6">
@@ -558,7 +558,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     {v.systems.map(sys => (
                       <div key={sys.name} className="flex items-center gap-1.5">
                         <span className="text-[9px] w-12 text-muted-foreground/70 truncate">{sys.name}</span>
-                        <div className="flex-1 h-1.5 bg-[#222838] rounded-full overflow-hidden">
+                        <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
                         </div>
                       </div>
@@ -596,7 +596,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.4) }}
                   onClick={() => setSelectedCar(v)}
-                  className="text-left rounded-xl transition-all group relative overflow-hidden bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] hover:border-[rgba(255,128,0,0.25)]"
+                  className="text-left rounded-xl transition-all group relative overflow-hidden bg-card border border-border hover:border-[rgba(255,128,0,0.25)]"
                 >
                   <div className="absolute top-0 left-0 bottom-0 w-[2px] rounded-l-xl" style={{ background: color }} />
                   <div className="p-2.5 pl-3.5">
@@ -635,7 +635,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                       {v.systems.map(sys => (
                         <div key={sys.name} className="flex items-center gap-1">
                           <span className="text-[7px] w-8 text-muted-foreground/70 truncate">{sys.name}</span>
-                          <div className="flex-1 h-[3px] bg-[#222838] rounded-full overflow-hidden">
+                          <div className="flex-1 h-[3px] bg-secondary rounded-full overflow-hidden">
                             <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, backgroundColor: levelColor(sys.level) }} />
                           </div>
                         </div>
@@ -657,7 +657,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
         return (
         <div className="space-y-4">
           {/* Driver Profile Header */}
-          <div className="bg-[#1A1F2E] rounded-xl border border-[#FF8000]/20 overflow-hidden">
+          <div className="bg-card rounded-xl border border-[#FF8000]/20 overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
             <div className="px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -742,7 +742,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           {activeTab === 'telemetry' && (<>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* 3D Car Viewer — 2/3 */}
-            <div className="lg:col-span-2 bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+            <div className="lg:col-span-2 bg-card rounded-xl border border-border p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                   <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -757,10 +757,10 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                   ))}
                 </div>
               </div>
-              <div className="rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
+              <div className="rounded-lg overflow-hidden border border-border">
                 <iframe
                   src={`/glb_viewer.html?url=${carModel.url}&title=${encodeURIComponent(carModel.label)}&stress=${encodeURIComponent(JSON.stringify(selectedCar.systems.map(sys => ({ name: sys.name, health: sys.health, level: sys.level, metrics: sys.metrics }))))}`}
-                  className="w-full h-[480px] border-0 bg-[#0D1117]"
+                  className="w-full h-[480px] border-0 bg-background"
                   title={`3D — ${carModel.label}`}
                 />
               </div>
@@ -773,7 +773,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     { key: 'avgThrottle', label: 'Throttle', unit: '%', color: '#22c55e' },
                     { key: 'brakePct', label: 'Brake', unit: '%', color: '#ef4444' },
                   ] as const).map(({ key, label, unit, color }) => (
-                    <div key={key} className="bg-[#0D1117] rounded-lg p-2">
+                    <div key={key} className="bg-background rounded-lg p-2">
                       <ResponsiveContainer width="100%" height={85}>
                         <AreaChart data={raceTelemetry} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
                           <defs>
@@ -820,7 +820,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <div className="lg:col-span-1 space-y-3">
               {/* Performance Metrics */}
               {(s.avgTopSpeed || s.throttleSmoothness || s.overtakesMade) && (
-                <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+                <div className="bg-card rounded-xl border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
                     <Activity className="w-3 h-3 text-[#FF8000]" />
                     Performance Profile
@@ -872,21 +872,21 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
               {/* Overtake Stats */}
               {s.overtakesMade != null && (
-                <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+                <div className="bg-card rounded-xl border border-border p-3">
                   <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-[#FF8000]" />
                     Overtake Profile
                   </h3>
                   <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-[#0D1117] rounded-lg p-2">
+                    <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold text-[#22c55e]">{s.overtakesMade}</div>
                       <div className="text-[9px] text-muted-foreground">Made</div>
                     </div>
-                    <div className="bg-[#0D1117] rounded-lg p-2">
+                    <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold text-red-400">{s.timesOvertaken}</div>
                       <div className="text-[9px] text-muted-foreground">Lost</div>
                     </div>
-                    <div className="bg-[#0D1117] rounded-lg p-2">
+                    <div className="bg-background rounded-lg p-2">
                       <div className="text-lg font-mono font-bold" style={{ color: (s.overtakeNet ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
                         {(s.overtakeNet ?? 0) >= 0 ? '+' : ''}{s.overtakeNet}
                       </div>
@@ -897,7 +897,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               )}
 
               {/* System Health — stacked in sidebar */}
-              <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+              <div className="bg-card rounded-xl border border-border p-3">
                 <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
                   <Gauge className="w-3 h-3 text-[#FF8000]" />
                   System Health
@@ -921,7 +921,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                             {sys.level === 'critical' && <XCircle className="w-2.5 h-2.5 text-red-400" />}
                           </div>
                         </div>
-                        <div className="h-1 bg-[#0D1117] rounded-full overflow-hidden mb-1.5">
+                        <div className="h-1 bg-background rounded-full overflow-hidden mb-1.5">
                           <div className="h-full rounded-full transition-all duration-700"
                             style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
                         </div>
@@ -943,7 +943,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             const sorted = [...stints].sort((a, b) => a.stint_number - b.stint_number);
             const totalLaps = sorted.reduce((s, t) => s + t.stint_laps, 0);
             return (
-            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+            <div className="bg-card rounded-xl border border-border p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
                   <Fuel className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -952,7 +952,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 <span className="text-[10px] text-muted-foreground font-mono">{totalLaps} laps</span>
               </div>
               {/* Timeline bar */}
-              <div className="flex items-center gap-1 h-14 rounded-lg overflow-hidden bg-[#0D1117] mb-4">
+              <div className="flex items-center gap-1 h-14 rounded-lg overflow-hidden bg-background mb-4">
                 {sorted.map(st => {
                   const pct = (st.stint_laps / totalLaps) * 100;
                   const color = COMPOUND_COLORS[st.compound] ?? '#6b7280';
@@ -973,7 +973,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 {sorted.map(st => {
                   const color = COMPOUND_COLORS[st.compound] ?? '#6b7280';
                   return (
-                    <div key={st.stint_number} className="bg-[#0D1117] rounded-lg p-3 border" style={{ borderColor: `${color}30` }}>
+                    <div key={st.stint_number} className="bg-background rounded-lg p-3 border" style={{ borderColor: `${color}30` }}>
                       <div className="flex items-center gap-2 mb-2">
                         <div className="w-3 h-3 rounded-full" style={{ background: color }} />
                         <span className="text-[11px] font-semibold text-foreground">Stint {st.stint_number}</span>
@@ -1012,7 +1012,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
           {/* ANOMALY TAB */}
           {activeTab === 'anomaly' && (<>
           {/* 3D Stress Model */}
-          <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+          <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
                 <Shield className="w-3.5 h-3.5 text-[#FF8000]" />
@@ -1027,10 +1027,10 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                 ))}
               </div>
             </div>
-            <div className="rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
+            <div className="rounded-lg overflow-hidden border border-border">
               <iframe
                 src={`/glb_viewer.html?url=${carModel.url}&title=${encodeURIComponent(carModel.label)}&stress=${encodeURIComponent(JSON.stringify(selectedCar.systems.map(sys => ({ name: sys.name, health: sys.health, level: sys.level, metrics: sys.metrics }))))}`}
-                className="w-full h-[400px] border-0 bg-[#0D1117]"
+                className="w-full h-[400px] border-0 bg-background"
                 title={`3D Anomaly — ${carModel.label}`}
               />
             </div>
@@ -1041,7 +1041,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               const MaintenanceInfo = MAINTENANCE_LABELS[sys.maintenanceAction ?? 'none'] ?? MAINTENANCE_LABELS.none;
               const MIcon = MaintenanceInfo.icon;
               return (
-                <div key={sys.name} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+                <div key={sys.name} className="bg-card rounded-xl border border-border p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
                     <span className="text-[11px] font-mono" style={{ color: levelColor(sys.level) }}>
@@ -1049,7 +1049,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     </span>
                   </div>
                   {/* Health bar */}
-                  <div className="w-full h-1.5 rounded-full bg-[#0D1117] mb-2">
+                  <div className="w-full h-1.5 rounded-full bg-background mb-2">
                     <div className="h-full rounded-full transition-all" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
                   </div>
                   {/* Severity distribution */}
@@ -1086,7 +1086,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
           {/* OmniHealth Component Assessment */}
           {omniComponents.length > 0 && (
-            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+            <div className="bg-card rounded-xl border border-border p-4">
               <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
                 <Shield className="w-3 h-3 text-[#FF8000]" />
                 OmniHealth Assessment
@@ -1099,14 +1099,14 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     : comp.severity === 'medium' ? '#eab308'
                     : '#22c55e';
                   return (
-                    <div key={comp.component} className="bg-[#0D1117] rounded-lg p-3 border border-[rgba(255,128,0,0.06)]">
+                    <div key={comp.component} className="bg-background rounded-lg p-3 border border-border">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[11px] font-medium text-foreground">{comp.component}</span>
                         <span className="text-[11px] font-mono font-bold" style={{ color: sevColor }}>
                           {comp.health_pct.toFixed(0)}%
                         </span>
                       </div>
-                      <div className="w-full h-1.5 rounded-full bg-[#1A1F2E] mb-2">
+                      <div className="w-full h-1.5 rounded-full bg-card mb-2">
                         <div className="h-full rounded-full transition-all" style={{ width: `${comp.health_pct}%`, background: sevColor }} />
                       </div>
                       <div className="flex items-center justify-between">
@@ -1135,7 +1135,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
 
           {/* Season Health Trend Table */}
           {trendData.length > 0 && (
-            <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+            <div className="bg-card rounded-xl border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
                   <TrendingUp className="w-3 h-3 text-[#FF8000]" />
@@ -1150,7 +1150,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
                           trendYear === y
                             ? 'bg-[#FF8000] text-black font-medium'
-                            : 'bg-[#0D1117] text-muted-foreground hover:text-foreground border border-[rgba(255,128,0,0.12)]'
+                            : 'bg-background text-muted-foreground hover:text-foreground border border-border'
                         }`}
                       >
                         {y}
@@ -1158,10 +1158,10 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     ))}
                     {trendYears.length > 3 && (
                       <details className="relative">
-                        <summary className="px-2 py-0.5 rounded text-[10px] font-mono bg-[#0D1117] text-muted-foreground hover:text-foreground border border-[rgba(255,128,0,0.12)] cursor-pointer list-none">
+                        <summary className="px-2 py-0.5 rounded text-[10px] font-mono bg-background text-muted-foreground hover:text-foreground border border-border cursor-pointer list-none">
                           +{trendYears.length - 3}
                         </summary>
-                        <div className="absolute right-0 top-full mt-1 z-10 bg-[#1A1F2E] border border-[rgba(255,128,0,0.2)] rounded-lg p-1 flex flex-col gap-0.5">
+                        <div className="absolute right-0 top-full mt-1 z-10 bg-card border border-[rgba(255,128,0,0.2)] rounded-lg p-1 flex flex-col gap-0.5">
                           {trendYears.slice(3).map(y => (
                             <button
                               key={y}
@@ -1183,8 +1183,8 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[11px]">
-                  <thead className="sticky top-0 bg-[#1A1F2E]">
-                    <tr className="border-b border-[rgba(255,128,0,0.12)]">
+                  <thead className="sticky top-0 bg-card">
+                    <tr className="border-b border-border">
                       <th className="text-left py-1 text-muted-foreground font-normal">Race</th>
                       {TREND_SYSTEMS.map(sys => (
                         <th key={sys} className="text-right py-1 text-muted-foreground font-normal" title={sys}>{TREND_ABBR[sys]}</th>

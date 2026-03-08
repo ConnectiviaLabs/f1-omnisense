@@ -10,7 +10,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
   const [hovered, setHovered] = useState<'raceday' | 'prime' | null>(null);
 
   return (
-    <div className="relative h-full flex flex-col items-center justify-center bg-[#0D1117] overflow-hidden px-12 py-10">
+    <div className="relative h-full flex flex-col items-center justify-center bg-background overflow-hidden px-12 py-10">
 
       {/* Grid background */}
       <div

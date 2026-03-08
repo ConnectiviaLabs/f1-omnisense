@@ -92,7 +92,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search drivers..."
-              className="w-full bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[#FF8000]/30"
+              className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-[#FF8000]/30"
             />
           </div>
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
@@ -103,7 +103,7 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all ${
                   v.code === selectedDriver
                     ? 'bg-[#FF8000]/10 border border-[#FF8000]/30'
-                    : 'bg-[#1A1F2E] border border-transparent hover:border-[rgba(255,128,0,0.12)]'
+                    : 'bg-card border border-transparent hover:border-border'
                 }`}
               >
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ background: levelColor(v.level) }} />
@@ -163,7 +163,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-4">
+      <div className="bg-card rounded-xl border border-border p-4">
         <div className="flex items-center gap-4">
           <HealthGauge value={vehicle.overallHealth} size={64} />
           <div>
@@ -183,7 +183,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
           const MaintenanceInfo = MAINTENANCE_LABELS[sys.maintenanceAction ?? 'none'] ?? MAINTENANCE_LABELS.none;
           const MIcon = MaintenanceInfo.icon;
           return (
-            <div key={sys.name} className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+            <div key={sys.name} className="bg-card rounded-xl border border-border p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
                 <span className="text-[11px] font-mono" style={{ color: levelColor(sys.level) }}>
@@ -191,7 +191,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
                 </span>
               </div>
               {/* Health bar */}
-              <div className="w-full h-1.5 rounded-full bg-[#0D1117] mb-2">
+              <div className="w-full h-1.5 rounded-full bg-background mb-2">
                 <div className="h-full rounded-full transition-all" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
               </div>
               {/* Severity distribution */}
@@ -231,12 +231,12 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
 
       {/* Race History — last 10 */}
       {recentRaces.length > 1 && (
-        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+        <div className="bg-card rounded-xl border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-2">Race-by-Race Health <span className="text-muted-foreground font-normal">(last {recentRaces.length})</span></h3>
           <div className="overflow-x-auto">
             <table className="w-full text-[11px]">
               <thead>
-                <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                <tr className="text-muted-foreground border-b border-border">
                   <th className="text-left py-1.5 pr-3">Race</th>
                   {vehicle.systems.map(s => (
                     <th key={s.name} className="text-center px-2 py-1.5">{s.name}</th>
@@ -306,7 +306,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
           title="Select driver"
           value={effectiveDriver ?? ''}
           onChange={e => setSelectedDriver(e.target.value)}
-          className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/30"
+          className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/30"
         >
           {driverOptions.map(code => (
             <option key={code} value={code}>{code}</option>
@@ -315,7 +315,7 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
       </div>
 
       {effectiveDriver && (
-        <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
+        <div className="bg-card rounded-xl border border-border p-3">
           <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3 text-[#FF8000]" />
             Feature Forecasts — {effectiveDriver}

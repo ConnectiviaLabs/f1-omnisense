@@ -10,7 +10,7 @@ export function Home_v1({ onSelectPlatform }: HomeProps) {
   const [hovered, setHovered] = useState<'raceday' | 'prime' | null>(null);
 
   return (
-    <div className="relative h-full flex flex-col bg-[#0D1117] overflow-hidden">
+    <div className="relative h-full flex flex-col bg-background overflow-hidden">
 
       {/* Subtle grid background */}
       <div

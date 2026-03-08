@@ -45,7 +45,7 @@ export function Home_v4({ onSelectPlatform }: HomeProps) {
   const [hovered, setHovered] = useState<'raceday' | 'prime' | null>(null);
 
   return (
-    <div className="relative h-full flex flex-col items-center bg-[#0D1117] overflow-hidden px-16 pt-12">
+    <div className="relative h-full flex flex-col items-center bg-background overflow-hidden px-16 pt-12">
 
       {/* Horizontal scan lines */}
       <div

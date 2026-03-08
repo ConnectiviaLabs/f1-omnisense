@@ -247,7 +247,7 @@ function AnnotatedVideoPlayer({
   return (
     <div className="space-y-2">
       {/* Video + canvas overlay */}
-      <div ref={containerRef} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)]">
+      <div ref={containerRef} className="relative rounded-lg overflow-hidden border border-border">
         <video
           ref={videoRef}
           controls
@@ -276,7 +276,7 @@ function AnnotatedVideoPlayer({
 
       {/* Detection timeline heatmap */}
       {hasFrames && (
-        <div className="relative h-5 bg-[#0D1117] rounded overflow-hidden border border-[rgba(255,128,0,0.08)]">
+        <div className="relative h-5 bg-background rounded overflow-hidden border border-border">
           {frames.map((f, i) => {
             const detCount = f.detections?.filter(d =>
               (d.score ?? 0) >= confidenceThreshold && activeCategories.has(d.category)
@@ -307,7 +307,7 @@ function AnnotatedVideoPlayer({
 
       {/* AI narration for frame */}
       {activeNarration && (
-        <div className="bg-[#0D1117] border border-purple-500/20 rounded-lg p-2.5">
+        <div className="bg-background border border-purple-500/20 rounded-lg p-2.5">
           <div className="flex items-center gap-2 mb-1">
             <Brain className="w-3 h-3 text-purple-400" />
             <span className="text-[10px] text-purple-400 tracking-wider font-mono">AI INSIGHT</span>
@@ -332,7 +332,7 @@ function AnnotatedVideoPlayer({
                 className={`shrink-0 rounded-md px-2 py-1 text-center transition-all border ${
                   i === activeFrameIdx
                     ? 'bg-[#FF8000]/15 border-[#FF8000] text-[#FF8000]'
-                    : 'bg-[#0D1117] border-[rgba(255,128,0,0.12)] text-muted-foreground hover:border-[#FF8000]/30'
+                    : 'bg-background border-border text-muted-foreground hover:border-[#FF8000]/30'
                 }`}
               >
                 <div className="text-[9px] font-mono">{frameTimes[i].toFixed(1)}s</div>
@@ -532,7 +532,7 @@ export function MediaIntelligence() {
     <div className="space-y-3">
 
       {/* ── HEADER BAR ── */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
@@ -569,8 +569,8 @@ export function MediaIntelligence() {
 
       {/* ── VIDEO STRIP ── */}
       <div
-        className={`bg-[#1A1F2E] border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
-          uploadDragging ? 'border-[#FF8000]' : 'border-[rgba(255,128,0,0.12)]'
+        className={`bg-card border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 transition-colors ${
+          uploadDragging ? 'border-[#FF8000]' : 'border-border'
         }`}
         onDragOver={e => { e.preventDefault(); setUploadDragging(true); }}
         onDragLeave={() => setUploadDragging(false)}
@@ -598,10 +598,10 @@ export function MediaIntelligence() {
                 className={`shrink-0 w-36 rounded-lg overflow-hidden border transition-all ${
                   isSelected
                     ? 'border-[#FF8000] ring-1 ring-[#FF8000]/30'
-                    : 'border-[rgba(255,128,0,0.12)] hover:border-[#FF8000]/30'
+                    : 'border-border hover:border-[#FF8000]/30'
                 }`}
               >
-                <div className="h-20 bg-[#0D1117] relative">
+                <div className="h-20 bg-background relative">
                   {thumbFrame ? (
                     <img
                       src={`/media/gdino_results/${thumbFrame}`}
@@ -623,7 +623,7 @@ export function MediaIntelligence() {
                     )}
                   </div>
                 </div>
-                <div className="px-2 py-1.5 bg-[#0D1117]">
+                <div className="px-2 py-1.5 bg-background">
                   <div className="text-[10px] text-foreground truncate">{v.filename}</div>
                   <div className="text-[9px] text-muted-foreground">{v.size_mb} MB</div>
                 </div>
@@ -656,7 +656,7 @@ export function MediaIntelligence() {
             {/* LEFT — Video Player + Controls (col-span-8) */}
             <div className="col-span-8 space-y-3">
               {/* Controls bar — above player so it's always visible */}
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
+              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
                 <div className="flex items-center gap-4 flex-wrap">
                   {/* Analyze button */}
                   <button
@@ -704,7 +704,7 @@ export function MediaIntelligence() {
                           className={`text-[9px] px-1.5 py-0.5 rounded-full border transition-all ${
                             active
                               ? 'border-[#FF8000]/30 bg-[#FF8000]/15 text-[#FF8000]'
-                              : 'border-[rgba(255,128,0,0.06)] text-muted-foreground/40 line-through'
+                              : 'border-border text-muted-foreground/40 line-through'
                           }`}
                         >
                           {(cat ?? '').split(/\s+/)[0]}
@@ -722,7 +722,7 @@ export function MediaIntelligence() {
               </div>
 
               {/* Video Player */}
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                 <AnnotatedVideoPlayer
                   key={selectedVideo}
                   videoSrc={`/media/${encodeURIComponent(selectedVideo)}`}
@@ -739,7 +739,7 @@ export function MediaIntelligence() {
             <div className="col-span-4 space-y-3">
 
               {/* AI Insights */}
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+              <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                 <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                   <Brain className="w-3 h-3" />
                   AI INSIGHTS
@@ -788,7 +788,7 @@ export function MediaIntelligence() {
                 )}
 
                 {vlmAnalysis && (
-                  <div className="mt-2 pt-2 border-t border-[rgba(255,128,0,0.08)] text-[9px] text-muted-foreground font-mono">
+                  <div className="mt-2 pt-2 border-t border-border text-[9px] text-muted-foreground font-mono">
                     {vlmAnalysis.model} | {vlmAnalysis.frames_analyzed}f | {vlmAnalysis.tokens} tok | {vlmAnalysis.tok_per_s} tok/s
                   </div>
                 )}
@@ -796,7 +796,7 @@ export function MediaIntelligence() {
 
               {/* Detection Summary */}
               {summary.length > 0 && (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                   <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                     <Scan className="w-3 h-3" />
                     DETECTION SUMMARY
@@ -810,7 +810,7 @@ export function MediaIntelligence() {
                             {s.count}x · {Math.round(s.avgConfidence * 100)}%
                           </span>
                         </div>
-                        <div className="h-1 bg-[#0D1117] rounded-full overflow-hidden">
+                        <div className="h-1 bg-background rounded-full overflow-hidden">
                           <div
                             className="h-full bg-[#FF8000] rounded-full transition-all"
                             style={{ width: `${(s.count / maxCount) * 100}%` }}
@@ -824,7 +824,7 @@ export function MediaIntelligence() {
 
               {/* Classification */}
               {(vmae || tsf) && (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+                <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
                   <h3 className="text-[11px] text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
                     <Video className="w-3 h-3" />
                     CLASSIFICATION
@@ -835,7 +835,7 @@ export function MediaIntelligence() {
                         <div className="text-[9px] text-purple-400 tracking-wider mb-1">VideoMAE</div>
                         {vmae.top_predictions.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-[10px]">
-                            <div className="w-10 h-1 bg-[#222838] rounded-full overflow-hidden">
+                            <div className="w-10 h-1 bg-secondary rounded-full overflow-hidden">
                               <div className="h-full bg-purple-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
                             </div>
                             <span className="font-mono text-foreground w-8">{(p.score * 100).toFixed(0)}%</span>
@@ -849,7 +849,7 @@ export function MediaIntelligence() {
                         <div className="text-[9px] text-cyan-400 tracking-wider mb-1">TimeSformer</div>
                         {tsf.top_predictions.slice(0, 3).map((p, i) => (
                           <div key={i} className="flex items-center gap-2 text-[10px]">
-                            <div className="w-10 h-1 bg-[#222838] rounded-full overflow-hidden">
+                            <div className="w-10 h-1 bg-secondary rounded-full overflow-hidden">
                               <div className="h-full bg-cyan-400 rounded-full" style={{ width: `${p.score * 100}%` }} />
                             </div>
                             <span className="font-mono text-foreground w-8">{(p.score * 100).toFixed(0)}%</span>
@@ -867,7 +867,7 @@ export function MediaIntelligence() {
       })()}
 
       {/* ── CLIP VISUAL SEARCH (collapsible) ── */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
+      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)]">
         <button
           type="button"
           onClick={() => setClipExpanded(!clipExpanded)}
@@ -892,7 +892,7 @@ export function MediaIntelligence() {
                   value={clipQuery}
                   onChange={e => setClipQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') doClipSearch(clipQuery); }}
-                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.12)] rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-purple-400/40"
+                  className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-purple-400/40"
                 />
               </div>
               <button
@@ -913,7 +913,7 @@ export function MediaIntelligence() {
                   type="button"
                   onClick={() => { setSelectedTag(null); setClipResults(null); }}
                   className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
-                    !selectedTag ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
+                    !selectedTag ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-secondary'
                   }`}
                 >
                   All
@@ -926,7 +926,7 @@ export function MediaIntelligence() {
                       type="button"
                       onClick={() => { setSelectedTag(selectedTag === tag.label ? null : tag.label); setClipResults(null); }}
                       className={`text-[11px] px-2 py-0.5 rounded-full transition-all ${
-                        selectedTag === tag.label ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-[#222838]'
+                        selectedTag === tag.label ? 'bg-purple-500/20 text-purple-400' : 'text-muted-foreground hover:bg-secondary'
                       }`}
                     >
                       {shortLabel}
@@ -942,7 +942,7 @@ export function MediaIntelligence() {
                 <div className="text-[12px] text-muted-foreground mb-2">{clipResults.length} results for &quot;{clipQuery}&quot;</div>
                 <div className="grid grid-cols-6 gap-2">
                   {clipResults.map((r, i) => (
-                    <div key={r.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
+                    <div key={r.path} className="relative rounded-lg overflow-hidden border border-border hover:border-purple-400/30 transition-all group">
                       <img src={`/media/${r.path}`} alt={r.path} className="w-full h-20 object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                       <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 flex items-center justify-between">
@@ -966,7 +966,7 @@ export function MediaIntelligence() {
                   {filteredByTag.map(img => {
                     const tagScore = img.auto_tags.find(t => t.label === selectedTag)?.score ?? 0;
                     return (
-                      <div key={img.path} className="relative rounded-lg overflow-hidden border border-[rgba(255,128,0,0.12)] hover:border-purple-400/30 transition-all group">
+                      <div key={img.path} className="relative rounded-lg overflow-hidden border border-border hover:border-purple-400/30 transition-all group">
                         <img src={`/media/${img.path}`} alt={img.path} className="w-full h-20 object-cover" />
                         <div className="absolute bottom-0 left-0 right-0 px-1.5 py-0.5 bg-black/70">
                           <span className="text-[10px] text-purple-400 font-mono">{(tagScore * 100).toFixed(1)}%</span>

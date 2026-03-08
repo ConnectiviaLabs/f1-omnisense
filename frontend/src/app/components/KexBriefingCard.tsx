@@ -46,7 +46,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
     : [];
 
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+    <div className="bg-card border border-border rounded-xl p-4">
       <h3 className="text-sm text-muted-foreground flex items-center gap-2 mb-3">
         <IconComponent className="w-4 h-4" /> {title}
       </h3>
@@ -64,7 +64,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
           {radarData.length > 0 && (
             <ResponsiveContainer width="100%" height={220}>
               <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="72%">
-                <PolarGrid stroke="rgba(255,128,0,0.1)" />
+                <PolarGrid stroke="rgba(255,255,255,0.05)" />
                 <PolarAngleAxis
                   dataKey="dimension"
                   tick={{ fontSize: 9, fill: '#888' }}
@@ -78,7 +78,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
                 <Tooltip
                   contentStyle={{
                     background: '#1A1F2E',
-                    border: '1px solid rgba(255,128,0,0.2)',
+                    border: '1px solid rgba(255,255,255,0.1)',
                     fontSize: 11,
                     borderRadius: 8,
                   }}
@@ -152,7 +152,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
 
           {/* ── Full text (collapsible) ── */}
           {expanded && (
-            <div className="pt-1 border-t border-[rgba(255,128,0,0.08)]">
+            <div className="pt-1 border-t border-border">
               <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
                 {kex.text}
               </div>

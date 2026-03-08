@@ -46,7 +46,7 @@ const NAME_ALIASES: Record<string, string> = {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
     return (
-      <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+      <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
         <div className="text-muted-foreground mb-1">{label}</div>
         {payload.map((entry: any, i: number) => (
           <div key={i} className="flex items-center gap-2">
@@ -137,8 +137,8 @@ export function CircuitIntel() {
   return (
     <div className="flex gap-4 h-[calc(100vh-200px)]">
       {/* Left: Circuit List */}
-      <div className="w-72 shrink-0 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl overflow-y-auto">
-        <div className="p-3 border-b border-[rgba(255,128,0,0.08)]">
+      <div className="w-72 shrink-0 bg-card border border-border rounded-xl overflow-y-auto">
+        <div className="p-3 border-b border-border">
           <h3 className="text-sm text-muted-foreground flex items-center gap-2">
             <MapPin className="w-4 h-4" />
             {circuits.length} Circuits
@@ -152,7 +152,7 @@ export function CircuitIntel() {
               className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between ${
                 selected === c.circuit_slug
                   ? 'bg-[#FF8000]/10 text-[#FF8000]'
-                  : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
               <div>
@@ -179,7 +179,7 @@ export function CircuitIntel() {
         ) : (
           <>
             {/* Header */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <h2 className="text-foreground text-lg font-semibold">{selectedCircuit?.circuit_name}</h2>
               <div className="flex flex-wrap gap-4 mt-3">
                 <InfoChip icon={<MapPin className="w-3.5 h-3.5" />} label="Length" value={`${((selectedCircuit?.computed_length_m || 0) / 1000).toFixed(2)} km`} />
@@ -201,7 +201,7 @@ export function CircuitIntel() {
               const ci = SLUG_TO_CIRCUIT.get(slug) ?? SLUG_TO_CIRCUIT.get(NAME_ALIASES[slug] ?? '');
               if (!ci) return null;
               return (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                   <TrackMap
                     geojsonPath={ci.geojsonPath}
                     circuitName={ci.circuitName}
@@ -219,7 +219,7 @@ export function CircuitIntel() {
 
             {/* Pit Loss */}
             {selectedPitLoss && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-xl p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Timer className="w-4 h-4" /> Pit Stop Analysis</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <PitCard label="Pit Lane Loss" value={selectedPitLoss.est_pit_lane_loss_s} unit="s" />
@@ -239,11 +239,11 @@ export function CircuitIntel() {
 
             {/* Air Density History */}
             {selectedAirData.length > 0 && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-xl p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Wind className="w-4 h-4" /> Environmental Conditions by Year</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={selectedAirData}>
-                    <CartesianGrid stroke="rgba(255,128,0,0.08)" />
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="year" tick={{ fill: '#888', fontSize: 11 }} />
                     <YAxis yAxisId="temp" tick={{ fill: '#888', fontSize: 11 }} />
                     <YAxis yAxisId="density" orientation="right" tick={{ fill: '#888', fontSize: 11 }} />
@@ -270,7 +270,7 @@ export function CircuitIntel() {
               const slowest = pitLossRanking[0].est_pit_lane_loss_s;
               const pct = ((val - fastest) / (slowest - fastest)) * 100;
               return (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <div className="bg-card border border-border rounded-xl p-4">
                   <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                     <Timer className="w-4 h-4" /> Pit Lane Loss Rank
                   </h3>
@@ -284,7 +284,7 @@ export function CircuitIntel() {
                         <span>Fastest ({fastest.toFixed(1)}s)</span>
                         <span>Slowest ({slowest.toFixed(1)}s)</span>
                       </div>
-                      <div className="h-2.5 bg-[#0D1117] rounded-full overflow-hidden relative">
+                      <div className="h-2.5 bg-background rounded-full overflow-hidden relative">
                         <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #22c55e, #eab308, #ef4444)' , opacity: 0.3 }} />
                         <div
                           className="absolute top-0 w-3 h-2.5 bg-[#FF8000] rounded-full border-2 border-[#1A1F2E]"
@@ -308,7 +308,7 @@ export function CircuitIntel() {
             {history && (
               <>
                 {/* KPI row */}
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <div className="bg-card border border-border rounded-xl p-4">
                   <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                     <Trophy className="w-4 h-4" /> Race History Overview
                   </h3>
@@ -322,14 +322,14 @@ export function CircuitIntel() {
 
                 {/* Winners Table */}
                 {history.winners.length > 0 && (
-                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-xl p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <Flag className="w-4 h-4" /> Race Winners
                     </h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="text-muted-foreground text-[11px] border-b border-[rgba(255,128,0,0.08)]">
+                          <tr className="text-muted-foreground text-[11px] border-b border-border">
                             <th className="text-left py-2 px-2">Season</th>
                             <th className="text-left py-2 px-2">Winner</th>
                             <th className="text-left py-2 px-2">Constructor</th>
@@ -338,7 +338,7 @@ export function CircuitIntel() {
                         </thead>
                         <tbody>
                           {[...history.winners].reverse().map(w => (
-                            <tr key={w.season} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-[#222838]/50">
+                            <tr key={w.season} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-secondary/50">
                               <td className="py-2 px-2 font-mono text-muted-foreground">{w.season}</td>
                               <td className="py-2 px-2 text-foreground font-semibold">{w.driver_code}</td>
                               <td className="py-2 px-2 text-muted-foreground">{w.constructor}</td>
@@ -357,13 +357,13 @@ export function CircuitIntel() {
 
                 {/* Constructor Dominance */}
                 {history.top_constructors.length > 0 && (
-                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-xl p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <Users className="w-4 h-4" /> Constructor Points at This Circuit
                     </h3>
                     <ResponsiveContainer width="100%" height={Math.max(200, history.top_constructors.length * 32)}>
                       <BarChart data={history.top_constructors} layout="vertical" margin={{ left: 80, right: 20 }}>
-                        <CartesianGrid stroke="rgba(255,128,0,0.06)" horizontal={false} />
+                        <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
                         <XAxis type="number" tick={{ fill: '#888', fontSize: 11 }} />
                         <YAxis type="category" dataKey="name" tick={{ fill: '#ccc', fontSize: 11 }} width={75} />
                         <Tooltip content={<CustomTooltip />} />
@@ -379,7 +379,7 @@ export function CircuitIntel() {
 
                 {/* Podium Kings */}
                 {history.top_podiums.length > 0 && (
-                  <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                  <div className="bg-card border border-border rounded-xl p-4">
                     <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                       <TrendingUp className="w-4 h-4" /> Most Podiums at This Circuit
                     </h3>
@@ -387,7 +387,7 @@ export function CircuitIntel() {
                       {history.top_podiums.map((p, i) => (
                         <div
                           key={p.driver}
-                          className="flex items-center gap-2 bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg px-3 py-2"
+                          className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2"
                         >
                           <span className={`font-mono text-sm font-bold ${i === 0 ? 'text-[#FFD700]' : i === 1 ? 'text-[#C0C0C0]' : i === 2 ? 'text-[#CD7F32]' : 'text-muted-foreground'}`}>
                             {p.count}
@@ -419,7 +419,7 @@ export function CircuitIntel() {
 
 function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg px-3 py-2">
+    <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2">
       <span className="text-[#FF8000]">{icon}</span>
       <div>
         <div className="text-[10px] text-muted-foreground">{label}</div>
@@ -431,7 +431,7 @@ function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string
 
 function PitCard({ label, value, unit, precision = 2 }: { label: string; value: number | null | undefined; unit: string; precision?: number }) {
   return (
-    <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg p-3">
+    <div className="bg-background border border-border rounded-lg p-3">
       <div className="text-[11px] text-muted-foreground mb-1">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-foreground font-mono text-lg">{value != null ? value.toFixed(precision) : '—'}</span>

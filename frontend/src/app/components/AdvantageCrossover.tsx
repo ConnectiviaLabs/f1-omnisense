@@ -183,7 +183,7 @@ function CircularProgress({ value, size = 140 }: { value: number; size?: number 
 function EntityMetricCard({ code, metrics }: { code: string; metrics: Record<string, number> }) {
   const entries = Object.entries(metrics).slice(0, 8);
   return (
-    <div className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+    <div className="rounded-lg border border-border bg-card/30 p-4">
       <div className="text-sm font-semibold text-[#FF8000] mb-3">{code}</div>
       <div className="space-y-1.5">
         {entries.map(([k, v]) => (
@@ -386,7 +386,7 @@ export function AdvantageCrossover() {
       {/* Controls Bar */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         {/* Entity Type Tabs */}
-        <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5">
+        <div className="flex items-center gap-1 bg-card rounded-lg p-0.5">
           {ENTITY_TABS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
@@ -416,7 +416,7 @@ export function AdvantageCrossover() {
         <select
           value={source}
           onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
-          className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/40 transition-colors"
+          className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-[#FF8000]/40 transition-colors"
         >
           {SOURCE_OPTIONS.filter(o => o.entities.includes(entityType)).map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
@@ -431,7 +431,7 @@ export function AdvantageCrossover() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'matrix'
               ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
-              : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+              : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
           <Grid3X3 className="w-3.5 h-3.5" />
@@ -442,7 +442,7 @@ export function AdvantageCrossover() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'cluster'
               ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
-              : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+              : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
           <ScatterIcon className="w-3.5 h-3.5" />
@@ -453,7 +453,7 @@ export function AdvantageCrossover() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'insight'
               ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
-              : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+              : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
           <Brain className="w-3.5 h-3.5" />
@@ -464,7 +464,7 @@ export function AdvantageCrossover() {
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[12px] tracking-wide transition-all border ${
             activeView === 'compare'
               ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
-              : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+              : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
           }`}
         >
           <GitCompareArrows className="w-3.5 h-3.5" />
@@ -514,8 +514,8 @@ export function AdvantageCrossover() {
           )}
 
           {matrixData && (
-            <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-[rgba(255,128,0,0.08)] flex items-center justify-between">
+            <div className="rounded-xl border border-border bg-card/30 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <span className="text-sm text-foreground font-medium">
                   {matrixData.count} {entityType}s — {matrixData.source}
                 </span>
@@ -530,11 +530,11 @@ export function AdvantageCrossover() {
                 <table className="w-full text-[11px]">
                   <thead>
                     <tr>
-                      <th className="sticky top-0 left-0 z-20 bg-[#1A1F2E] px-2 py-1.5 text-left text-muted-foreground font-medium" />
+                      <th className="sticky top-0 left-0 z-20 bg-card px-2 py-1.5 text-left text-muted-foreground font-medium" />
                       {matrixData.entities.map(e => (
                         <th
                           key={e}
-                          className="sticky top-0 z-10 bg-[#1A1F2E] px-1.5 py-1.5 text-center text-muted-foreground font-medium whitespace-nowrap"
+                          className="sticky top-0 z-10 bg-card px-1.5 py-1.5 text-center text-muted-foreground font-medium whitespace-nowrap"
                           style={{ writingMode: matrixData.count > 15 ? 'vertical-rl' : undefined, minWidth: matrixData.count > 15 ? '28px' : '48px' }}
                         >
                           {e}
@@ -545,7 +545,7 @@ export function AdvantageCrossover() {
                   <tbody>
                     {matrixData.entities.map((rowEntity, i) => (
                       <tr key={rowEntity}>
-                        <td className="sticky left-0 z-10 bg-[#1A1F2E] px-2 py-1 text-foreground font-medium whitespace-nowrap border-r border-[rgba(255,128,0,0.06)]">
+                        <td className="sticky left-0 z-10 bg-card px-2 py-1 text-foreground font-medium whitespace-nowrap border-r border-border">
                           {rowEntity}
                         </td>
                         {matrixData.matrix[i].map((score, j) => (
@@ -593,7 +593,7 @@ export function AdvantageCrossover() {
                     value={nClusters}
                     onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
                     title="Number of clusters"
-                    className="w-14 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                    className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
                   />
                 </div>
               </div>
@@ -613,7 +613,7 @@ export function AdvantageCrossover() {
           {clusterData && (
             <div className="space-y-4">
               {/* Scatter Plot */}
-              <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+              <div className="rounded-xl border border-border bg-card/30 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-foreground font-medium">PCA Projection</span>
                   <div className="flex items-center gap-3">
@@ -626,7 +626,7 @@ export function AdvantageCrossover() {
                         value={nClusters}
                         onChange={e => setNClusters(Math.max(2, Math.min(8, parseInt(e.target.value) || 4)))}
                         title="Number of clusters"
-                        className="w-14 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
+                        className="w-14 bg-card border border-border rounded px-2 py-1 text-sm text-foreground text-center focus:outline-none focus:border-[#FF8000]/40"
                       />
                       <button
                         type="button"
@@ -672,7 +672,7 @@ export function AdvantageCrossover() {
                         if (!active || !payload?.length) return null;
                         const d = payload[0].payload as ClusterEntity;
                         return (
-                          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.2)] rounded-lg px-3 py-2 text-[12px]">
+                          <div className="bg-card border border-[rgba(255,128,0,0.2)] rounded-lg px-3 py-2 text-[12px]">
                             <div className="text-foreground font-medium">{d.code}</div>
                             <div className="text-muted-foreground">{d.team}</div>
                             <div className="text-muted-foreground/60 mt-1">Cluster {d.cluster}</div>
@@ -710,7 +710,7 @@ export function AdvantageCrossover() {
                   return (
                     <div
                       key={c.id}
-                      className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-3"
+                      className="rounded-lg border border-border bg-card/30 p-3"
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <div
@@ -739,7 +739,7 @@ export function AdvantageCrossover() {
                         ))}
                       </div>
                       {profileEntries.length > 0 && (
-                        <div className="border-t border-[rgba(255,128,0,0.06)] pt-2 mt-1 space-y-1">
+                        <div className="border-t border-border pt-2 mt-1 space-y-1">
                           {profileEntries.map(([k, v]) => (
                             <div key={k} className="flex items-center justify-between text-[10px]">
                               <span className="text-muted-foreground/70">{k.replace(/_/g, ' ')}</span>
@@ -755,7 +755,7 @@ export function AdvantageCrossover() {
 
               {/* Discriminating Features — what separates these clusters */}
               {clusterData.discriminators && clusterData.discriminators.length > 0 && (
-                <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+                <div className="rounded-xl border border-border bg-card/30 p-4">
                   <div className="text-sm font-medium text-foreground mb-3">
                     What Separates These Clusters
                   </div>
@@ -774,7 +774,7 @@ export function AdvantageCrossover() {
                             );
                           })}
                         </div>
-                        <div className="w-16 bg-[#0D1117]/60 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-16 bg-background/60 rounded-full h-1.5 overflow-hidden">
                           <div
                             className="h-full rounded-full bg-[#FF8000]"
                             style={{ width: `${Math.min(100, d.spread * 100)}%` }}
@@ -847,7 +847,7 @@ export function AdvantageCrossover() {
               </div>
 
               {/* LLM Insight */}
-              <div className="rounded-xl border border-[rgba(255,128,0,0.12)] bg-[rgba(255,128,0,0.04)] p-4">
+              <div className="rounded-xl border border-border bg-[rgba(255,128,0,0.04)] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Brain className="w-4 h-4 text-[#FF8000]" />
                   <span className="text-sm font-medium text-[#FF8000]">Pattern Analysis</span>
@@ -877,7 +877,7 @@ export function AdvantageCrossover() {
       {activeView === 'compare' && (
         <div className="space-y-4">
           {/* Entity Selector */}
-          <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+          <div className="rounded-xl border border-border bg-card/30 p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-foreground">
                 Select {entityType}s to compare <span className="text-muted-foreground/50 text-[11px]">(2-8)</span>
@@ -907,7 +907,7 @@ export function AdvantageCrossover() {
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] transition-all border ${
                         selected
                           ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
-                          : 'border-[rgba(255,128,0,0.06)] bg-[#0D1117]/40 text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.15)]'
+                          : 'border-border bg-background/40 text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.15)]'
                       }`}
                     >
                       {code}
@@ -923,7 +923,7 @@ export function AdvantageCrossover() {
             )}
 
             {/* Selected chips summary + Compare button */}
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[rgba(255,128,0,0.06)]">
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
               <span className="text-[11px] text-muted-foreground">
                 {selectedEntities.length} selected{selectedEntities.length >= 8 && ' (max)'}
               </span>
@@ -961,7 +961,7 @@ export function AdvantageCrossover() {
                 ].map(stat => {
                   const { color } = simLabel(stat.value);
                   return (
-                    <div key={stat.label} className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-3 text-center">
+                    <div key={stat.label} className="rounded-lg border border-border bg-card/30 p-3 text-center">
                       <div className="text-[11px] text-muted-foreground mb-1">{stat.label}</div>
                       <div className="text-xl font-bold font-mono" style={{ color }}>{(stat.value * 100).toFixed(1)}%</div>
                       {stat.pair && (
@@ -975,13 +975,13 @@ export function AdvantageCrossover() {
               </div>
 
               {/* Pairwise cards */}
-              <div className="rounded-xl border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/30 p-4">
+              <div className="rounded-xl border border-border bg-card/30 p-4">
                 <div className="text-sm font-medium text-foreground mb-3">Pairwise Similarity</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
                   {compareData.pairs.map((p, i) => {
                     const { color } = simLabel(p.similarity);
                     return (
-                      <div key={i} className="rounded-lg border border-[rgba(255,128,0,0.06)] bg-[#0D1117]/40 p-3 flex flex-col items-center gap-1.5">
+                      <div key={i} className="rounded-lg border border-border bg-background/40 p-3 flex flex-col items-center gap-1.5">
                         <div className="flex items-center gap-2 text-[12px]">
                           <span className="text-foreground font-medium">{p.a}</span>
                           <span className="text-muted-foreground/30">↔</span>
@@ -1000,7 +1000,7 @@ export function AdvantageCrossover() {
 
           {/* ── Cross-Entity Intelligence Panel ──────────── */}
           {compareData && (
-            <div className="rounded-xl border border-[rgba(255,128,0,0.12)] bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
+            <div className="rounded-xl border border-border bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Brain className="w-4 h-4 text-[#FF8000]" />
                 <span className="text-sm font-medium text-[#FF8000]">Cross-Entity Intelligence</span>
@@ -1014,7 +1014,7 @@ export function AdvantageCrossover() {
                       key={i}
                       onClick={() => { setCrossQuery(q); fetchCrossInsight(q); }}
                       disabled={crossInsightLoading}
-                      className="text-left px-3 py-2 rounded-lg text-[11px] text-muted-foreground bg-[#0D1117]/40 border border-[rgba(255,128,0,0.06)] hover:border-[rgba(255,128,0,0.2)] hover:text-foreground transition-all disabled:opacity-40"
+                      className="text-left px-3 py-2 rounded-lg text-[11px] text-muted-foreground bg-background/40 border border-border hover:border-[rgba(255,128,0,0.2)] hover:text-foreground transition-all disabled:opacity-40"
                     >
                       {q}
                     </button>
@@ -1031,7 +1031,7 @@ export function AdvantageCrossover() {
                   onChange={e => setCrossQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && crossQuery.trim()) fetchCrossInsight(crossQuery); }}
                   placeholder={`Ask about ${selectedEntities.join(', ')}...`}
-                  className="flex-1 bg-[#0D1117]/60 border border-[rgba(255,128,0,0.1)] rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/40 transition-colors"
+                  className="flex-1 bg-background/60 border border-border rounded-lg px-3 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#FF8000]/40 transition-colors"
                 />
                 <button
                   onClick={() => fetchCrossInsight(crossQuery)}
@@ -1044,12 +1044,12 @@ export function AdvantageCrossover() {
 
               {/* Insight display — KeX briefing style */}
               {crossInsight && (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4 space-y-3">
+                <div className="bg-card border border-border rounded-xl p-4 space-y-3">
                   {/* Correlation pills */}
                   {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {crossInsight.correlations_found.slice(0, 4).map((c, i) => (
-                        <div key={i} className="text-[9px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-[rgba(255,128,0,0.1)]">
+                        <div key={i} className="text-[9px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-border">
                           <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
                           {c.converging.length > 0 && (
                             <span className="text-[#05DF72]/80 ml-1.5">+{c.converging.length} converging</span>
@@ -1089,13 +1089,13 @@ export function AdvantageCrossover() {
 
                   {/* Full text (collapsible) */}
                   {insightExpanded && (
-                    <div className="pt-1 border-t border-[rgba(255,128,0,0.08)]">
+                    <div className="pt-1 border-t border-border">
                       <div className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-line">
                         {crossInsight.insight}
                       </div>
                       {/* Detailed correlations in expanded view */}
                       {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
-                        <div className="border-t border-[rgba(255,128,0,0.06)] pt-3 mt-3 space-y-2">
+                        <div className="border-t border-border pt-3 mt-3 space-y-2">
                           <div className="text-[11px] text-muted-foreground font-medium">Metric Correlations</div>
                           {crossInsight.correlations_found.slice(0, 6).map((c, i) => (
                             <div key={i} className="text-[11px] space-y-0.5">

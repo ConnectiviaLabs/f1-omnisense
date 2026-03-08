@@ -152,7 +152,7 @@ const outcomeColors: Record<string, string> = {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+    <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
       <div className="text-muted-foreground mb-1">{label}</div>
       {payload.map((e: any, i: number) => (
         <div key={i} className="flex items-center gap-2">
@@ -171,7 +171,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 function MetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4 text-center">
+    <div className="bg-card border border-border rounded-xl p-4 text-center">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{label}</div>
       <div className="text-2xl font-bold font-mono" style={{ color: color || '#FF8000' }}>{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
@@ -191,7 +191,7 @@ function ConfusionMatrixDisplay({ cm }: { cm: ConfusionMatrix }) {
     </div>
   );
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+    <div className="bg-card border border-border rounded-xl p-4">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Confusion Matrix</div>
       <div className="grid grid-cols-2 gap-2">
         {cell(cm.true_positive, 'True Positive', true)}
@@ -224,7 +224,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
     ? '#ef4444' : cs.composite_risk_level === 'medium' ? '#f59e0b' : '#05DF72';
 
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+    <div className="bg-card border border-border rounded-xl p-4">
       {/* Header row */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -303,7 +303,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
 
       {/* Composite Risk Bar */}
       {cs.composite_risk != null && (
-        <div className="mt-2 bg-[#0D1117] rounded-lg p-2">
+        <div className="mt-2 bg-background rounded-lg p-2">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
               <Layers className="w-2.5 h-2.5" /> Composite Risk
@@ -312,7 +312,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
               {cs.composite_risk.toFixed(0)} <span className="text-[8px] capitalize">({cs.composite_risk_level})</span>
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-[#1A1F2E] overflow-hidden">
+          <div className="h-1.5 rounded-full bg-card overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{ width: `${Math.min(cs.composite_risk, 100)}%`, backgroundColor: riskColor }}
@@ -385,7 +385,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
       {expanded && (
         <div className="mt-1.5 space-y-2">
           {/* Reasons */}
-          <div className="pl-3 border-l border-[rgba(255,128,0,0.1)] space-y-0.5">
+          <div className="pl-3 border-l border-border space-y-0.5">
             {cs.reasons.map((r, i) => (
               <div key={i} className="text-[10px] text-muted-foreground">
                 <span className="text-[#FF8000] mr-1">&rarr;</span> {r}
@@ -395,7 +395,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
 
           {/* System health breakdown */}
           {cs.predicted_systems && Object.keys(cs.predicted_systems).length > 0 && (
-            <div className="bg-[#0D1117] rounded-lg p-2">
+            <div className="bg-background rounded-lg p-2">
               <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">System Health</div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                 {Object.entries(cs.predicted_systems).map(([sys, sh]) => {
@@ -414,7 +414,7 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
 
           {/* KeX per-case insight */}
           {insight && (
-            <div className="bg-[#0D1117] rounded-lg p-2 border-l-2 border-[#FF8000]/30">
+            <div className="bg-background rounded-lg p-2 border-l-2 border-[#FF8000]/30">
               <div className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1 flex items-center gap-1">
                 KeX Insight
               </div>
@@ -517,7 +517,7 @@ export function BacktestView() {
   return (
     <div className="space-y-4">
       {/* ── Header + Controls ── */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <FlaskConical className="w-5 h-5 text-[#FF8000]" />
@@ -641,7 +641,7 @@ export function BacktestView() {
 
           {/* ── Composite Risk Distribution ── */}
           {m.composite_risk_distribution && Object.keys(m.composite_risk_distribution).length > 0 && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Layers className="w-3.5 h-3.5 text-[#FF8000]" />
                 Composite Risk Distribution
@@ -658,7 +658,7 @@ export function BacktestView() {
                     <div key={level} className="flex-1 text-center">
                       <div className="text-lg font-bold font-mono" style={{ color: colors[level] }}>{count}</div>
                       <div className="text-[9px] text-muted-foreground capitalize">{level}</div>
-                      <div className="mt-1 h-1.5 rounded-full bg-[#0D1117] overflow-hidden">
+                      <div className="mt-1 h-1.5 rounded-full bg-background overflow-hidden">
                         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: colors[level] }} />
                       </div>
                     </div>
@@ -676,7 +676,7 @@ export function BacktestView() {
                 <span
                   key={model}
                   className={`text-[9px] px-2 py-0.5 rounded-full font-mono ${
-                    active ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-[#1A1F2E] text-muted-foreground/40 border border-[rgba(255,128,0,0.05)]'
+                    active ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-card text-muted-foreground/40 border border-[rgba(255,128,0,0.05)]'
                   }`}
                 >
                   {model === 'anomaly' && <Zap className="w-2.5 h-2.5 inline mr-1" />}
@@ -693,7 +693,7 @@ export function BacktestView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <ConfusionMatrixDisplay cm={m.confusion_matrix} />
 
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Outcome Distribution</div>
               <ResponsiveContainer width="100%" height={180}>
                 <BarChart data={outcomeData} layout="vertical" margin={{ left: 10, right: 10 }}>
@@ -711,7 +711,7 @@ export function BacktestView() {
           {/* ── Team Accuracy + System Prediction Value ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {teamAccData.length > 0 && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-xl p-4">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Per-Team Accuracy</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={teamAccData} margin={{ left: 0, right: 10 }}>
@@ -727,11 +727,11 @@ export function BacktestView() {
             )}
 
             {systemData.length > 0 && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-xl p-4">
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">System Prediction Value</div>
                 <ResponsiveContainer width="100%" height={220}>
                   <RadarChart data={systemData} cx="50%" cy="50%" outerRadius="68%">
-                    <PolarGrid stroke="rgba(255,128,0,0.1)" />
+                    <PolarGrid stroke="rgba(255,255,255,0.05)" />
                     <PolarAngleAxis dataKey="system" tick={{ fontSize: 9, fill: '#888' }} />
                     <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 8, fill: '#555' }} />
                     <Tooltip content={<CustomTooltip />} />
@@ -748,7 +748,7 @@ export function BacktestView() {
               <div className="flex items-center gap-2 mb-3">
                 <Target className="w-4 h-4 text-[#FF8000]" />
                 <h3 className="text-sm font-semibold text-foreground">Case Study Candidates</h3>
-                <span className="text-[9px] text-muted-foreground bg-[#1A1F2E] px-2 py-0.5 rounded-full">
+                <span className="text-[9px] text-muted-foreground bg-card px-2 py-0.5 rounded-full">
                   Top {data.case_studies.length}
                 </span>
               </div>

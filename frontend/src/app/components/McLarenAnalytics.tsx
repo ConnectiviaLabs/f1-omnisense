@@ -45,7 +45,7 @@ const matchSeason = (docSeason: any, year: string) => String(docSeason) === year
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+    <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
       <div className="text-muted-foreground mb-1">{label}</div>
       {payload.map((e: any, i: number) => (
         <div key={i} className="flex items-center gap-2">
@@ -70,7 +70,7 @@ function Divider({ label }: { label: string }) {
 
 function KPI({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-3">
+    <div className="bg-card border border-border rounded-xl p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -563,7 +563,7 @@ export function McLarenAnalytics() {
           <p className="text-[10px] text-[#FF8000]/60 tracking-[0.25em] font-semibold">MCLAREN F1 TEAM</p>
           <h2 className="text-sm text-foreground">Competitive Intelligence</h2>
         </div>
-        <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5 border border-[rgba(255,128,0,0.12)]">
+        <div className="flex items-center gap-1 bg-card rounded-lg p-0.5 border border-border">
           {availableYears.map(y => (
             <button key={y} onClick={() => setYear(y)}
               className={`text-sm px-3 py-1.5 rounded-md transition-all ${year === y ? 'bg-[#FF8000]/10 text-[#FF8000]' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -651,7 +651,7 @@ export function McLarenAnalytics() {
               if (!v) return null;
               const color = driverColors[idx];
               return (
-                <div key={v.code} className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <div key={v.code} className="bg-card border border-border rounded-xl p-4">
                   <div className="flex items-center gap-4">
                     <HealthGauge value={v.overallHealth} size={60} strokeWidth={5} showLabel={false} />
                     <div className="flex-1">
@@ -669,7 +669,7 @@ export function McLarenAnalytics() {
                             <div key={sys.name} className="flex items-center gap-2">
                               <Icon className="w-3 h-3 shrink-0" style={{ color: levelColor(sys.level) }} />
                               <span className="text-[11px] text-muted-foreground w-24 truncate">{sys.name}</span>
-                              <div className="flex-1 h-1.5 bg-[#222838] rounded-full overflow-hidden">
+                              <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
                                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
                               </div>
                               <span className="text-[11px] font-mono w-8 text-right" style={{ color: levelColor(sys.level) }}>{sys.health}%</span>
@@ -692,7 +692,7 @@ export function McLarenAnalytics() {
       {/* Section 3: Championship Trajectory */}
       <Divider label="CHAMPIONSHIP TRAJECTORY" />
       <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-8 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="col-span-8 bg-card border border-border rounded-xl p-4">
           <h3 className="text-sm text-foreground mb-1">Points Progression</h3>
           <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers.join(' + ')} + Constructors cumulative</p>
           <div className="h-[260px]">
@@ -711,7 +711,7 @@ export function McLarenAnalytics() {
                       <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="race" stroke="#8888a0" fontSize={9} angle={-30} textAnchor="end" height={50} />
                   <YAxis stroke="#8888a0" fontSize={10} />
                   <Tooltip content={<CustomTooltip />} />
@@ -727,7 +727,7 @@ export function McLarenAnalytics() {
           </div>
         </div>
 
-        <div className="col-span-4 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="col-span-4 bg-card border border-border rounded-xl p-4">
           <h3 className="text-sm text-foreground mb-1">Constructors Gap</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Points to nearest rivals</p>
           <div className="space-y-2">
@@ -756,13 +756,13 @@ export function McLarenAnalytics() {
         <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-[#FF8000] animate-spin" /></div>
       ) : telemetryData.length > 0 && mcLarenDrivers.length >= 2 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <h3 className="text-sm text-foreground mb-1">Top Speed</h3>
             <p className="text-[12px] text-muted-foreground mb-3">{mcLarenDrivers[0]} vs {mcLarenDrivers[1]} — km/h per race</p>
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={telemetryData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="race" stroke="#8888a0" fontSize={9} angle={-30} textAnchor="end" height={50} />
                   <YAxis stroke="#8888a0" fontSize={10} domain={['dataMin - 5', 'dataMax + 5']} />
                   <Tooltip content={<CustomTooltip />} />
@@ -773,7 +773,7 @@ export function McLarenAnalytics() {
             </div>
           </div>
 
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <h3 className="text-sm text-foreground mb-1">Driving Style</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Season avg throttle / brake / DRS %</p>
             <div className="h-[220px]">
@@ -790,7 +790,7 @@ export function McLarenAnalytics() {
                 return (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                       <XAxis type="number" stroke="#8888a0" fontSize={10} unit="%" />
                       <YAxis dataKey="metric" type="category" stroke="#8888a0" fontSize={11} width={80} />
                       <Tooltip content={<CustomTooltip />} />
@@ -810,14 +810,14 @@ export function McLarenAnalytics() {
       {/* Section 5: Pit Wall Strategy */}
       <Divider label="PIT WALL STRATEGY" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Timer className="w-3.5 h-3.5 text-[#FF8000]" />Pit Stop Duration</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Average per race (seconds)</p>
           <div className="h-[220px]">
             {pitStopData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={pitStopData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="race" stroke="#8888a0" fontSize={9} angle={-30} textAnchor="end" height={50} />
                   <YAxis stroke="#8888a0" fontSize={10} />
                   <Tooltip content={<CustomTooltip />} />
@@ -833,14 +833,14 @@ export function McLarenAnalytics() {
           </div>
         </div>
 
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-[#FF8000]" />Tire Strategy</h3>
           <p className="text-[12px] text-muted-foreground mb-3">Compound selection per race</p>
           {tireGrid.races.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-[11px]">
                 <thead>
-                  <tr className="border-b border-[rgba(255,128,0,0.08)]">
+                  <tr className="border-b border-border">
                     <th className="text-left py-1 px-1 text-muted-foreground font-normal w-10">Driver</th>
                     {tireGrid.races.map(r => (
                       <th key={r} className="text-center py-1 px-0.5 text-muted-foreground font-normal">{r.slice(0, 5)}</th>
@@ -875,13 +875,13 @@ export function McLarenAnalytics() {
       <Divider label="MCLAREN VS THE WORLD" />
       {worldComparison.pointsPerRace.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><TrendingUp className="w-3.5 h-3.5 text-[#FF8000]" />Points Per Race</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — avg points per GP</p>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={worldComparison.pointsPerRace} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis type="number" stroke="#8888a0" fontSize={10} />
                   <YAxis dataKey="code" type="category" stroke="#8888a0" fontSize={11} width={40} />
                   <Tooltip content={<CustomTooltip />} />
@@ -895,13 +895,13 @@ export function McLarenAnalytics() {
             </div>
           </div>
 
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <h3 className="text-sm text-foreground mb-1 flex items-center gap-2"><Users className="w-3.5 h-3.5 text-[#FF8000]" />Average Finish Position</h3>
             <p className="text-[12px] text-muted-foreground mb-3">Top 12 drivers — lower is better</p>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={worldComparison.avgFinish} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis type="number" stroke="#8888a0" fontSize={10} reversed />
                   <YAxis dataKey="code" type="category" stroke="#8888a0" fontSize={11} width={40} />
                   <Tooltip content={<CustomTooltip />} />
@@ -921,7 +921,7 @@ export function McLarenAnalytics() {
 
       {/* Section 7: Race Results */}
       <Divider label="RACE RESULTS" />
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="space-y-1">
           <div className={`grid gap-2 px-2 py-1 text-[11px] text-muted-foreground tracking-wider`}
             style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>
@@ -930,7 +930,7 @@ export function McLarenAnalytics() {
             <span>WIN</span><span>TEAM</span><span>+PTS</span>
           </div>
           {raceResultsTable.map(r => (
-            <div key={r.round} className="grid gap-2 px-2 py-1.5 rounded-lg hover:bg-[#222838] transition-colors text-sm items-center"
+            <div key={r.round} className="grid gap-2 px-2 py-1.5 rounded-lg hover:bg-secondary transition-colors text-sm items-center"
               style={{ gridTemplateColumns: `40px 160px ${mcLarenDrivers.map(() => '60px').join(' ')} 60px 100px 60px` }}>
               <span className="text-[#FF8000] font-mono">R{r.round}</span>
               <span className="text-foreground truncate">{r.gp}</span>

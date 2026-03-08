@@ -84,9 +84,9 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
   const isPrime = platform === 'prime';
 
   return (
-    <aside className="w-[220px] min-h-full bg-[#0D1117] border-r border-[rgba(255,128,0,0.12)] flex flex-col">
+    <aside className="w-[220px] min-h-full bg-background border-r border-border flex flex-col">
       {/* Logo Area — click to go home */}
-      <button onClick={onGoHome} className="p-4 border-b border-[rgba(255,128,0,0.12)] text-left hover:bg-[#1A1F2E]/50 transition-colors">
+      <button onClick={onGoHome} className="p-4 border-b border-border text-left hover:bg-card/50 transition-colors">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-[#FF8000] flex items-center justify-center">
             <Activity className="w-4 h-4 text-[#0D1117]" />
@@ -115,7 +115,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === id
                     ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                    : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -138,7 +138,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                     className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                       isActive
                         ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                        : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                     }`}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
@@ -150,7 +150,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                     )}
                   </button>
                   {isActive && (
-                    <div className="ml-4 border-l border-[rgba(255,128,0,0.1)] pl-1 my-0.5">
+                    <div className="ml-4 border-l border-border pl-1 my-0.5">
                       {PILLAR_ITEMS.map(({ id: pid, label: pLabel, icon: PIcon }) => (
                         <button
                           key={pid}
@@ -184,7 +184,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === 'prime-strategy' && activeStrategyTab === sid
                     ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                    : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
                 <SIcon className="w-4 h-4 shrink-0" />
@@ -205,7 +205,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                   activeView === id
                     ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                    : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
                 }`}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -225,7 +225,7 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all border-l-[1.5px] ${
                 activeView === id
                   ? 'bg-[#FF8000]/10 text-[#FF8000] border-l-[#FF8000] font-medium'
-                  : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground border-l-transparent'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground border-l-transparent'
               }`}
             >
               <Icon className="w-4 h-4 shrink-0" />

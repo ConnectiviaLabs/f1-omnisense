@@ -200,14 +200,14 @@ export function TrackMapGL({
   // ─── Render ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className={`bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] flex items-center justify-center ${className}`} style={{ height }}>
+      <div className={`bg-card rounded-xl border border-border flex items-center justify-center ${className}`} style={{ height }}>
         <div className="text-muted-foreground text-sm animate-pulse">Loading track map...</div>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className={`relative bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] overflow-hidden ${className}`} style={{ height }}>
+    <div ref={containerRef} className={`relative bg-card rounded-xl border border-border overflow-hidden ${className}`} style={{ height }}>
       {/* Header overlay */}
       <div className="absolute top-0 left-0 right-0 z-10 p-3 bg-gradient-to-b from-[#0D1117ee] to-transparent pointer-events-none">
         <div className="flex items-center gap-2">
@@ -436,7 +436,7 @@ export function TrackMapGL({
               }}
               onMouseLeave={() => setHoveredTurn(null)}
             >
-              <div className="w-4 h-4 rounded-full bg-[#0D1117] border border-white/40 flex items-center justify-center">
+              <div className="w-4 h-4 rounded-full bg-background border border-white/40 flex items-center justify-center">
                 <span className="text-[9px] text-white font-bold">{turn.number}</span>
               </div>
             </div>
@@ -509,7 +509,7 @@ export function TrackMapGL({
             className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider transition-all ${
               colorMode === mode
                 ? 'bg-[#FF8000] text-white'
-                : 'bg-[#222838] text-muted-foreground hover:text-foreground'
+                : 'bg-secondary text-muted-foreground hover:text-foreground'
             }`}
           >
             {mode.toUpperCase()}

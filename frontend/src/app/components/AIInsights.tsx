@@ -142,7 +142,7 @@ export function AIInsights() {
   return (
     <div className="space-y-4">
       {/* Pipeline Stats Bar */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+      <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
@@ -169,7 +169,7 @@ export function AIInsights() {
             { label: 'API Cost', value: `$${s.total_cost_usd.toFixed(2)}`, icon: <DollarSign className="w-3 h-3 text-purple-400" /> },
             { label: 'Tokens Used', value: `${((s.total_tokens_in + s.total_tokens_out) / 1_000_000).toFixed(1)}M`, icon: <Cpu className="w-3 h-3 text-red-400" /> },
           ].map((stat) => (
-            <div key={stat.label} className="bg-[#0D1117] rounded-lg p-2">
+            <div key={stat.label} className="bg-background rounded-lg p-2">
               <div className="flex items-center gap-1.5 mb-1">
                 {stat.icon}
                 <span className="text-[11px] text-muted-foreground tracking-wider">{stat.label}</span>
@@ -183,7 +183,7 @@ export function AIInsights() {
       {/* OmniKeX Insights Panel */}
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">KNOWLEDGE EXTRACTION (OmniKeX)</h3>
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-purple-400" />
@@ -199,7 +199,7 @@ export function AIInsights() {
               { code: 'NOR', name: 'Lando Norris' },
               { code: 'PIA', name: 'Oscar Piastri' },
             ].map(({ code, name }) => (
-              <div key={code} className="bg-[#0D1117] rounded-lg p-3">
+              <div key={code} className="bg-background rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-mono text-[#FF8000]">{code}</span>
                   <span className="text-[11px] text-muted-foreground">{name}</span>
@@ -253,7 +253,7 @@ export function AIInsights() {
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">UPLOAD DOCUMENTS</h3>
         <div
-          className={`bg-[#1A1F2E] border-2 border-dashed rounded-xl p-6 transition-colors ${
+          className={`bg-card border-2 border-dashed rounded-xl p-6 transition-colors ${
             dragging
               ? 'border-[#FF8000] bg-[#FF8000]/5'
               : 'border-[rgba(255,128,0,0.2)] hover:border-[rgba(255,128,0,0.4)]'
@@ -305,7 +305,7 @@ export function AIInsights() {
             {uploads.map((u, i) => (
               <div
                 key={`${u.name}-${i}`}
-                className="flex items-center gap-3 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-4 py-2.5"
+                className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2.5"
               >
                 {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-[#FF8000] animate-spin shrink-0" />}
                 {u.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
@@ -368,14 +368,14 @@ export function AIInsights() {
           {/* Regulation Categories */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">REGULATION CATEGORIES</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
               <div className="space-y-2">
                 {categoryBreakdown.map(([cat, count]) => {
                   const pct = Math.round((count / s.total_rules) * 100);
                   return (
                     <div key={cat} className="flex items-center gap-3">
                       <span className="text-[11px] text-foreground w-48 truncate">{cat}</span>
-                      <div className="flex-1 h-1.5 bg-[#0D1117] rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[#FF8000] rounded-full"
                           style={{ width: `${pct}%` }}
@@ -395,7 +395,7 @@ export function AIInsights() {
           {/* Equipment Types */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">EQUIPMENT TYPES</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
+            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
               {equipmentTypes.map(([type, count]) => (
                 <div key={type} className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-2">
@@ -414,7 +414,7 @@ export function AIInsights() {
           {/* Dimensional Data Sample */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">DIMENSIONAL SPECS (sample)</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.dimensional_data.slice(0, 8).map((dim, i) => (
                 <div key={i} className="flex items-center justify-between text-[11px]">
                   <span className="text-foreground truncate max-w-[200px]">{dim.component}</span>
@@ -437,7 +437,7 @@ export function AIInsights() {
           {/* Material Specs */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">MATERIAL SPECS</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.material_specs.slice(0, 6).map((mat, i) => (
                 <div key={i} className="text-[11px]">
                   <div className="flex items-center gap-2">
@@ -471,10 +471,10 @@ function DocumentCard({ doc, expanded, onToggle }: {
   const totalCost = doc.passes.reduce((s, p) => s + p.cost_usd, 0);
 
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
+    <div className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 p-4 text-left hover:bg-[#222838] transition-colors"
+        className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary transition-colors"
       >
         {expanded
           ? <ChevronDown className="w-4 h-4 text-[#FF8000] shrink-0" />
@@ -494,7 +494,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-[rgba(255,128,0,0.12)]">
+        <div className="px-4 pb-4 space-y-3 border-t border-border">
           {/* Passes */}
           <div className="pt-3">
             <div className="text-[11px] text-muted-foreground tracking-widest mb-2">EXTRACTION PASSES</div>

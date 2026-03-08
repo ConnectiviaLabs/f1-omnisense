@@ -24,7 +24,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
   const [hovered, setHovered] = useState<'raceday' | 'prime' | null>(null);
 
   return (
-    <div className="relative h-full flex flex-col bg-[#0D1117] overflow-hidden">
+    <div className="relative h-full flex flex-col bg-background overflow-hidden">
 
       {/* Subtle grid background */}
       <div
@@ -105,7 +105,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
           {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {raceDayStats.map(({ value, label }) => (
-              <div key={label} className="rounded-xl bg-[#0D1117]/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
+              <div key={label} className="rounded-xl bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
                 <span className="text-lg font-bold text-[#FF8000] leading-none mb-1">{value}</span>
                 <span className="text-[9px] text-white/25 tracking-wide uppercase">{label}</span>
               </div>
@@ -188,7 +188,7 @@ export function Home({ onSelectPlatform }: HomeProps) {
           {/* Stats grid */}
           <div className="relative grid grid-cols-4 gap-3 mb-8">
             {primeStats.map(({ value, label }) => (
-              <div key={label} className="rounded-xl bg-[#0D1117]/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
+              <div key={label} className="rounded-xl bg-background/60 border border-[#FF8000]/8 p-3 flex flex-col items-center justify-center text-center transition-colors duration-300 group-hover:border-[#FF8000]/15">
                 <span className="text-lg font-bold text-[#FF8000] leading-none mb-1">{value}</span>
                 <span className="text-[9px] text-white/25 tracking-wide uppercase">{label}</span>
               </div>

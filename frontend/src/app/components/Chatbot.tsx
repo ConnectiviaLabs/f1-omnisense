@@ -223,14 +223,14 @@ function SparklineChart({ title, data, unit, thresholds }: {
   }));
   return (
     <FadeIn>
-      <div className="rounded-lg bg-[#0D1117] border border-[rgba(255,128,0,0.12)] p-3">
+      <div className="rounded-lg bg-background border border-border p-3">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>
         <ResponsiveContainer width="100%" height={150}>
           <LineChart data={shortData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
             <XAxis dataKey="short" tick={{ fontSize: 8, fill: '#666' }} interval={0} angle={-35} textAnchor="end" height={50} />
             <YAxis tick={{ fontSize: 9, fill: '#666' }} domain={['dataMin - 5', 'dataMax + 5']} />
             <Tooltip
-              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,128,0,0.2)', borderRadius: 8, fontSize: 11 }}
+              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
               formatter={(v: number) => [`${v} ${unit}`, '']}
               labelFormatter={(label) => shortData.find(d => d.short === label)?.race ?? label}
             />
@@ -254,14 +254,14 @@ function ComparisonBar({ title, items }: {
   const chartData = items.map(it => ({ name: it.label, value: it.value, max: it.max }));
   return (
     <FadeIn>
-      <div className="rounded-lg bg-[#0D1117] border border-[rgba(255,128,0,0.12)] p-3">
+      <div className="rounded-lg bg-background border border-border p-3">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>
         <ResponsiveContainer width="100%" height={items.length * 36 + 20}>
           <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 60 }}>
             <XAxis type="number" tick={{ fontSize: 9, fill: '#666' }} />
             <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#999' }} width={55} />
             <Tooltip
-              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,128,0,0.2)', borderRadius: 8, fontSize: 11 }}
+              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
             />
             <Bar dataKey="value" radius={[0, 4, 4, 0]}>
               {chartData.map((entry, i) => {
@@ -322,7 +322,7 @@ function SimilarDriversWidget({ driver_code, similar }: { driver_code: string; s
   if (!similar?.length) return null;
   return (
     <FadeIn>
-      <div className="rounded-lg border border-[rgba(255,128,0,0.15)] bg-[#0D1117] p-3">
+      <div className="rounded-lg border border-[rgba(255,128,0,0.15)] bg-background p-3">
         <div className="text-[10px] font-semibold tracking-wider text-[#FF8000]/70 mb-2">
           SIMILAR TO {driver_code}
         </div>
@@ -334,7 +334,7 @@ function SimilarDriversWidget({ driver_code, similar }: { driver_code: string; s
                 <span className="text-muted-foreground w-3 font-mono">{i + 1}</span>
                 <span className="font-semibold text-foreground w-8">{s.driver_code}</span>
                 <span className="text-muted-foreground flex-1 truncate">{s.team || '—'}</span>
-                <div className="w-16 h-1 bg-[#222838] rounded-full overflow-hidden">
+                <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
                   <div className="h-full rounded-full bg-[#FF8000]" style={{ width: `${pct}%` }} />
                 </div>
                 <span className="font-mono text-[#FF8000] w-8 text-right">{pct}%</span>
@@ -415,7 +415,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
       <div className={`space-y-3 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
         {/* ── Gen UI Widgets (top section) ──────────────────────── */}
         {hasVisuals && (
-          <div className="rounded-xl bg-[#0D1117] border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
+          <div className="rounded-xl bg-background border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
             {/* Metric cards grid */}
             {metricCards.length > 0 && (
               <div className={`grid gap-2 ${metricCards.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
@@ -440,7 +440,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
             if (!content.trim()) return null;
             return (
               <FadeIn key={key}>
-                <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] text-foreground">
+                <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
                   {content}
                 </div>
               </FadeIn>
@@ -451,7 +451,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
           if (!text) return null;
           return (
             <FadeIn key={key}>
-              <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] text-foreground">
+              <div className="rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
                 {text}
               </div>
             </FadeIn>
@@ -521,7 +521,7 @@ function StreamingSkeleton() {
         {/* Metric card skeletons */}
         <div className="grid grid-cols-3 gap-2">
           {[1, 2, 3].map(i => (
-            <div key={i} className="rounded-lg bg-[#1A1F2E] border border-[rgba(255,128,0,0.08)] px-3 py-2.5 animate-pulse">
+            <div key={i} className="rounded-lg bg-card border border-border px-3 py-2.5 animate-pulse">
               <div className="h-2 w-16 bg-[#FF8000]/10 rounded mb-2" />
               <div className="h-5 w-12 bg-[#FF8000]/15 rounded mb-1" />
               <div className="h-2 w-20 bg-[#FF8000]/5 rounded" />
@@ -529,7 +529,7 @@ function StreamingSkeleton() {
           ))}
         </div>
         {/* Chart skeleton */}
-        <div className="rounded-lg bg-[#0D1117] border border-[rgba(255,128,0,0.08)] p-3 animate-pulse">
+        <div className="rounded-lg bg-background border border-border p-3 animate-pulse">
           <div className="h-2 w-24 bg-[#FF8000]/10 rounded mb-3" />
           <div className="h-[100px] bg-[#FF8000]/5 rounded" />
         </div>
@@ -619,7 +619,7 @@ export function Chatbot() {
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 pt-3 border-t border-[rgba(255,128,0,0.12)]">
+      <div className="shrink-0 pt-3 border-t border-border">
         <form
           ref={formRef}
           onSubmit={(e) => {
@@ -630,7 +630,7 @@ export function Chatbot() {
               input.value = '';
             }
           }}
-          className="flex items-center gap-2 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors"
+          className="flex items-center gap-2 bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors"
         >
           <input
             ref={inputRef}
@@ -699,7 +699,7 @@ function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
             type="button"
             key={q}
             onClick={() => onSelect(q)}
-            className="text-left text-[11px] text-muted-foreground bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
+            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
           >
             {q}
           </button>

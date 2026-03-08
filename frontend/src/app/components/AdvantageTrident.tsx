@@ -180,7 +180,7 @@ export function AdvantageTrident() {
     <div className="pt-4 space-y-4">
       {/* Tab Bar + Controls */}
       <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-1 bg-[#1A1F2E] rounded-lg p-0.5">
+        <div className="flex items-center gap-1 bg-card rounded-lg p-0.5">
           <button
             onClick={() => setActiveTab('agent')}
             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
@@ -214,7 +214,7 @@ export function AdvantageTrident() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] tracking-wide transition-all border ${
                 scope === value
                   ? 'border-[#FF8000]/30 bg-[#FF8000]/8 text-[#FF8000]'
-                  : 'border-transparent bg-[#1A1F2E] text-muted-foreground hover:text-foreground'
+                  : 'border-transparent bg-card text-muted-foreground hover:text-foreground'
               }`}
             >
               <Icon className="w-3 h-3" />
@@ -248,7 +248,7 @@ export function AdvantageTrident() {
                     className={`px-3 py-1.5 rounded-lg text-[12px] tracking-wide transition-all border ${
                       selected
                         ? 'border-[#FF8000]/40 bg-[#FF8000]/12 text-[#FF8000] font-medium'
-                        : 'border-[rgba(255,128,0,0.08)] bg-[#1A1F2E] text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
+                        : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
                     }`}
                   >
                     {ent}
@@ -280,7 +280,7 @@ export function AdvantageTrident() {
             {report && !loading && (
               <button
                 onClick={() => generate(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-[#1A1F2E] hover:bg-[#222838]"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] text-muted-foreground hover:text-foreground transition-colors bg-card hover:bg-secondary"
               >
                 <RefreshCw className="w-3 h-3" />
                 Force Refresh
@@ -314,7 +314,7 @@ export function AdvantageTrident() {
                 return (
                   <div
                     key={key}
-                    className="rounded-xl border border-[rgba(255,128,0,0.08)] overflow-hidden transition-all hover:border-[rgba(255,128,0,0.15)]"
+                    className="rounded-xl border border-border overflow-hidden transition-all hover:border-[rgba(255,128,0,0.15)]"
                     style={{ background: bg }}
                   >
                     {/* Card Header */}
@@ -380,10 +380,10 @@ export function AdvantageTrident() {
             </div>
           ) : (
             history.map(entry => (
-              <div key={entry.report_id} className="rounded-lg border border-[rgba(255,128,0,0.08)] bg-[#1A1F2E]/50 overflow-hidden">
+              <div key={entry.report_id} className="rounded-lg border border-border bg-card/50 overflow-hidden">
                 <button
                   onClick={() => loadHistoryReport(entry.report_id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[#222838]/50 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors"
                 >
                   {expandedHistoryId === entry.report_id ? (
                     <ChevronDown className="w-3.5 h-3.5 text-[#FF8000] shrink-0" />
@@ -407,12 +407,12 @@ export function AdvantageTrident() {
                 </button>
 
                 {expandedHistoryId === entry.report_id && expandedReport && (
-                  <div className="px-4 pb-4 border-t border-[rgba(255,128,0,0.06)]">
+                  <div className="px-4 pb-4 border-t border-border">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3">
                       {SECTION_CONFIG.map(({ key, label, icon: Icon, accent }) => {
                         const section = expandedReport.sections[key];
                         return (
-                          <div key={key} className="rounded-lg bg-[#0D1117]/60 p-3">
+                          <div key={key} className="rounded-lg bg-background/60 p-3">
                             <div className="flex items-center gap-2 mb-2">
                               <Icon className="w-3 h-3" style={{ color: accent }} />
                               <span className="text-[12px] font-medium" style={{ color: accent }}>{label}</span>

@@ -18,7 +18,7 @@ import { getCircuitByShortName } from '../data/circuits';
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
     return (
-      <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+      <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
         <div className="text-muted-foreground mb-1">{label}</div>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2">
@@ -567,11 +567,11 @@ export function LiveDashboard() {
             <div className="text-[#FF8000] text-sm">{selectedSession.circuit_short_name} — {selectedSession.session_name}</div>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <div className="bg-[#222838] rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
+            <div className="bg-secondary rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
               <MapPin className="w-3 h-3 text-[#FF8000]" />
               <span className="text-foreground">{selectedSession.circuit_short_name}</span>
             </div>
-            <div className="bg-[#222838] rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
+            <div className="bg-secondary rounded-lg px-3 py-1.5 font-mono flex items-center gap-1.5">
               <Flag className="w-3 h-3 text-muted-foreground" />
               <span className="text-foreground">{selectedSession.country_name}</span>
             </div>
@@ -582,7 +582,7 @@ export function LiveDashboard() {
                 if (s) setSelectedSession(s);
               }}
               aria-label="Select session"
-              className="appearance-none bg-[#222838] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none cursor-pointer"
+              className="appearance-none bg-secondary border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none cursor-pointer"
             >
               {sessions
                 ?.filter(s => new Date(s.date_start).getTime() < Date.now())
@@ -614,7 +614,7 @@ export function LiveDashboard() {
       </div>
 
       {/* Session Control Bar */}
-      <div className={`bg-[#222838] border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 ${
+      <div className={`bg-secondary border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-3 ${
         isSessionLive ? 'border-green-500/30 border-t-green-500/60' : 'border-[rgba(255,128,0,0.20)] border-t-[#FF8000]/40'
       }`}>
         <div className="flex items-center gap-4">
@@ -634,7 +634,7 @@ export function LiveDashboard() {
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-mono transition-colors ${
                 replayActive
                   ? 'bg-[#FF8000]/15 text-[#FF8000] border border-[#FF8000]/30'
-                  : 'bg-[#222838] text-muted-foreground border border-[rgba(255,128,0,0.12)] hover:text-foreground'
+                  : 'bg-secondary text-muted-foreground border border-border hover:text-foreground'
               }`}
             >
               {replayActive ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
@@ -659,7 +659,7 @@ export function LiveDashboard() {
                     className={`px-2 py-1 rounded text-[12px] font-mono transition-colors ${
                       replaySpeed === sp
                         ? 'bg-[#FF8000] text-[#0D1117]'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-[#222838]'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                     }`}
                   >
                     {sp}x
@@ -671,7 +671,7 @@ export function LiveDashboard() {
               <div className="flex-1 flex items-center gap-3">
                 <div
                   ref={scrubRef}
-                  className="flex-1 h-3 bg-[#222838] rounded-full relative cursor-pointer select-none"
+                  className="flex-1 h-3 bg-secondary rounded-full relative cursor-pointer select-none"
                   onPointerDown={onScrubDown}
                 >
                   <motion.div
@@ -724,7 +724,7 @@ export function LiveDashboard() {
 
           <button
             onClick={() => setShowDebug(d => !d)}
-            className={`p-1.5 rounded-lg transition-colors ${showDebug ? 'bg-amber-500/20 text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-[#222838]'}`}
+            className={`p-1.5 rounded-lg transition-colors ${showDebug ? 'bg-amber-500/20 text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
             title="Toggle debug info"
           >
             <Bug className="w-3.5 h-3.5" />
@@ -733,7 +733,7 @@ export function LiveDashboard() {
 
         {/* Race control ticker */}
         {replayActive && latestEvents.length > 0 && (
-          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-[rgba(255,128,0,0.12)]">
+          <div className="flex items-center gap-4 mt-2 pt-2 border-t border-border">
             {latestEvents.map((ev, i) => (
               <div key={`${ev.date}-${i}`} className={`flex items-center gap-1.5 text-[12px] ${flagColor(ev.flag, ev.category)}`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
@@ -746,7 +746,7 @@ export function LiveDashboard() {
 
       {/* Debug Panel */}
       {showDebug && (
-        <div className="bg-[#0D1117] border border-amber-500/30 rounded-xl p-3 text-[12px] font-mono space-y-1">
+        <div className="bg-background border border-amber-500/30 rounded-xl p-3 text-[12px] font-mono space-y-1">
           <div className="text-amber-400 font-semibold mb-1">DEBUG — Data Pipeline</div>
           <div className="text-muted-foreground">
             Session: <span className="text-foreground">{sessionKey}</span> |
@@ -805,7 +805,7 @@ export function LiveDashboard() {
       {(() => {
         const circuit = selectedSession ? getCircuitByShortName(selectedSession.circuit_short_name) : undefined;
         if (!circuit) return (
-          <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-6 text-center">
+          <div className="bg-card rounded-xl border border-border p-6 text-center">
             <div className="text-amber-400 text-sm">No track map for circuit: "{selectedSession?.circuit_short_name}"</div>
           </div>
         );
@@ -852,7 +852,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -917,7 +917,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -954,7 +954,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
+        className="bg-card border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] p-4"
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm text-foreground tracking-widest font-medium">TIRE STRATEGY</h3>
@@ -988,7 +988,7 @@ export function LiveDashboard() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.25 }}
-        className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4"
+        className="bg-card border border-border rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4"
       >
         <h3 className="text-sm text-muted-foreground tracking-widest mb-3">WEATHER TREND</h3>
         {activeWeather && activeWeather.length > 0 ? (
@@ -1054,7 +1054,7 @@ function AnimatedKPI({ icon, label, value, sub, color }: {
   icon: React.ReactNode; label: string; value: string; sub: string; color: string;
 }) {
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] border-t-2 border-t-[rgba(255,128,0,0.25)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+    <div className="bg-card border border-border border-t-2 border-t-[rgba(255,128,0,0.25)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
       <div className="flex items-center gap-2 mb-2">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-widest uppercase">{label}</span>

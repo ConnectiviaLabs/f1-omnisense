@@ -25,7 +25,7 @@ const compoundTextColors: Record<string, string> = {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+    <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
       <div className="text-muted-foreground mb-1">{label}</div>
       {payload.map((e: any, i: number) => (
         <div key={i} className="flex items-center gap-2">
@@ -50,7 +50,7 @@ function Divider({ label }: { label: string }) {
 
 function KPI({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-3">
+    <div className="bg-card border border-border rounded-xl p-3">
       <div className="flex items-center gap-2 mb-1.5">
         {icon}
         <span className="text-[12px] text-muted-foreground tracking-wider">{label}</span>
@@ -249,7 +249,7 @@ export function RaceStrategy() {
 
       {/* ── Section 2: Stint Timeline ── */}
       <Divider label="STINT TIMELINE" />
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center gap-4 mb-3">
           <h3 className="text-foreground font-semibold text-sm">Pit Strategy Tracker</h3>
           <div className="flex items-center gap-3 text-[11px]">
@@ -280,7 +280,7 @@ export function RaceStrategy() {
                 key={d.driver_number}
                 className={`rounded-lg transition cursor-pointer ${
                   isMcL ? 'border-l-2 border-l-[#FF8000]' : ''
-                } ${isExpanded ? 'bg-[#222838]' : 'hover:bg-[#1e2433]'}`}
+                } ${isExpanded ? 'bg-secondary' : 'hover:bg-[#1e2433]'}`}
                 onClick={() => setExpandedDriver(isExpanded ? null : d.driver)}
               >
                 <div className="flex items-center gap-3 px-3 py-1.5">
@@ -297,7 +297,7 @@ export function RaceStrategy() {
                   </div>
 
                   {/* Stint bars */}
-                  <div className="flex-1 flex items-center h-6 gap-px rounded overflow-hidden bg-[#0D1117]">
+                  <div className="flex-1 flex items-center h-6 gap-px rounded overflow-hidden bg-background">
                     {d.stints.map((s: any, i: number) => {
                       const pct = session ? (s.stint_laps / session.total_laps) * 100 : 50;
                       return (
@@ -332,10 +332,10 @@ export function RaceStrategy() {
 
                 {/* Expanded details */}
                 {isExpanded && (
-                  <div className="px-3 pb-2 pt-1 border-t border-[rgba(255,128,0,0.08)]">
+                  <div className="px-3 pb-2 pt-1 border-t border-border">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
                       {d.stints.map((s: any, i: number) => (
-                        <div key={i} className="bg-[#0D1117] rounded-lg p-2">
+                        <div key={i} className="bg-background rounded-lg p-2">
                           <div className="flex items-center gap-1.5 mb-1">
                             <Disc className="w-3 h-3" style={{ color: compoundTextColors[s.compound] }} />
                             <span style={{ color: compoundTextColors[s.compound] }} className="font-semibold">{s.compound}</span>
@@ -369,7 +369,7 @@ export function RaceStrategy() {
           <Divider label="BATTLE INTEL" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Undercut threats */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Zap className="w-4 h-4 text-red-400" />
                 <h3 className="text-foreground font-semibold text-sm">Undercut Threats</h3>
@@ -383,7 +383,7 @@ export function RaceStrategy() {
                   .map((b: any) => (
                     <div
                       key={b.driver_number}
-                      className={`flex items-center justify-between px-3 py-1.5 rounded-lg bg-[#0D1117] ${
+                      className={`flex items-center justify-between px-3 py-1.5 rounded-lg bg-background ${
                         isMcLaren(b.team) ? 'border-l-2 border-l-[#FF8000]' : ''
                       }`}
                     >
@@ -409,7 +409,7 @@ export function RaceStrategy() {
             </div>
 
             {/* Gap trends */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-green-400" />
                 <h3 className="text-foreground font-semibold text-sm">Gap Trends</h3>
@@ -421,7 +421,7 @@ export function RaceStrategy() {
                 {battleData.battles.slice(0, 20).map((b: any) => (
                   <div
                     key={b.driver_number}
-                    className={`flex items-center justify-between px-3 py-1 rounded-lg hover:bg-[#222838] ${
+                    className={`flex items-center justify-between px-3 py-1 rounded-lg hover:bg-secondary ${
                       isMcLaren(b.team) ? 'border-l-2 border-l-[#FF8000]' : ''
                     }`}
                   >
@@ -459,7 +459,7 @@ export function RaceStrategy() {
       {opponentData?.drivers?.length > 0 && (
         <>
           <Divider label="OPPONENT STRATEGY PATTERNS" />
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Shield className="w-4 h-4 text-purple-400" />
               <h3 className="text-foreground font-semibold text-sm">Rival Strategy Profiles</h3>
@@ -470,7 +470,7 @@ export function RaceStrategy() {
             <div className="overflow-x-auto">
               <table className="w-full text-[12px]">
                 <thead>
-                  <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                  <tr className="text-muted-foreground border-b border-border">
                     <th className="text-left py-1.5 pr-2">Driver</th>
                     <th className="text-left py-1.5 pr-2">Name</th>
                     <th className="text-left py-1.5 pr-2">Nationality</th>
@@ -512,12 +512,12 @@ export function RaceStrategy() {
           <Divider label="OPTIMAL STRATEGIES" />
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Table */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <h3 className="text-foreground font-semibold text-sm mb-3">Simulated Optimal Strategy</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px]">
                   <thead>
-                    <tr className="text-muted-foreground border-b border-[rgba(255,128,0,0.08)]">
+                    <tr className="text-muted-foreground border-b border-border">
                       <th className="text-left py-1.5 pr-2">Pos</th>
                       <th className="text-left py-1.5 pr-2">Driver</th>
                       <th className="text-left py-1.5 pr-2">Team</th>
@@ -550,7 +550,7 @@ export function RaceStrategy() {
             </div>
 
             {/* Gap chart */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <h3 className="text-foreground font-semibold text-sm mb-3">Gap to Leader</h3>
               <ResponsiveContainer width="100%" height={350}>
                 <BarChart
@@ -558,7 +558,7 @@ export function RaceStrategy() {
                   layout="vertical"
                   margin={{ left: 5, right: 10 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
                   <XAxis type="number" tick={{ fill: '#8b949e', fontSize: 11 }} unit="s" />
                   <YAxis type="category" dataKey="driver" tick={{ fill: '#8b949e', fontSize: 11 }} width={40} />
                   <Tooltip content={<CustomTooltip />} />
@@ -578,7 +578,7 @@ export function RaceStrategy() {
       {degCurveData.length > 0 && (
         <>
           <Divider label="TYRE DEGRADATION" />
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-3 mb-3">
               <h3 className="text-foreground font-semibold text-sm">Degradation Curves — {degData?.circuit}</h3>
               <div className="flex items-center gap-3 text-[11px] ml-auto">
@@ -600,7 +600,7 @@ export function RaceStrategy() {
             </div>
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={degCurveData} margin={{ left: 5, right: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis
                   dataKey="lap"
                   label={{ value: 'Tyre Life (laps)', position: 'bottom', fill: '#8b949e', fontSize: 11, offset: -5 }}
@@ -636,7 +636,7 @@ export function RaceStrategy() {
 
         {/* SC Probability */}
         {scData?.metadata && (
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-4 h-4 text-yellow-500" />
               <h3 className="text-foreground font-semibold text-sm">Safety Car Probability</h3>
@@ -652,7 +652,7 @@ export function RaceStrategy() {
                 { label: 'PR-AUC', value: scData.metadata.validation?.pr_auc?.toFixed(3) },
                 { label: 'F1', value: scData.metadata.validation?.f1?.toFixed(3) },
               ].map(m => (
-                <div key={m.label} className="bg-[#0D1117] rounded-lg p-2 text-center">
+                <div key={m.label} className="bg-background rounded-lg p-2 text-center">
                   <div className="text-[10px] text-muted-foreground">{m.label}</div>
                   <div className="text-sm font-mono text-foreground">{m.value}</div>
                 </div>
@@ -705,7 +705,7 @@ export function RaceStrategy() {
 
         {/* SC Rates by Circuit */}
         {scRateData.length > 0 && (
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+          <div className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-4 h-4 text-yellow-500" />
               <h3 className="text-foreground font-semibold text-sm">SC Rate by Circuit</h3>
@@ -728,7 +728,7 @@ export function RaceStrategy() {
             </div>
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={scRateData} layout="vertical" margin={{ left: 10, right: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#8b949e', fontSize: 10 }} />
                 <YAxis type="category" dataKey="circuit" tick={{ fill: '#8b949e', fontSize: 10 }} width={120} />
                 <Tooltip content={<CustomTooltip />} />
@@ -749,7 +749,7 @@ export function RaceStrategy() {
 
           {/* XGBoost Lap Predictor */}
           {xgbData?.metadata && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Brain className="w-4 h-4 text-[#FF8000]" />
                 <h3 className="text-foreground font-semibold text-sm">XGBoost Lap Predictor</h3>
@@ -766,7 +766,7 @@ export function RaceStrategy() {
                   { label: 'RMSE', value: `${xgbData.metadata.validation?.rmse?.toFixed(3)}s` },
                   { label: 'Test', value: `${(xgbData.metadata.validation?.n_test / 1000).toFixed(1)}K laps` },
                 ].map(m => (
-                  <div key={m.label} className="bg-[#0D1117] rounded-lg p-2 text-center">
+                  <div key={m.label} className="bg-background rounded-lg p-2 text-center">
                     <div className="text-[10px] text-muted-foreground">{m.label}</div>
                     <div className="text-sm font-mono text-foreground">{m.value}</div>
                   </div>
@@ -792,7 +792,7 @@ export function RaceStrategy() {
 
           {/* BiLSTM Lap Predictor */}
           {bilstmData?.metadata && (
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Cpu className="w-4 h-4 text-purple-400" />
                 <h3 className="text-foreground font-semibold text-sm">BiLSTM Temporal Predictor</h3>
@@ -809,7 +809,7 @@ export function RaceStrategy() {
                   { label: 'RMSE', value: `${bilstmData.metadata.validation?.rmse?.toFixed(3)}s` },
                   { label: 'Test', value: `${(bilstmData.metadata.validation?.n_test / 1000).toFixed(1)}K laps` },
                 ].map(m => (
-                  <div key={m.label} className="bg-[#0D1117] rounded-lg p-2 text-center">
+                  <div key={m.label} className="bg-background rounded-lg p-2 text-center">
                     <div className="text-[10px] text-muted-foreground">{m.label}</div>
                     <div className="text-sm font-mono text-foreground">{m.value}</div>
                   </div>
@@ -827,7 +827,7 @@ export function RaceStrategy() {
                   { label: 'Dropout', value: bilstmData.metadata.architecture?.dropout },
                   { label: 'Optimizer', value: bilstmData.metadata.training?.optimizer },
                 ].map(m => (
-                  <div key={m.label} className="flex items-center justify-between bg-[#0D1117] rounded-lg px-3 py-1.5">
+                  <div key={m.label} className="flex items-center justify-between bg-background rounded-lg px-3 py-1.5">
                     <span className="text-[10px] text-muted-foreground">{m.label}</span>
                     <span className="text-[11px] font-mono text-foreground">{m.value}</span>
                   </div>
@@ -863,7 +863,7 @@ export function RaceStrategy() {
 
       {/* ── Lap Time Predictor ── */}
       {xgbData?.metadata && (
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-4">
             <Brain className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">Lap Time Predictor</h3>
@@ -874,7 +874,7 @@ export function RaceStrategy() {
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">Circuit</label>
               <select value={predCircuit} onChange={e => setPredCircuit(e.target.value)} title="Circuit"
-                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
                 {Object.keys(xgbData.metadata.encodings?.circuit_rank || {}).sort().map(c => (
                   <option key={c} value={c}>{c.replace(' Grand Prix', '')}</option>
                 ))}
@@ -883,7 +883,7 @@ export function RaceStrategy() {
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">Driver</label>
               <select value={predDriver} onChange={e => setPredDriver(e.target.value)} title="Driver"
-                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
                 {Object.keys(xgbData.metadata.encodings?.driver_rank || {}).sort().map(d => (
                   <option key={d} value={d}>{d}</option>
                 ))}
@@ -892,7 +892,7 @@ export function RaceStrategy() {
             <div>
               <label className="text-[10px] text-muted-foreground block mb-1">Compound</label>
               <select value={predCompound} onChange={e => setPredCompound(e.target.value)} title="Compound"
-                className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
+                className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground">
                 {['SOFT', 'MEDIUM', 'HARD'].map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
@@ -902,12 +902,12 @@ export function RaceStrategy() {
               <div className="flex-1">
                 <label className="text-[10px] text-muted-foreground block mb-1">Lap Start</label>
                 <input type="number" value={predLapStart} onChange={e => setPredLapStart(+e.target.value)} min={1} max={80} title="Lap Start"
-                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
+                  className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
               </div>
               <div className="flex-1">
                 <label className="text-[10px] text-muted-foreground block mb-1">Lap End</label>
                 <input type="number" value={predLapEnd} onChange={e => setPredLapEnd(+e.target.value)} min={1} max={80} title="Lap End"
-                  className="w-full bg-[#0D1117] border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
+                  className="w-full bg-background border border-[rgba(255,128,0,0.15)] rounded-lg px-2 py-1.5 text-[12px] text-foreground font-mono" />
               </div>
             </div>
             <div className="flex items-end">
@@ -941,14 +941,14 @@ export function RaceStrategy() {
               </div>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={predResult.predictions} margin={{ left: 5, right: 10, top: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="lap" tick={{ fill: '#8b949e', fontSize: 11 }} label={{ value: 'Lap', position: 'insideBottom', offset: -2, fill: '#8b949e', fontSize: 10 }} />
                   <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} domain={['auto', 'auto']} label={{ value: 'Lap Time (s)', angle: -90, position: 'insideLeft', fill: '#8b949e', fontSize: 10 }} />
                   <Tooltip content={({ active, payload }: any) => {
                     if (!active || !payload?.length) return null;
                     const d = payload[0]?.payload;
                     return (
-                      <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+                      <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
                         <div className="text-foreground font-semibold">Lap {d?.lap}</div>
                         <div className="text-muted-foreground">Predicted: <span className="text-foreground font-mono">{d?.predicted_s?.toFixed(3)}s</span></div>
                         <div className="text-muted-foreground">Tyre Life: <span className="text-foreground font-mono">{d?.tyre_life}</span></div>
@@ -967,7 +967,7 @@ export function RaceStrategy() {
 
       {/* XGBoost Circuit Accuracy */}
       {xgbCircuitData.length > 0 && (
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Flag className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">XGBoost Accuracy by Circuit</h3>
@@ -977,14 +977,14 @@ export function RaceStrategy() {
           </div>
           <ResponsiveContainer width="100%" height={400}>
             <BarChart data={xgbCircuitData} layout="vertical" margin={{ left: 10, right: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" horizontal={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
               <XAxis type="number" tick={{ fill: '#8b949e', fontSize: 10 }} domain={[0, 'auto']} />
               <YAxis type="category" dataKey="circuit" tick={{ fill: '#8b949e', fontSize: 10 }} width={120} />
               <Tooltip content={({ active, payload, label }: any) => {
                 if (!active || !payload?.length) return null;
                 const d = payload[0]?.payload;
                 return (
-                  <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+                  <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
                     <div className="text-foreground font-semibold mb-1">{label}</div>
                     <div className="text-muted-foreground">MAE: <span className="text-foreground font-mono">{d?.mae?.toFixed(3)}s</span></div>
                     <div className="text-muted-foreground">Median AE: <span className="text-foreground font-mono">{d?.median_ae?.toFixed(3)}s</span></div>
@@ -1004,7 +1004,7 @@ export function RaceStrategy() {
 
       {/* Model Confidence */}
       {modelHealth && (
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity className="w-4 h-4 text-cyan-400" />
             <h3 className="text-foreground font-semibold text-sm">Model Confidence</h3>
@@ -1042,7 +1042,7 @@ export function RaceStrategy() {
 
       {/* ELT Driver Deltas */}
       {driverDeltaData.length > 0 && (
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4 text-[#FF8000]" />
             <h3 className="text-foreground font-semibold text-sm">Driver Pace Deltas (ELT Model)</h3>
@@ -1052,7 +1052,7 @@ export function RaceStrategy() {
           </div>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={driverDeltaData} margin={{ left: 5, right: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,128,0,0.08)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="driver" tick={{ fill: '#8b949e', fontSize: 11 }} />
               <YAxis
                 tick={{ fill: '#8b949e', fontSize: 11 }}

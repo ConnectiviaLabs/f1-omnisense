@@ -184,7 +184,7 @@ export function RaceSchedule() {
   return (
     <div className="space-y-5 pt-4">
       {/* Season summary strip */}
-      <div className="flex items-center gap-5 px-5 py-3 bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.08)]">
+      <div className="flex items-center gap-5 px-5 py-3 bg-card rounded-xl border border-border">
         <div className="flex items-center gap-2">
           <Flag className="w-4 h-4 text-[#FF8000]" />
           <span className="text-[13px] font-semibold text-foreground tracking-wide">2026 SEASON</span>
@@ -204,7 +204,7 @@ export function RaceSchedule() {
           <span className="font-mono text-yellow-400">{sprintCount}</span> sprints
         </span>
         {/* Progress bar */}
-        <div className="flex-1 h-1.5 bg-[#0D1117] rounded-full overflow-hidden ml-2">
+        <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden ml-2">
           <div
             className="h-full rounded-full bg-gradient-to-r from-[#FF8000] to-[#FF8000]/60 transition-all duration-700"
             style={{ width: `${(completedCount / weekends.length) * 100}%` }}
@@ -250,7 +250,7 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="relative bg-[#1A1F2E] border border-[rgba(255,128,0,0.15)] rounded-xl overflow-hidden"
+      className="relative bg-card border border-[rgba(255,128,0,0.15)] rounded-xl overflow-hidden"
     >
       {/* Top accent */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-[#FF8000] via-[#FF8000]/60 to-transparent" />
@@ -308,7 +308,7 @@ function NextRaceHero({ weekend: w, status, now }: { weekend: RaceWeekend; statu
                     ? 'bg-[#FF8000]/15 border-[#FF8000]/25 text-[#FF8000]'
                     : s === 'Sprint'
                     ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
-                    : 'bg-[#0D1117] border-[rgba(255,128,0,0.06)] text-muted-foreground'
+                    : 'bg-background border-border text-muted-foreground'
                 }`}
               >
                 {s}
@@ -353,14 +353,14 @@ function RaceCard({ weekend: w, status, index, isNext }: { weekend: RaceWeekend;
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: Math.min(index * 0.025, 0.5) }}
-      className={`relative bg-[#1A1F2E] border rounded-xl overflow-hidden transition-all group ${
+      className={`relative bg-card border rounded-xl overflow-hidden transition-all group ${
         isNext
           ? 'border-[#FF8000]/30 ring-1 ring-[#FF8000]/10'
           : isLive
           ? 'border-red-500/30'
           : isCompleted
           ? 'border-[rgba(255,128,0,0.05)] opacity-60'
-          : 'border-[rgba(255,128,0,0.08)] hover:border-[rgba(255,128,0,0.18)]'
+          : 'border-border hover:border-[rgba(255,128,0,0.18)]'
       }`}
     >
       {/* Top accent line */}
