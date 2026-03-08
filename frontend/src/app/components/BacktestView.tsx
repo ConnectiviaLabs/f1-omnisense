@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  LineChart, Line, Legend,
 } from 'recharts';
 import {
   FlaskConical, Loader2, Target, AlertTriangle,
   ChevronDown, ChevronUp, Play, Shield,
-  Zap, Timer, TrendingDown, Layers, RotateCcw, Brain,
+  Zap, Timer, TrendingDown, Layers, RotateCcw, Brain, TrendingUp,
 } from 'lucide-react';
 import KexBriefingCard from './KexBriefingCard';
+import { TEAM_COLORS_BY_ID as teamColors, TEAM_DISPLAY_NAMES as teamDisplayNames } from '../constants/teams';
 
 /* ─── Types ──────────────────────────────────────────────────────── */
 
@@ -105,6 +107,30 @@ interface CaseStudy {
   predicted_systems: Record<string, SystemHealth>;
 }
 
+interface ForecastMetrics {
+  mae: number;
+  rmse: number;
+  mape: number;
+  directional_acc: number;
+  ci_coverage: number | null;
+  rmsse: number;
+  n_windows: number;
+}
+
+interface ForecastBacktestData {
+  session_key: number;
+  driver_number: number;
+  features_tested: string[];
+  methods_tested: string[];
+  horizons_tested: number[];
+  total_windows: number;
+  series_length: number;
+  results: Record<string, Record<string, Record<string, ForecastMetrics>>>;
+  best_method: Record<string, string>;
+  generated_at: string;
+  from_cache?: boolean;
+}
+
 interface ConfusionMatrix {
   true_positive: number;
   false_positive: number;
@@ -149,18 +175,6 @@ interface BacktestData {
 }
 
 /* ─── Constants ──────────────────────────────────────────────────── */
-
-const teamColors: Record<string, string> = {
-  'red_bull': '#3671C6', 'mclaren': '#FF8000', 'ferrari': '#E8002D',
-  'mercedes': '#27F4D2', 'aston_martin': '#229971', 'alpine': '#FF87BC',
-  'williams': '#64C4FF', 'rb': '#6692FF', 'sauber': '#52E252', 'haas': '#B6BABD',
-};
-
-const teamDisplayNames: Record<string, string> = {
-  'red_bull': 'Red Bull', 'mclaren': 'McLaren', 'ferrari': 'Ferrari',
-  'mercedes': 'Mercedes', 'aston_martin': 'Aston Martin', 'alpine': 'Alpine',
-  'williams': 'Williams', 'rb': 'RB', 'sauber': 'Kick Sauber', 'haas': 'Haas',
-};
 
 const outcomeColors: Record<string, string> = {
   normal: '#888', underperformance: '#f59e0b', major_underperformance: '#ef4444',
@@ -462,6 +476,279 @@ function CaseStudyCard({ cs, rank, insight }: { cs: CaseStudy; rank: number; ins
   );
 }
 
+/* ─── Forecast Validation Tab ────────────────────────────────────── */
+
+const METHOD_COLORS: Record<string, string> = {
+  linear: '#6b7280',
+  ets: '#3b82f6',
+  arima: '#8b5cf6',
+  sf: '#f59e0b',
+};
+
+function rmsseColor(v: number): string {
+  return v < 0.7 ? '#05DF72' : v <= 1.0 ? '#f59e0b' : '#ef4444';
+}
+
+function ForecastValidationTab() {
+  const [sessionKey, setSessionKey] = useState(9573);
+  const [driverNumber, setDriverNumber] = useState(4);
+  const [forecastData, setForecastData] = useState<ForecastBacktestData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState('speed');
+  const [selectedHorizon, setSelectedHorizon] = useState('10');
+
+  const runForecast = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(
+        `/api/local/backtest/forecast/run?session_key=${sessionKey}&driver_number=${driverNumber}`,
+        { method: 'POST' },
+      );
+      if (!r.ok) throw new Error(`Forecast backtest failed: ${r.status}`);
+      const result = await r.json();
+      setForecastData(result);
+      // auto-select first feature if current not available
+      if (result.features_tested?.length && !result.features_tested.includes(selectedFeature)) {
+        setSelectedFeature(result.features_tested[0]);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const featureResults = forecastData?.results?.[selectedFeature];
+  const methods = forecastData?.methods_tested ?? [];
+  const horizons = forecastData?.horizons_tested ?? [5, 10, 30];
+
+  // Build table rows for selectedFeature + selectedHorizon
+  const tableRows = methods
+    .map(method => {
+      const metrics = featureResults?.[method]?.[selectedHorizon];
+      if (!metrics) return null;
+      return { method, ...metrics };
+    })
+    .filter(Boolean) as (ForecastMetrics & { method: string })[];
+
+  const bestRmsse = tableRows.length > 0 ? Math.min(...tableRows.map(r => r.rmsse)) : Infinity;
+
+  // Build horizon decay chart data
+  const horizonChartData = horizons.map(h => {
+    const point: Record<string, number | string> = { horizon: String(h) };
+    methods.forEach(method => {
+      const metrics = featureResults?.[method]?.[String(h)];
+      if (metrics) point[method] = metrics.rmsse;
+    });
+    return point;
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* ── Input Bar ── */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Session Key</label>
+            <input
+              type="number"
+              value={sessionKey}
+              onChange={e => setSessionKey(Number(e.target.value))}
+              className="w-24 bg-background border border-border rounded-lg px-2 py-1.5 text-[11px] font-mono text-foreground focus:outline-none focus:border-primary"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Driver #</label>
+            <input
+              type="number"
+              value={driverNumber}
+              onChange={e => setDriverNumber(Number(e.target.value))}
+              className="w-20 bg-background border border-border rounded-lg px-2 py-1.5 text-[11px] font-mono text-foreground focus:outline-none focus:border-primary"
+            />
+          </div>
+          <button
+            onClick={runForecast}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-primary text-[#0D1117] hover:bg-[#FF9933] disabled:opacity-50 transition-colors"
+          >
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+            {loading ? 'Running...' : 'Run Forecast Backtest'}
+          </button>
+          {forecastData?.from_cache && (
+            <span className="text-[10px] text-muted-foreground/50 font-mono">cached</span>
+          )}
+        </div>
+        {error && (
+          <div className="mt-2 text-[11px] text-red-400 bg-red-500/10 px-3 py-1.5 rounded-lg">{error}</div>
+        )}
+        {forecastData && (
+          <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground/50 font-mono">
+            <span>Series: {forecastData.series_length} pts</span>
+            <span>Windows: {forecastData.total_windows}</span>
+            <span>Generated: {new Date(forecastData.generated_at).toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+
+      {!forecastData && !loading && (
+        <div className="text-center py-16">
+          <TrendingUp className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">No forecast validation results</p>
+          <p className="text-[11px] text-muted-foreground/60 mt-1">Enter a session key and driver number, then run to validate forecasting methods</p>
+        </div>
+      )}
+
+      {forecastData && (
+        <>
+          {/* ── Best Method Cards ── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {Object.entries(forecastData.best_method).map(([feature, method]) => {
+              const bestMetrics = forecastData.results?.[feature]?.[method]?.['10'];
+              return (
+                <div key={feature} className="bg-card border border-border rounded-lg p-4 text-center">
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{feature}</div>
+                  <div className="text-lg font-bold font-mono" style={{ color: METHOD_COLORS[method] || '#FF8000' }}>
+                    {method}
+                  </div>
+                  {bestMetrics && (
+                    <div className="text-[10px] font-mono mt-0.5" style={{ color: rmsseColor(bestMetrics.rmsse) }}>
+                      RMSSE: {bestMetrics.rmsse.toFixed(3)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Feature / Horizon Selectors ── */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Feature:</span>
+              <div className="flex gap-1">
+                {forecastData.features_tested.map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setSelectedFeature(f)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                      selectedFeature === f ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Horizon:</span>
+              <div className="flex gap-1">
+                {horizons.map(h => (
+                  <button
+                    key={h}
+                    onClick={() => setSelectedHorizon(String(h))}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                      selectedHorizon === String(h) ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800'
+                    }`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Method Comparison Table ── */}
+          {tableRows.length > 0 && (
+            <div className="bg-card border border-border rounded-lg p-4 overflow-x-auto">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <TrendingUp className="w-3.5 h-3.5 text-primary" />
+                {selectedFeature} — horizon {selectedHorizon}
+              </div>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-muted-foreground/60 text-[10px] uppercase tracking-wider">
+                    <th className="text-left pb-2 pr-3">Method</th>
+                    <th className="text-right pb-2 px-2">MAE</th>
+                    <th className="text-right pb-2 px-2">RMSE</th>
+                    <th className="text-right pb-2 px-2">MAPE</th>
+                    <th className="text-right pb-2 px-2">Dir. Acc</th>
+                    <th className="text-right pb-2 px-2">CI Cov</th>
+                    <th className="text-right pb-2 pl-2">RMSSE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map(row => {
+                    const isBest = row.rmsse === bestRmsse;
+                    return (
+                      <tr
+                        key={row.method}
+                        className={isBest ? 'bg-green-500/5' : ''}
+                      >
+                        <td className="py-1.5 pr-3 font-mono font-medium" style={{ color: METHOD_COLORS[row.method] || '#888' }}>
+                          {row.method}
+                          {isBest && <span className="ml-1.5 text-[8px] text-green-400">BEST</span>}
+                        </td>
+                        <td className="text-right py-1.5 px-2 font-mono text-foreground">{row.mae.toFixed(3)}</td>
+                        <td className="text-right py-1.5 px-2 font-mono text-foreground">{row.rmse.toFixed(3)}</td>
+                        <td className="text-right py-1.5 px-2 font-mono text-foreground">{(row.mape * 100).toFixed(1)}%</td>
+                        <td className="text-right py-1.5 px-2 font-mono text-foreground">{(row.directional_acc * 100).toFixed(1)}%</td>
+                        <td className="text-right py-1.5 px-2 font-mono text-muted-foreground">
+                          {row.ci_coverage != null ? `${(row.ci_coverage * 100).toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="text-right py-1.5 pl-2 font-mono font-medium" style={{ color: rmsseColor(row.rmsse) }}>
+                          {row.rmsse.toFixed(3)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ── Horizon Decay Chart ── */}
+          {horizonChartData.length > 0 && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                <TrendingDown className="w-3.5 h-3.5 text-primary" />
+                RMSSE vs Horizon — {selectedFeature}
+              </div>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={horizonChartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                  <XAxis
+                    dataKey="horizon"
+                    tick={{ fontSize: 10, fill: '#888' }}
+                    label={{ value: 'Horizon', position: 'insideBottom', offset: -2, fontSize: 9, fill: '#555' }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#555' }}
+                    label={{ value: 'RMSSE', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#555' }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  {methods.map(method => (
+                    <Line
+                      key={method}
+                      type="monotone"
+                      dataKey={method}
+                      name={method}
+                      stroke={METHOD_COLORS[method] || '#888'}
+                      strokeWidth={2}
+                      dot={{ r: 4, fill: METHOD_COLORS[method] || '#888' }}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── Main Component ─────────────────────────────────────────────── */
 
 export function BacktestView() {
@@ -471,6 +758,7 @@ export function BacktestView() {
   const [error, setError] = useState<string | null>(null);
   const [kex, setKex] = useState<{ text: string; scores?: Record<string, number>; summary?: string; model_used?: string; provider_used?: string; generated_at?: number; case_insights?: { round: number; driver_code: string; race_name: string; insight: string }[] } | null>(null);
   const [kexLoading, setKexLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'race' | 'forecast'>('race');
 
   // Load latest results on mount
   useEffect(() => {
@@ -604,9 +892,34 @@ export function BacktestView() {
             <span className="text-primary">XGBoost + SHAP</span>
           </div>
         )}
+        {/* Tab Selector */}
+        <div className="flex gap-1 mt-3 border-t border-border pt-3">
+          <button
+            onClick={() => setActiveTab('race')}
+            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+              activeTab === 'race' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5" />
+              Race Outcome
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('forecast')}
+            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+              activeTab === 'forecast' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-zinc-800'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <TrendingDown className="w-3.5 h-3.5" />
+              Forecast Validation
+            </div>
+          </button>
+        </div>
       </div>
 
-      {!data && !running && (
+      {!data && !running && activeTab === 'race' && (
         <div className="text-center py-16">
           <FlaskConical className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">No backtest results yet</p>
@@ -614,7 +927,9 @@ export function BacktestView() {
         </div>
       )}
 
-      {m && data && (
+      {activeTab === 'forecast' && <ForecastValidationTab />}
+
+      {activeTab === 'race' && m && data && (
         <>
           {/* ── Key Metrics ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

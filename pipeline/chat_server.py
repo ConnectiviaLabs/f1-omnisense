@@ -5065,6 +5065,152 @@ async def backtest_kex_briefing(force: bool = False):
     return result
 
 
+# ── Forecast Backtest ────────────────────────────────────────────────────
+
+@app.post("/api/local/backtest/forecast/run")
+async def run_forecast_backtest(
+    session_key: int,
+    driver_number: int,
+    force: bool = False,
+):
+    """Run walk-forward forecast backtest for a single session+driver."""
+    import asyncio as _asyncio
+    from omnianalytics.forecast_backtest import backtest_session
+    from omnianalytics.telemetry_loader import load_session_telemetry
+
+    db = get_data_db()
+
+    # Return cached unless forced
+    if not force:
+        stored = db["backtest_forecast_results"].find_one(
+            {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
+        )
+        if stored and stored.get("results"):
+            return {**stored, "from_cache": True}
+
+    # Load telemetry
+    telemetry_df = await _asyncio.to_thread(load_session_telemetry, db, session_key, driver_number)
+    if telemetry_df.empty:
+        raise HTTPException(404, f"No telemetry for session {session_key} driver {driver_number}")
+
+    # Run backtest
+    result = await _asyncio.to_thread(backtest_session, telemetry_df)
+    if not result.get("features_tested"):
+        raise HTTPException(404, "No valid telemetry features found")
+
+    # Store
+    from datetime import datetime as _dt, timezone as _tz
+    doc = {"session_key": session_key, "driver_number": driver_number, **result}
+    db["backtest_forecast_results"].update_one(
+        {"session_key": session_key, "driver_number": driver_number},
+        {"$set": doc, "$setOnInsert": {"created_at": _dt.now(_tz.utc)}},
+        upsert=True,
+    )
+
+    return doc
+
+
+@app.get("/api/local/backtest/forecast/results")
+async def get_forecast_backtest_results(
+    session_key: int,
+    driver_number: int,
+):
+    """Get stored forecast backtest results."""
+    db = get_data_db()
+    doc = db["backtest_forecast_results"].find_one(
+        {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(404, "No forecast backtest results found")
+    return doc
+
+
+@app.post("/api/local/backtest/forecast/run-multi")
+async def run_forecast_backtest_multi(body: dict):
+    """Run forecast backtest across multiple sessions, aggregate results."""
+    import asyncio as _asyncio
+    from datetime import datetime as _dt, timezone as _tz
+    from omnianalytics.forecast_backtest import backtest_session, METHODS, DEFAULT_HORIZONS, DEFAULT_FEATURES
+    from omnianalytics.telemetry_loader import load_session_telemetry
+
+    session_keys = body.get("session_keys", [])
+    driver_number = body.get("driver_number")
+    if not session_keys or not driver_number:
+        raise HTTPException(400, "session_keys and driver_number required")
+
+    db = get_data_db()
+    all_results = []
+
+    for sk in session_keys:
+        stored = db["backtest_forecast_results"].find_one(
+            {"session_key": sk, "driver_number": driver_number}, {"_id": 0}
+        )
+        if stored and stored.get("results"):
+            all_results.append(stored)
+            continue
+
+        telemetry_df = await _asyncio.to_thread(load_session_telemetry, db, sk, driver_number)
+        if telemetry_df.empty:
+            continue
+
+        result = await _asyncio.to_thread(backtest_session, telemetry_df)
+        if not result.get("features_tested"):
+            continue
+
+        doc = {"session_key": sk, "driver_number": driver_number, **result}
+        db["backtest_forecast_results"].update_one(
+            {"session_key": sk, "driver_number": driver_number},
+            {"$set": doc, "$setOnInsert": {"created_at": _dt.now(_tz.utc)}},
+            upsert=True,
+        )
+        all_results.append(doc)
+
+    if not all_results:
+        raise HTTPException(404, "No results generated for any session")
+
+    # Aggregate: average metrics across sessions per (method, feature, horizon)
+    agg_results: dict = {m: {} for m in METHODS}
+    for method in METHODS:
+        for feat in DEFAULT_FEATURES:
+            agg_results[method][feat] = {}
+            for h in DEFAULT_HORIZONS:
+                h_key = str(h)
+                metric_lists: dict = {}
+                for sr in all_results:
+                    h_metrics = sr.get("results", {}).get(feat, {}).get(method, {}).get(h_key, {})
+                    for mk, mv in h_metrics.items():
+                        if mk == "n_windows" or mv is None:
+                            continue
+                        metric_lists.setdefault(mk, []).append(mv)
+                agg = {k: round(float(np.mean(v)), 4) for k, v in metric_lists.items() if v}
+                agg["n_sessions"] = len([
+                    sr for sr in all_results
+                    if sr.get("results", {}).get(feat, {}).get(method, {}).get(h_key, {}).get("n_windows", 0) > 0
+                ])
+                agg_results[method][feat][h_key] = agg
+
+    # Best method per feature across sessions
+    best_method: dict = {}
+    for feat in DEFAULT_FEATURES:
+        best_rmsse = float("inf")
+        best = METHODS[0]
+        for method in METHODS:
+            rmsse = agg_results[method].get(feat, {}).get("10", {}).get("rmsse")
+            if rmsse is not None and rmsse < best_rmsse:
+                best_rmsse = rmsse
+                best = method
+        best_method[feat] = best
+
+    return {
+        "sessions_evaluated": len(all_results),
+        "session_keys": [r["session_key"] for r in all_results],
+        "driver_number": driver_number,
+        "results": agg_results,
+        "best_method": best_method,
+        "generated_at": _dt.now(_tz.utc).isoformat(),
+    }
+
+
 # ── Run ──────────────────────────────────────────────────────────────────
 
 # ── Serve frontend SPA (must be last mount) ─────────────────────────────

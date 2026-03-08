@@ -511,6 +511,10 @@ const DATA = [
     writers: ["pipeline/backtest/replay.py"], readers: ["/api/local/backtest/results"], frontend: ["BacktestView"],
     notes: "Per-season backtest replay results. Predictions vs actuals for anomaly scoring validation." },
 
+  { name: "backtest_forecast_results", docs: 0, sizeMB: 0, idxCount: 1, category: "derived", status: "active",
+    writers: ["chat_server.py:/api/local/backtest/forecast/run"], readers: ["/api/local/backtest/forecast/results"], frontend: ["BacktestView (Forecast Validation tab)"],
+    notes: "Walk-forward forecast backtest results. Per (session_key, driver_number) with 6 metrics across 4 methods, 6 features, 3 horizons." },
+
   { name: "kex_backtest_briefings", docs: 0, sizeMB: 0, idxCount: 1, category: "kex", status: "active",
     writers: ["chat_server.py:/api/local/backtest/kex"], readers: ["/api/local/backtest/kex"], frontend: ["BacktestView"],
     notes: "LLM-generated intelligence briefings from backtest results. One per season, upserted." },
