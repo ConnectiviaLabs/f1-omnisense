@@ -56,7 +56,7 @@ class AgentRegistry:
     async def run_all(self, session_key: int, driver_number: Optional[int] = None, year: Optional[int] = None):
         """Run all agents in sequence for a given session.
 
-        Order: telemetry_anomaly → weather_adapt → pit_window → visual_inspect → predictive_maintenance → knowledge_convergence
+        Order: telemetry_anomaly → weather_adapt → pit_window → visual_inspect → predictive_maintenance → knowledge_convergence → trident_insight
         This ensures downstream agents receive events from upstream agents.
         """
         execution_order = [
@@ -66,6 +66,7 @@ class AgentRegistry:
             "visual_inspect",
             "predictive_maintenance",
             "knowledge_convergence",
+            "trident_insight",
         ]
         results = {}
         for name in execution_order:

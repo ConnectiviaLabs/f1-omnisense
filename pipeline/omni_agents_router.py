@@ -45,6 +45,7 @@ def _ensure_init():
     from omniagents.agents.knowledge_conv import KnowledgeConvergenceAgent
     from omniagents.agents.visual_inspect import VisualInspectionAgent
     from omniagents.agents.predictive_maintenance import PredictiveMaintenanceAgent
+    from omniagents.agents.trident_insight import TridentInsightAgent
 
     # Get MongoDB database
     try:
@@ -59,13 +60,14 @@ def _ensure_init():
 
     _registry = AgentRegistry(bus=_bus, db=_db)
 
-    # Register all 6 agents
+    # Register all 7 agents
     _registry.register(TelemetryAnomalyAgent(bus=_bus, db=_db))
     _registry.register(WeatherAdaptAgent(bus=_bus, db=_db))
     _registry.register(PitWindowAgent(bus=_bus, db=_db))
     _registry.register(KnowledgeConvergenceAgent(bus=_bus, db=_db))
     _registry.register(VisualInspectionAgent(bus=_bus, db=_db))
     _registry.register(PredictiveMaintenanceAgent(bus=_bus, db=_db))
+    _registry.register(TridentInsightAgent(bus=_bus, db=_db))
 
     logger.info("Agent system initialized: %s", _registry.agent_names)
 
@@ -221,6 +223,7 @@ async def get_agent_output(agent_name: str, session_key: int):
         "knowledge_convergence": "agent_knowledge_fused",
         "visual_inspect": "agent_visual_incidents",
         "predictive_maintenance": "agent_predictive_maintenance",
+        "trident_insight": "trident_reports_history",
     }
 
     coll_name = collection_map.get(agent_name)
