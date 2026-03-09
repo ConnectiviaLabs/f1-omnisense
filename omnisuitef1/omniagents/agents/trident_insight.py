@@ -124,6 +124,22 @@ class TridentInsightAgent(F1Agent):
         # --- Gather MongoDB context (off the event loop) ---
         mongo_ctx = await asyncio.to_thread(self._gather_mongo_data, scope, entity)
 
+        # --- RAG deep search for document grounding ---
+        rag_context = ""
+        if self._deep_search_override or True:  # TridentInsight always uses deep search
+            rag_queries = [
+                f"McLaren {scope} race analysis intelligence",
+                f"McLaren anomaly detection telemetry {entity or 'grid'}",
+                f"McLaren forecast maintenance schedule",
+            ]
+            rag_blocks = await asyncio.gather(
+                *(self.deep_search_context(q, k=3) for q in rag_queries)
+            )
+            rag_context = "\n---\n".join(
+                block for block in rag_blocks
+                if block != "No relevant context found."
+            )
+
         # --- Format buffered events by category ---
         categorised = self._format_buffered_events()
 
@@ -152,6 +168,12 @@ class TridentInsightAgent(F1Agent):
             f"Strategy / pit events:\n{categorised.get('strategy', 'N/A')}\n\n"
             f"Forecast data:\n{mongo_ctx.get('forecast', 'N/A')}"
         )
+
+        if rag_context:
+            rag_section = f"\n\nRelevant technical documentation:\n{rag_context}"
+            insights_prompt += rag_section
+            anomaly_prompt += rag_section
+            forecast_prompt += rag_section
 
         insights_text, anomaly_text, forecast_text = await asyncio.gather(
             self.reason(insights_prompt),
@@ -205,6 +227,7 @@ class TridentInsightAgent(F1Agent):
             "metadata": {
                 "model_used": _GROQ_MODEL,
                 "generation_time_s": round(time.time() - start, 2),
+                "deep_search": bool(rag_context),
             },
         }
 

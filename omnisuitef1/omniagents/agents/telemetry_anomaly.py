@@ -62,12 +62,26 @@ class TelemetryAnomalyAgent(F1Agent):
         critical = [a for a in anomalies if a["severity"] in ("critical", "high")]
         insight = None
         if critical:
-            insight = await self.reason(
+            # Deep search for relevant documentation (HIGH/CRITICAL or user override)
+            rag_context = ""
+            if self._deep_search_override or len(critical) > 0:
+                top_features = []
+                for a in critical[:5]:
+                    for feat in TELEMETRY_FEATURES:
+                        if a.get(feat) is not None and feat not in top_features:
+                            top_features.append(feat)
+                query = f"McLaren {' '.join(top_features[:3])} anomaly specifications normal ranges"
+                rag_context = await self.deep_search_context(query, k=4)
+
+            prompt = (
                 f"Analyze these {len(critical)} anomalies detected in session {session_key}"
                 f"{f' for driver #{driver_number}' if driver_number else ''}. "
-                "What do they indicate about car health? What actions should the team take?",
-                data_context={"anomalies": critical[:10]},
+                "What do they indicate about car health? What actions should the team take?"
             )
+            if rag_context and rag_context != "No relevant context found.":
+                prompt += f"\n\nRelevant technical documentation:\n{rag_context}"
+
+            insight = await self.reason(prompt, data_context={"anomalies": critical[:10]})
 
         # 5. Publish findings
         severity = EventSeverity.CRITICAL if any(a["severity"] == "critical" for a in anomalies) else (

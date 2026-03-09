@@ -78,6 +78,7 @@ class RunRequest(BaseModel):
     session_key: int
     driver_number: Optional[int] = None
     year: Optional[int] = None
+    deep_search: bool = False
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -90,6 +91,9 @@ async def run_agent(agent_name: str, req: RunRequest):
     agent = _registry.get(agent_name)
     if agent is None:
         raise HTTPException(404, f"Agent '{agent_name}' not found. Available: {_registry.agent_names}")
+
+    # Pass deep_search flag to agent for this run
+    agent._deep_search_override = req.deep_search
 
     # Run in background so endpoint returns immediately
     async def _run():
@@ -112,6 +116,12 @@ async def run_agent(agent_name: str, req: RunRequest):
 async def run_all_agents(req: RunRequest):
     """Trigger the full 5-agent chain in sequence."""
     _ensure_init()
+
+    # Set deep_search override on all agents
+    for name in _registry.agent_names:
+        ag = _registry.get(name)
+        if ag:
+            ag._deep_search_override = req.deep_search
 
     async def _run():
         try:
