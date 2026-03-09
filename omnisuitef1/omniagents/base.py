@@ -40,6 +40,34 @@ except ImportError:
 
 _GROQ_MODEL = os.getenv("GROQ_REASONING_MODEL", "llama-3.3-70b-versatile")
 
+# ── RAG deep search (lazy singleton) ─────────────────────────────────────
+
+_retriever = None
+_retriever_init_failed = False
+
+
+def _get_retriever():
+    """Lazy singleton: BGE embedder + vectorstore → RAGRetriever."""
+    global _retriever, _retriever_init_failed
+    if _retriever is not None:
+        return _retriever
+    if _retriever_init_failed:
+        return None
+    try:
+        from omnidoc.embedder import get_embedder
+        from omnirag.vectorstore import get_vectorstore
+        from omnirag.retriever import RAGRetriever
+
+        embedder = get_embedder(enable_bge=True, enable_clip=False)
+        store = get_vectorstore()
+        _retriever = RAGRetriever(store, embedder.embed_query)
+        logger.info("RAG deep search retriever initialized")
+        return _retriever
+    except Exception:
+        _retriever_init_failed = True
+        logger.warning("RAG deep search unavailable — missing dependencies or vectorstore")
+        return None
+
 
 class F1Agent(ABC):
     """Base class for all F1 autonomous agents."""
@@ -54,6 +82,7 @@ class F1Agent(ABC):
         self._db = db
         self._groq = Groq() if _HAS_GROQ else None
         self._state = AgentState(agent_id=self.name, name=self.name)
+        self._deep_search_override = False
 
         # Wire subscriptions
         for topic in self.subscriptions:
@@ -143,6 +172,30 @@ class F1Agent(ABC):
         except Exception:
             logger.exception("[%s] Groq reasoning call failed", self.name)
             return None
+
+    # ── RAG deep search ─────────────────────────────────────────────────
+
+    async def deep_search(self, query: str, k: int = 5) -> list:
+        """Vector search against f1_knowledge. Returns List[SearchResult] or []."""
+        retriever = _get_retriever()
+        if retriever is None:
+            return []
+        try:
+            return await asyncio.to_thread(retriever.search_enhanced, query, k=k)
+        except Exception:
+            logger.exception("[%s] deep_search failed for query: %s", self.name, query[:80])
+            return []
+
+    async def deep_search_context(self, query: str, k: int = 5) -> str:
+        """Vector search returning formatted markdown for prompt injection."""
+        retriever = _get_retriever()
+        if retriever is None:
+            return "No relevant context found."
+        try:
+            return await asyncio.to_thread(retriever.get_relevant_context, query, k=k)
+        except Exception:
+            logger.exception("[%s] deep_search_context failed for query: %s", self.name, query[:80])
+            return "No relevant context found."
 
     # ── State management ───────────────────────────────────────────────────
 
