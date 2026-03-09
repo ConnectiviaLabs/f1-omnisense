@@ -15,6 +15,9 @@ import {
   Users,
   Shield,
   LayoutGrid,
+  ThumbsUp,
+  ThumbsDown,
+  Database,
 } from 'lucide-react';
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -55,16 +58,17 @@ interface HistoryEntry {
 // ── Constants ───────────────────────────────────────────────────────────
 
 const SECTION_CONFIG = [
-  { key: 'key_insights' as const, label: 'Key Insights', icon: Lightbulb, accent: '#3B82F6', bg: 'rgba(59,130,246,0.06)' },
-  { key: 'recommendations' as const, label: 'Recommendations', icon: Target, accent: '#FF8000', bg: 'rgba(255,128,0,0.06)' },
-  { key: 'anomaly_patterns' as const, label: 'Anomaly Patterns', icon: AlertTriangle, accent: '#FB2C36', bg: 'rgba(251,44,54,0.06)' },
-  { key: 'forecast_signals' as const, label: 'Forecast Signals', icon: TrendingUp, accent: '#05DF72', bg: 'rgba(5,223,114,0.06)' },
+  { key: 'key_insights' as const, label: 'Key Insights', icon: Lightbulb, accent: '#3B82F6', bg: 'rgba(59,130,246,0.06)', hint: 'High-level patterns synthesized from Knowledge Exchange (KeX) briefings and cross-entity data' },
+  { key: 'recommendations' as const, label: 'Recommendations', icon: Target, accent: '#FF8000', bg: 'rgba(255,128,0,0.06)', hint: 'Actionable strategy suggestions derived from anomaly trends and forecast convergence' },
+  { key: 'anomaly_patterns' as const, label: 'Anomaly Patterns', icon: AlertTriangle, accent: '#FB2C36', bg: 'rgba(251,44,54,0.06)', hint: 'Recurring deviations detected by the anomaly detection pipeline across car systems' },
+  { key: 'forecast_signals' as const, label: 'Forecast Signals', icon: TrendingUp, accent: '#05DF72', bg: 'rgba(5,223,114,0.06)', hint: 'Forward-looking indicators from time-series forecasting models (ELT, degradation curves)' },
 ];
 
 const SCOPE_OPTIONS = [
-  { value: 'grid', label: 'Full Grid', icon: LayoutGrid },
-  { value: 'driver', label: 'Driver', icon: Users },
-  { value: 'team', label: 'Team', icon: Shield },
+  { value: 'grid', label: 'Full Grid', icon: LayoutGrid, hint: 'Analyze all drivers and teams across the entire grid' },
+  { value: 'driver', label: 'Driver', icon: Users, hint: 'Focus analysis on a single driver\'s performance profile' },
+  { value: 'team', label: 'Team', icon: Shield, hint: 'Focus analysis on a single team\'s operational profile' },
+  { value: 'database', label: 'Database', icon: Database, hint: 'Cross-collection synthesis across the entire intelligence platform' },
 ];
 
 // ── Component ───────────────────────────────────────────────────────────
@@ -82,6 +86,7 @@ export function AdvantageTrident() {
   const [expandedReport, setExpandedReport] = useState<TridentReport | null>(null);
   const [availableEntities, setAvailableEntities] = useState<string[]>([]);
   const [entitiesLoading, setEntitiesLoading] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState<Record<string, string>>({});
 
   // Fetch available entities when scope changes to driver/team
   useEffect(() => {
@@ -119,19 +124,48 @@ export function AdvantageTrident() {
       .catch(err => { console.error('Failed to load latest report:', err); });
   }, []);
 
+  // SSE auto-refresh: listen for trident:report:generated events
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/omni/agents/stream');
+      eventSource.addEventListener('agent_event', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.topic === 'trident:report:generated') {
+            fetch(`/api/advantage/trident/latest?scope=${scope}${entity ? `&entity=${entity}` : ''}`)
+              .then(r => { if (r.ok) return r.json(); throw new Error('fetch failed'); })
+              .then(setReport)
+              .catch(() => {});
+          }
+        } catch { /* ignore parse errors */ }
+      });
+    } catch { /* ignore SSE errors */ }
+    return () => { eventSource?.close(); };
+  }, [scope, entity]);
+
   const generate = async (force = false) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/advantage/trident/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scope,
-          entity: scope === 'grid' ? null : entity || null,
-          force,
-        }),
-      });
+      let res: Response;
+      if (scope === 'database') {
+        res = await fetch('/api/advantage/trident/database-synthesis', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force }),
+        });
+      } else {
+        res = await fetch('/api/advantage/trident/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope,
+            entity: scope === 'grid' ? null : entity || null,
+            force,
+          }),
+        });
+      }
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setReport(data);
@@ -190,7 +224,7 @@ export function AdvantageTrident() {
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
-            Convergence Agent
+            <span title="Synthesizes KeX briefings, anomaly detection, and forecast data into a unified intelligence report via LLM">Convergence Agent</span>
           </button>
           <button
             onClick={() => setActiveTab('history')}
@@ -201,16 +235,17 @@ export function AdvantageTrident() {
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            Prompt History
+            <span title="Previously generated convergence reports, stored for comparison and trend tracking">Prompt History</span>
           </button>
         </div>
 
         {/* Scope Selector */}
         <div className="flex items-center gap-2">
-          {SCOPE_OPTIONS.map(({ value, label, icon: Icon }) => (
+          {SCOPE_OPTIONS.map(({ value, label, icon: Icon, hint }) => (
             <button
               key={value}
               onClick={() => { setScope(value); setEntity(''); }}
+              title={hint}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] tracking-wide transition-all border ${
                 scope === value
                   ? 'border-primary/30 bg-primary/8 text-primary'
@@ -225,7 +260,7 @@ export function AdvantageTrident() {
       </div>
 
       {/* Entity Selector (when scoped to driver/team) */}
-      {scope !== 'grid' && (
+      {(scope === 'driver' || scope === 'team') && (
         <div className="space-y-2">
           <span className="text-[11px] text-muted-foreground/60 tracking-wide">
             Select {scope === 'driver' ? 'a driver' : 'a team'}
@@ -239,22 +274,33 @@ export function AdvantageTrident() {
             <p className="text-[11px] text-muted-foreground/50 py-2">No entities available</p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {availableEntities.map(ent => {
-                const selected = entity === ent;
-                return (
-                  <button
-                    key={ent}
-                    onClick={() => setEntity(selected ? '' : ent)}
-                    className={`px-3 py-1.5 rounded-lg text-[12px] tracking-wide transition-all border ${
-                      selected
-                        ? 'border-primary/40 bg-primary/12 text-primary font-medium'
-                        : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
-                    }`}
-                  >
-                    {ent}
-                  </button>
-                );
-              })}
+              {(() => {
+                const MCLAREN_DRIVERS = ['NOR', 'PIA'];
+                const sorted = [...availableEntities].sort((a, b) => {
+                  const aM = MCLAREN_DRIVERS.includes(a) ? 0 : 1;
+                  const bM = MCLAREN_DRIVERS.includes(b) ? 0 : 1;
+                  return aM - bM || a.localeCompare(b);
+                });
+                return sorted.map(ent => {
+                  const selected = entity === ent;
+                  const isMcLaren = MCLAREN_DRIVERS.includes(ent);
+                  return (
+                    <button
+                      key={ent}
+                      onClick={() => setEntity(selected ? '' : ent)}
+                      className={`px-3 py-1.5 rounded-lg text-[12px] tracking-wide transition-all border ${
+                        selected
+                          ? 'border-primary/40 bg-primary/12 text-primary font-medium'
+                          : isMcLaren
+                            ? 'border-primary/20 bg-primary/5 text-primary hover:bg-primary/10'
+                            : 'border-border bg-card text-muted-foreground hover:text-foreground hover:border-[rgba(255,128,0,0.2)]'
+                      }`}
+                    >
+                      {ent}
+                    </button>
+                  );
+                });
+              })()}
             </div>
           )}
         </div>
@@ -266,7 +312,7 @@ export function AdvantageTrident() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => generate(false)}
-              disabled={loading || (scope !== 'grid' && !entity)}
+              disabled={loading || (scope !== 'grid' && scope !== 'database' && !entity)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-primary to-[#FF9A33] text-[#0D1117] hover:shadow-[0_0_20px_rgba(255,128,0,0.3)] active:scale-[0.98]"
             >
               {loading ? (
@@ -294,7 +340,7 @@ export function AdvantageTrident() {
                   {staleness.label}
                 </span>
                 {report?.from_cache && (
-                  <span className="text-muted-foreground/50 ml-1">(cached)</span>
+                  <span className="text-muted-foreground/50 ml-1" title="This report was served from cache rather than freshly generated">(cached)</span>
                 )}
               </div>
             )}
@@ -309,7 +355,7 @@ export function AdvantageTrident() {
           {/* Report Cards — 2x2 Grid */}
           {report && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {SECTION_CONFIG.map(({ key, label, icon: Icon, accent, bg }) => {
+              {SECTION_CONFIG.map(({ key, label, icon: Icon, accent, bg, hint }) => {
                 const section = report.sections[key];
                 return (
                   <div
@@ -319,8 +365,9 @@ export function AdvantageTrident() {
                   >
                     {/* Card Header */}
                     <div
-                      className="flex items-center gap-2.5 px-4 py-3 border-b"
+                      className="flex items-center gap-2.5 px-4 py-3 border-b cursor-help"
                       style={{ borderColor: `${accent}20` }}
+                      title={hint}
                     >
                       <div
                         className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -339,6 +386,46 @@ export function AdvantageTrident() {
                         {section?.content || 'No data available'}
                       </div>
                     </div>
+
+                    {/* Feedback */}
+                    <div className="flex items-center gap-2 px-4 py-2 border-t" style={{ borderColor: `${accent}15` }}>
+                      {feedbackSent[`${report.report_id}:${key}`] ? (
+                        <span className="text-[11px] text-muted-foreground/60">
+                          {feedbackSent[`${report.report_id}:${key}`] === 'up' ? 'Helpful' : 'Not helpful'} — thanks
+                        </span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={async () => {
+                              await fetch('/api/advantage/trident/feedback', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ report_id: report.report_id, section: key, rating: 'up' }),
+                              });
+                              setFeedbackSent(prev => ({ ...prev, [`${report.report_id}:${key}`]: 'up' }));
+                            }}
+                            className="p-1.5 rounded hover:bg-green-500/10 transition-colors"
+                            title="This section was helpful"
+                          >
+                            <ThumbsUp className="w-3 h-3 text-muted-foreground hover:text-green-400" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await fetch('/api/advantage/trident/feedback', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ report_id: report.report_id, section: key, rating: 'down' }),
+                              });
+                              setFeedbackSent(prev => ({ ...prev, [`${report.report_id}:${key}`]: 'down' }));
+                            }}
+                            className="p-1.5 rounded hover:bg-red-500/10 transition-colors"
+                            title="This section was not helpful"
+                          >
+                            <ThumbsDown className="w-3 h-3 text-muted-foreground hover:text-red-400" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -348,9 +435,9 @@ export function AdvantageTrident() {
           {/* Metadata Footer */}
           {report && (
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground/60 pt-1">
-              <span>Model: {report.metadata.model_used}</span>
-              <span>Generated in {report.metadata.generation_time_s}s</span>
-              <span>Scope: {report.scope}{report.entity ? ` / ${report.entity}` : ''}</span>
+              <span title="The LLM used to synthesize this intelligence report">{report.metadata.model_used}</span>
+              <span title="Time taken to gather data from all pipelines and generate the LLM synthesis">Generated in {report.metadata.generation_time_s}s</span>
+              <span title="The analysis scope — grid covers all entities, driver/team focuses on one">Scope: {report.scope}{report.entity ? ` / ${report.entity}` : ''}</span>
             </div>
           )}
 
@@ -362,7 +449,7 @@ export function AdvantageTrident() {
               </div>
               <p className="text-sm text-muted-foreground mb-1">No convergence report yet</p>
               <p className="text-[12px] text-muted-foreground/50">
-                Click "Generate Report" to synthesize insights from KeX, anomaly, and forecast data
+                Click "Generate Report" to synthesize insights from Knowledge Exchange (KeX) briefings, anomaly detection, and forecast data
               </p>
             </div>
           )}
