@@ -106,6 +106,17 @@ class TridentGenerateRequest(BaseModel):
     force: bool = False
 
 
+class TridentFeedbackRequest(BaseModel):
+    report_id: str
+    section: str
+    rating: str  # "up" or "down"
+    comment: Optional[str] = None
+
+
+class TridentDbSynthesisRequest(BaseModel):
+    force: bool = False
+
+
 from pipeline.advantage_data import (
     gather_anomaly_data,
     gather_forecast_data,
@@ -237,6 +248,147 @@ async def trident_history(scope: str = "grid", entity: str | None = None, limit:
         {"_id": 0, "sections": 0},
     ).sort("generated_at", -1).limit(limit)
     return _sanitize(list(cursor))
+
+
+DB_STALE_SECONDS = 600  # 10 min cache for database-wide reports
+
+
+@router.post("/trident/database-synthesis")
+async def trident_database_synthesis(body: TridentDbSynthesisRequest):
+    """Cross-collection synthesis report scanning all intelligence collections."""
+    db = _get_db()
+    now = time.time()
+
+    if not body.force:
+        cached = db["trident_reports"].find_one(
+            {"scope": "database", "stale_after": {"$gt": now}},
+            {"_id": 0},
+        )
+        if cached:
+            cached["from_cache"] = True
+            return _sanitize(cached)
+
+    t0 = time.time()
+
+    # Scan across all agent output collections
+    agent_collections = [
+        "agent_telemetry_anomalies",
+        "agent_weather_alerts",
+        "agent_pit_windows",
+        "agent_knowledge_fused",
+        "agent_visual_incidents",
+        "agent_predictive_maintenance",
+    ]
+    cross_data_parts = []
+    for coll_name in agent_collections:
+        recent = list(db[coll_name].find({}, {"_id": 0}).sort("_timestamp", -1).limit(3))
+        if recent:
+            summaries = []
+            for doc in recent:
+                s = doc.get("summary") or doc.get("insight") or doc.get("briefing", "")
+                if s:
+                    summaries.append(str(s)[:200])
+            if summaries:
+                cross_data_parts.append(f"[{coll_name}]\n" + "\n".join(summaries))
+
+    # Also pull standard Trident sources
+    kex_raw = gather_kex_data(db, "grid", None)
+    anomaly_raw = gather_anomaly_data(db, "grid", None)
+    forecast_raw = gather_forecast_data(db, "grid", None)
+
+    all_data = (
+        f"CROSS-COLLECTION AGENT DATA:\n" + "\n\n".join(cross_data_parts) + "\n\n"
+        f"KEX BRIEFINGS:\n{kex_raw}\n\n"
+        f"ANOMALY DATA:\n{anomaly_raw}\n\n"
+        f"FORECAST DATA:\n{forecast_raw}"
+    )
+
+    key_insights_prompt = (
+        "Synthesize the following cross-collection data from the entire McLaren intelligence platform. "
+        "Identify 3-5 key insights that emerge from correlating data across multiple collections.\n\n"
+        f"{all_data}"
+    )
+    anomaly_prompt = (
+        "From the following cross-collection data, identify 3-5 anomaly patterns "
+        "that span multiple data sources or correlate across collections.\n\n"
+        f"{all_data}"
+    )
+    forecast_prompt = (
+        "From the following cross-collection data, identify 3-5 forecast signals "
+        "that are supported by evidence from multiple data sources.\n\n"
+        f"{all_data}"
+    )
+
+    key_insights, anomaly_patterns, forecast_signals = await asyncio.gather(
+        asyncio.to_thread(_llm_synthesize, key_insights_prompt, TRIDENT_SYSTEM),
+        asyncio.to_thread(_llm_synthesize, anomaly_prompt, TRIDENT_SYSTEM),
+        asyncio.to_thread(_llm_synthesize, forecast_prompt, TRIDENT_SYSTEM),
+    )
+
+    recommendations_prompt = (
+        "Based on these cross-collection findings, provide 3-5 actionable recommendations:\n\n"
+        f"KEY INSIGHTS:\n{key_insights}\n\n"
+        f"ANOMALY PATTERNS:\n{anomaly_patterns}\n\n"
+        f"FORECAST SIGNALS:\n{forecast_signals}"
+    )
+    recommendations = await asyncio.to_thread(_llm_synthesize, recommendations_prompt, TRIDENT_SYSTEM)
+
+    gen_time = round(time.time() - t0, 2)
+    report_id = f"trident_database_all_{int(now)}"
+
+    report = {
+        "report_id": report_id,
+        "scope": "database",
+        "entity": None,
+        "generated_at": now,
+        "stale_after": now + DB_STALE_SECONDS,
+        "sections": {
+            "key_insights": {"title": "Key Insights", "content": key_insights},
+            "recommendations": {"title": "Recommendations", "content": recommendations},
+            "anomaly_patterns": {"title": "Anomaly Patterns", "content": anomaly_patterns},
+            "forecast_signals": {"title": "Forecast Signals", "content": forecast_signals},
+        },
+        "metadata": {
+            "model_used": GROQ_MODEL,
+            "generation_time_s": gen_time,
+            "collections_scanned": len(agent_collections),
+        },
+    }
+
+    db["trident_reports"].update_one(
+        {"scope": "database"},
+        {"$set": report},
+        upsert=True,
+    )
+    db["trident_reports_history"].insert_one({**report})
+
+    report.pop("_id", None)
+    return _sanitize(report)
+
+
+@router.post("/trident/feedback")
+async def trident_submit_feedback(body: TridentFeedbackRequest):
+    """Submit user feedback for a Trident report section."""
+    db = _get_db()
+    doc = {
+        "report_id": body.report_id,
+        "section": body.section,
+        "rating": body.rating,
+        "comment": body.comment,
+        "created_at": time.time(),
+    }
+    db["trident_report_feedback"].insert_one(doc)
+    return {"status": "ok"}
+
+
+@router.get("/trident/feedback/{report_id}")
+async def trident_get_feedback(report_id: str):
+    """Get all feedback for a specific report."""
+    db = _get_db()
+    docs = list(db["trident_report_feedback"].find(
+        {"report_id": report_id}, {"_id": 0}
+    ))
+    return {"feedback": docs, "count": len(docs)}
 
 
 @router.get("/trident/report/{report_id}")
