@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -105,187 +106,12 @@ class TridentGenerateRequest(BaseModel):
     force: bool = False
 
 
-def _gather_structured_context(db, scope: str, entity: str | None) -> str:
-    """Pull structured metrics from Victory collections for comparative reasoning."""
-    parts = []
-
-    if scope == "grid" or scope == "team":
-        # Team-level comparison table from victory_team_kb
-        filt: dict = {}
-        if scope == "team" and entity:
-            filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
-        teams = list(db["victory_team_kb"].find(filt, {"_id": 0, "embedding": 0, "narrative": 0}).limit(13))
-        if teams:
-            parts.append("TEAM PERFORMANCE COMPARISON:")
-            for t in teams:
-                meta = t.get("metadata") or {}
-                car = meta.get("car") or {}
-                con = (car.get("constructor") or {}) if isinstance(car, dict) else {}
-                telem = (car.get("telemetry") or {}) if isinstance(car, dict) else {}
-                health = (car.get("health") or {}) if isinstance(car, dict) else {}
-                strat = meta.get("strategy") or {}
-                parts.append(
-                    f"  {t.get('team')}: wins={con.get('total_wins', '?')}, "
-                    f"podiums={con.get('total_podiums', '?')}, points={con.get('total_points', '?')}, "
-                    f"avg_finish={con.get('avg_finish_position', '?')}, "
-                    f"dnf_rate={con.get('dnf_rate', '?')}, "
-                    f"avg_speed={telem.get('avg_speed', '?')}kph, "
-                    f"overall_health={health.get('overall_health', '?')}%, "
-                    f"undercut_aggression={strat.get('team_undercut_aggression', '?')}, "
-                    f"one_stop_freq={strat.get('team_one_stop_freq', '?')}, "
-                    f"avg_tyre_life={strat.get('team_avg_tyre_life', '?')} laps"
-                )
-
-    if scope == "driver" and entity:
-        # Driver strategy profile
-        sp = db["victory_strategy_profiles"].find_one(
-            {"driver_code": entity.upper()}, {"_id": 0, "embedding": 0, "narrative": 0}
-        )
-        if sp:
-            ps = sp.get("pit_strategy", {})
-            pe = sp.get("pit_execution", {})
-            parts.append(f"DRIVER STRATEGY ({entity.upper()}):")
-            parts.append(
-                f"  undercut_aggression={ps.get('undercut_aggression', '?')}, "
-                f"tyre_extension_bias={ps.get('tyre_extension_bias', '?')}, "
-                f"one_stop_freq={ps.get('one_stop_freq', '?')}, "
-                f"avg_first_stop_lap={ps.get('avg_first_stop_lap', '?')}, "
-                f"pit_stops={pe.get('total_stops', '?')}, "
-                f"avg_pit_duration={pe.get('avg_duration_s', '?')}s, "
-                f"best_pit={pe.get('best_duration_s', '?')}s"
-            )
-            comps = sp.get("compound_profiles") or []
-            if comps:
-                parts.append("  Compound profiles:")
-                for c in comps:
-                    parts.append(
-                        f"    {c.get('compound', '?')}: laps={c.get('total_laps', '?')}, "
-                        f"avg_lap={c.get('avg_lap_time_s', '?')}s, "
-                        f"tyre_life={c.get('avg_tyre_life', '?')} laps"
-                    )
-
-        # Compare vs grid (top 5 rivals)
-        rivals = list(db["victory_strategy_profiles"].find(
-            {"driver_code": {"$ne": entity.upper()}},
-            {"_id": 0, "embedding": 0, "narrative": 0, "compound_profiles": 0}
-        ).limit(5))
-        if rivals:
-            parts.append(f"RIVAL STRATEGY COMPARISON (vs {entity.upper()}):")
-            for r in rivals:
-                rps = r.get("pit_strategy") or {}
-                rpe = r.get("pit_execution") or {}
-                parts.append(
-                    f"  {r.get('driver_code', '?')}/{r.get('team', '?')}: "
-                    f"undercut={rps.get('undercut_aggression', '?')}, "
-                    f"one_stop={rps.get('one_stop_freq', '?')}, "
-                    f"avg_pit={rpe.get('avg_duration_s', '?')}s"
-                )
-
-    return "\n\n".join(parts) if parts else ""
-
-
-def _gather_kex_data(db, scope: str, entity: str | None) -> str:
-    """Gather KeX briefing data for Key Insights section."""
-    parts = []
-
-    # Grid-wide McLaren briefings
-    for doc in db["kex_briefings"].find({}, {"_id": 0}).sort("year", -1).limit(2):
-        text = doc.get("text") or doc.get("briefing") or doc.get("summary", "")
-        if text:
-            parts.append(f"[{doc.get('year', '?')} Briefing] {text[:500]}")
-
-    # Per-driver briefings
-    filt = {}
-    if scope == "driver" and entity:
-        filt["driver_code"] = entity.upper()
-    driver_limit = 5 if scope == "grid" else 10
-    for doc in db["kex_driver_briefings"].find(filt, {"_id": 0}).sort("generated_at", -1).limit(driver_limit):
-        text = doc.get("text") or doc.get("summary", "")
-        if text:
-            parts.append(f"[{doc.get('driver_code', '?')}] {text[:300]}")
-
-    return "\n\n".join(parts) if parts else "No KeX briefing data available."
-
-
-def _gather_anomaly_data(db, scope: str, entity: str | None) -> str:
-    """Gather anomaly data for Anomaly Patterns section."""
-    parts = []
-
-    # Live snapshot
-    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
-    drivers = snapshot.get("drivers", [])
-    if scope == "driver" and entity:
-        drivers = [d for d in drivers if d.get("driver_code", "").upper() == entity.upper()]
-    elif scope == "team" and entity:
-        drivers = [d for d in drivers if (d.get("team", "") or "").lower() == entity.lower()]
-
-    for d in drivers[:10]:
-        code = d.get("driver_code", "?")
-        races = d.get("races", [])
-        if races:
-            latest = races[-1]
-            systems = latest.get("systems", {})
-            critical = [s for s, v in systems.items() if v.get("level") == "critical"]
-            warning = [s for s, v in systems.items() if v.get("level") == "warning"]
-            parts.append(
-                f"[{code}] Race: {latest.get('race', '?')} — "
-                f"Critical: {critical or 'none'}, Warning: {warning or 'none'}"
-            )
-
-    # Anomaly briefings
-    filt = {}
-    if scope == "driver" and entity:
-        filt["driver_code"] = entity.upper()
-    for doc in db["kex_anomaly_briefings"].find(filt, {"_id": 0}).limit(5):
-        text = doc.get("text") or doc.get("summary", "")
-        if text:
-            parts.append(f"[Anomaly Brief: {doc.get('driver_code', '?')}] {text[:300]}")
-
-    return "\n\n".join(parts) if parts else "No anomaly data available."
-
-
-def _gather_forecast_data(db, scope: str, entity: str | None) -> str:
-    """Gather forecast/trend data for Forecast Signals section."""
-    parts = []
-
-    # Telemetry race summaries — recent trends
-    filt = {}
-    if scope == "driver" and entity:
-        filt["driver_code"] = entity.upper()
-    elif scope == "team" and entity:
-        filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
-
-    telem_limit = 10 if scope == "grid" else 20
-    for doc in db["telemetry_race_summary"].find(filt, {"_id": 0}).sort("year", -1).limit(telem_limit):
-        code = doc.get("driver_code", "?")
-        race = doc.get("race", "?")
-        year = doc.get("year", "?")
-        metrics = {k: v for k, v in doc.items()
-                   if isinstance(v, (int, float)) and k not in ("year", "_id")}
-        top_metrics = dict(list(metrics.items())[:6])
-        parts.append(f"[{code} {race} {year}] {top_metrics}")
-
-    # Forecast briefings
-    brief_filt = {}
-    if scope == "driver" and entity:
-        brief_filt["driver_code"] = entity.upper()
-    for doc in db["kex_forecast_briefings"].find(brief_filt, {"_id": 0}).limit(5):
-        text = doc.get("text") or doc.get("summary", "")
-        if text:
-            parts.append(f"[Forecast Brief: {doc.get('driver_code', '?')}] {text[:300]}")
-
-    # Car telemetry briefings
-    car_filt = {}
-    if scope == "driver" and entity:
-        car_filt["driver_code"] = entity.upper()
-    elif scope == "team" and entity:
-        car_filt["team"] = {"$regex": f"^{entity}$", "$options": "i"}
-    for doc in db["kex_car_telemetry_briefings"].find(car_filt, {"_id": 0}).limit(5):
-        text = doc.get("text") or doc.get("summary", "")
-        if text:
-            parts.append(f"[Car Telemetry Brief: {doc.get('driver_code', doc.get('team', '?'))}] {text[:300]}")
-
-    return "\n\n".join(parts) if parts else "No forecast/trend data available."
+from pipeline.advantage_data import (
+    gather_anomaly_data,
+    gather_forecast_data,
+    gather_kex_data,
+    gather_structured_context,
+)
 
 
 @router.post("/trident/generate")
@@ -309,10 +135,10 @@ async def trident_generate(body: TridentGenerateRequest):
     t0 = time.time()
 
     # Gather raw data + structured metrics
-    structured = _gather_structured_context(db, scope, entity)
-    kex_raw = _gather_kex_data(db, scope, entity)
-    anomaly_raw = _gather_anomaly_data(db, scope, entity)
-    forecast_raw = _gather_forecast_data(db, scope, entity)
+    structured = gather_structured_context(db, scope, entity)
+    kex_raw = gather_kex_data(db, scope, entity)
+    anomaly_raw = gather_anomaly_data(db, scope, entity)
+    forecast_raw = gather_forecast_data(db, scope, entity)
 
     scope_label = "the entire F1 grid" if scope == "grid" else f"{entity}"
     metrics_block = f"\n\nSTRUCTURED METRICS:\n{structured}" if structured else ""
@@ -1009,4 +835,498 @@ def crossover_cross_insights(body: CrossoverCrossInsightRequest):
         "query": body.query,
         "correlations_found": correlations,
         "suggested_questions": questions,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Prep Mode — Pre-Race Intelligence Package
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class PrepModeRequest(BaseModel):
+    """Request body for generating a pre-race intelligence package."""
+    race_name: str                  # e.g. "Austrian Grand Prix"
+    season: int = 2024
+    team: str = "McLaren"
+    drivers: list[str] = []        # e.g. ["NOR", "PIA"] — empty = auto-detect
+    force: bool = False
+
+
+def _gather_prep_anomaly(db, drivers: list[str], race_name: str) -> dict:
+    """Gather anomaly health data for target drivers."""
+    results = {}
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0})
+    if not snapshot:
+        return results
+
+    for d in snapshot.get("drivers", []):
+        code = d.get("code", "")
+        if code not in drivers:
+            continue
+        systems = {}
+        for race in d.get("races", []):
+            for sys_name, sys_data in race.get("systems", {}).items():
+                systems[sys_name] = {
+                    "health": sys_data.get("health", 0),
+                    "level": sys_data.get("level", "unknown"),
+                }
+        results[code] = {
+            "overall_health": d.get("overall_health", 0),
+            "overall_level": d.get("overall_level", "unknown"),
+            "last_race": d.get("last_race", ""),
+            "race_count": d.get("race_count", 0),
+            "systems": systems,
+        }
+    return results
+
+
+def _gather_prep_elt(db, race_name: str, season: int, drivers: list[str]) -> dict:
+    """Load ELT pace predictions for each driver."""
+    results = {}
+    for driver in drivers:
+        bl = db["elt_parameters"].find_one(
+            {"type": "circuit_baseline", "circuit": race_name},
+            {"_id": 0},
+            sort=[("year", -1)],
+        )
+        if not bl:
+            continue
+        dd = db["elt_parameters"].find_one(
+            {"type": "driver_year_delta", "driver": driver, "year": season},
+            {"_id": 0},
+        )
+        if not dd:
+            dd = db["elt_parameters"].find_one(
+                {"type": "driver_delta", "driver": driver},
+                {"_id": 0},
+            )
+        delta = dd["avg_delta"] if dd else 0.0
+        results[driver] = {
+            "baseline_pace_s": round(bl["baseline_lap_time"], 3),
+            "driver_advantage_s": round(delta, 3),
+            "predicted_pace_s": round(bl["baseline_lap_time"] + delta, 3),
+        }
+    return results
+
+
+def _gather_prep_degradation(db, race_name: str) -> list[dict]:
+    """Load tyre degradation curves for the circuit."""
+    curves = []
+    for doc in db["tyre_degradation_curves"].find(
+        {"circuit": race_name}, {"_id": 0}
+    ):
+        curves.append({
+            "compound": doc.get("compound", ""),
+            "temp_band": doc.get("temp_band", "all"),
+            "coefficients": doc.get("coefficients", []),
+            "deg_per_lap_s": doc.get("deg_per_lap_s"),
+            "r_squared": doc.get("r_squared"),
+            "n_stints": doc.get("n_stints"),
+        })
+    return curves
+
+
+def _gather_prep_strategy(db, race_name: str) -> dict | None:
+    """Load pre-computed strategy simulation for the circuit."""
+    doc = db["race_strategy_simulations"].find_one(
+        {"race_name": {"$regex": race_name, "$options": "i"}},
+        {"_id": 0},
+    )
+    return doc
+
+
+def _gather_prep_circuit(db, race_name: str) -> dict:
+    """Load circuit intelligence and pit loss data."""
+    circuit = {}
+    ci = db["circuit_intelligence"].find_one(
+        {"race_name": {"$regex": race_name, "$options": "i"}},
+        {"_id": 0},
+    )
+    if ci:
+        circuit["intelligence"] = ci
+
+    pit = db["circuit_pit_loss_times"].find_one(
+        {"circuit": {"$regex": race_name.lower().replace(" grand prix", ""), "$options": "i"}},
+        {"_id": 0},
+    )
+    if pit:
+        circuit["pit_loss_s"] = pit.get("pit_loss_s") or pit.get("avg_pit_loss_s")
+
+    air = db["race_air_density"].find_one(
+        {"race_name": {"$regex": race_name, "$options": "i"}},
+        {"_id": 0},
+    )
+    if air:
+        circuit["air_density"] = {
+            "density_kg_m3": air.get("density_kg_m3"),
+            "temperature_c": air.get("temperature_c"),
+            "humidity_pct": air.get("humidity_pct"),
+            "pressure_hpa": air.get("pressure_hpa"),
+        }
+
+    return circuit
+
+
+@router.post("/prep-mode/generate")
+async def prep_mode_generate(body: PrepModeRequest):
+    """Generate a pre-race intelligence package.
+
+    Combines anomaly health, ELT pace, tyre degradation, strategy,
+    circuit intelligence, and a Trident synthesis into a single report.
+    This is the Wednesday briefing for the strategy group.
+    """
+    db = _get_db()
+    t0 = time.time()
+
+    race_name = body.race_name
+    season = body.season
+    team = body.team
+
+    # Auto-detect drivers if not provided
+    drivers = body.drivers
+    if not drivers:
+        drivers = sorted(db["jolpica_race_results"].distinct(
+            "driver_code",
+            {"season": season, "constructor_name": {"$regex": team, "$options": "i"}},
+        ))
+    if not drivers:
+        raise HTTPException(400, f"No drivers found for {team} in {season}")
+
+    # Gather all data pillars in parallel
+    anomaly_data = _gather_prep_anomaly(db, drivers, race_name)
+    elt_data = _gather_prep_elt(db, race_name, season, drivers)
+    deg_curves = _gather_prep_degradation(db, race_name)
+    strategy_sim = _gather_prep_strategy(db, race_name)
+    circuit_data = _gather_prep_circuit(db, race_name)
+
+    # Build context for LLM synthesis
+    context_parts = [f"PRE-RACE INTELLIGENCE PACKAGE: {race_name} ({season})"]
+    context_parts.append(f"Team: {team} | Drivers: {', '.join(drivers)}")
+
+    if anomaly_data:
+        context_parts.append("\n--- ANOMALY HEALTH ---")
+        for drv, data in anomaly_data.items():
+            systems_str = ", ".join(
+                f"{s}: {d['health']}/100 ({d['level']})"
+                for s, d in data.get("systems", {}).items()
+            )
+            context_parts.append(
+                f"{drv}: Overall {data['overall_health']}/100 ({data['overall_level']}). "
+                f"Systems: {systems_str}"
+            )
+
+    if elt_data:
+        context_parts.append("\n--- PACE PREDICTION (ELT) ---")
+        for drv, data in elt_data.items():
+            context_parts.append(
+                f"{drv}: Predicted {data['predicted_pace_s']:.3f}s "
+                f"(baseline {data['baseline_pace_s']:.3f}s, "
+                f"advantage {data['driver_advantage_s']:+.3f}s)"
+            )
+
+    if deg_curves:
+        context_parts.append("\n--- TYRE DEGRADATION CURVES ---")
+        for c in deg_curves[:6]:
+            deg = c.get("deg_per_lap_s")
+            r2 = c.get("r_squared")
+            context_parts.append(
+                f"{c['compound']} ({c['temp_band']}): "
+                f"{deg:.4f} s/lap degradation" + (f" (R²={r2:.3f})" if r2 else "")
+                if deg else f"{c['compound']}: no curve data"
+            )
+
+    if circuit_data:
+        context_parts.append("\n--- CIRCUIT DATA ---")
+        if circuit_data.get("pit_loss_s"):
+            context_parts.append(f"Pit loss: {circuit_data['pit_loss_s']:.1f}s")
+        ad = circuit_data.get("air_density", {})
+        if ad.get("temperature_c"):
+            context_parts.append(
+                f"Conditions: {ad['temperature_c']}°C, "
+                f"{ad.get('humidity_pct', '?')}% humidity, "
+                f"{ad.get('density_kg_m3', '?')} kg/m³ air density"
+            )
+
+    full_context = "\n".join(context_parts)
+
+    # Generate LLM synthesis — pre-race briefing
+    briefing_prompt = (
+        f"You are a Formula 1 strategy analyst preparing the pre-race intelligence "
+        f"briefing for {team}'s strategy group. Based on the following data, write a "
+        f"concise pre-race report with these sections:\n\n"
+        f"1. RISK ASSESSMENT — Overall risk level for each driver, key concerns\n"
+        f"2. PACE OUTLOOK — Expected performance relative to the grid\n"
+        f"3. STRATEGY RECOMMENDATION — Pit stop strategy, tyre selection, key windows\n"
+        f"4. WATCH ITEMS — Specific things to monitor during FP1/FP2\n\n"
+        f"Be specific with numbers. Reference the data. Keep it actionable.\n\n"
+        f"{full_context}"
+    )
+
+    briefing = await asyncio.to_thread(
+        _llm_synthesize, briefing_prompt, TRIDENT_SYSTEM
+    )
+
+    gen_time = round(time.time() - t0, 2)
+
+    report = {
+        "report_type": "prep_mode",
+        "race_name": race_name,
+        "season": season,
+        "team": team,
+        "drivers": drivers,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generation_time_s": gen_time,
+        "pillars": {
+            "anomaly": anomaly_data,
+            "elt_pace": elt_data,
+            "degradation_curves": deg_curves,
+            "strategy_simulation": _sanitize(strategy_sim) if strategy_sim else None,
+            "circuit": circuit_data,
+        },
+        "briefing": briefing,
+        "model_used": GROQ_MODEL,
+    }
+
+    # Store in MongoDB
+    db["prep_mode_reports"].update_one(
+        {"race_name": race_name, "season": season, "team": team},
+        {"$set": report},
+        upsert=True,
+    )
+
+    return _sanitize(report)
+
+
+@router.get("/prep-mode/latest")
+async def prep_mode_latest(
+    race_name: str | None = None,
+    season: int = 2024,
+    team: str = "McLaren",
+):
+    """Get the latest prep mode report."""
+    db = _get_db()
+    filt: dict = {"season": season, "team": {"$regex": team, "$options": "i"}}
+    if race_name:
+        filt["race_name"] = {"$regex": race_name, "$options": "i"}
+
+    doc = db["prep_mode_reports"].find_one(filt, {"_id": 0}, sort=[("generated_at", -1)])
+    if not doc:
+        raise HTTPException(404, "No prep mode report found")
+    return _sanitize(doc)
+
+
+@router.get("/prep-mode/list")
+async def prep_mode_list(season: int = 2024, team: str = "McLaren"):
+    """List available prep mode reports."""
+    db = _get_db()
+    cursor = db["prep_mode_reports"].find(
+        {"season": season, "team": {"$regex": team, "$options": "i"}},
+        {"_id": 0, "pillars": 0, "briefing": 0},
+    ).sort("generated_at", -1)
+    return _sanitize(list(cursor))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Strategy Simulator — Interactive Monte Carlo Race Simulation
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class StrategySimRequest(BaseModel):
+    """Request body for interactive strategy simulation."""
+    race_name: str               # e.g. "Austrian Grand Prix"
+    total_laps: int              # race distance
+    pit_loss_s: float = 22.0     # pit-lane time loss (seconds)
+    fuel_effect_s: float = 0.03  # seconds-per-lap lighter per lap burned
+    compounds: list[str] = ["SOFT", "MEDIUM", "HARD"]
+    max_stops: int = 3           # explore 1-stop through N-stop
+
+
+def _load_deg_lookup(db, race_name: str) -> dict[str, float]:
+    """Load tyre degradation rates from MongoDB for a given circuit.
+
+    Returns {compound: deg_per_lap_s} mapping.
+    Falls back to sensible defaults if no data found.
+    """
+    lookup: dict[str, float] = {}
+    for doc in db["tyre_degradation_curves"].find(
+        {"circuit": {"$regex": race_name, "$options": "i"}},
+        {"_id": 0, "compound": 1, "deg_per_lap_s": 1},
+    ):
+        compound = doc.get("compound", "").upper()
+        deg = doc.get("deg_per_lap_s")
+        if compound and deg is not None:
+            lookup[compound] = float(deg)
+
+    # Defaults if no curve data
+    defaults = {"SOFT": 0.08, "MEDIUM": 0.05, "HARD": 0.035}
+    for c, d in defaults.items():
+        if c not in lookup:
+            lookup[c] = d
+    return lookup
+
+
+def _get_deg(compound: str, deg_lookup: dict[str, float]) -> float:
+    """Get degradation rate for a compound."""
+    return deg_lookup.get(compound.upper(), 0.05)
+
+
+def _fuel_effect(lap: int, total_laps: int, fuel_effect_s: float) -> float:
+    """Compute fuel-mass time benefit at a given lap.
+
+    Car gets lighter each lap → faster. Linear model.
+    """
+    return -fuel_effect_s * lap
+
+
+def _generate_splits(total_laps: int, n_stops: int) -> list[list[int]]:
+    """Generate reasonable stint-length splits for n_stops.
+
+    Each stint must be at least 5 laps. Returns a list of splits,
+    where each split is a list of stint lengths summing to total_laps.
+    """
+    if n_stops == 0:
+        return [[total_laps]]
+
+    n_stints = n_stops + 1
+    min_stint = 5
+    if min_stint * n_stints > total_laps:
+        return []
+
+    splits = []
+    remaining = total_laps - min_stint * n_stints
+
+    # Generate evenly-spaced splits with variations
+    base = total_laps // n_stints
+    for offset in range(-8, 9, 2):
+        split = []
+        left = total_laps
+        for s in range(n_stints - 1):
+            length = max(min_stint, base + offset * (1 if s == 0 else -1 if s == n_stints - 2 else 0))
+            length = min(length, left - min_stint * (n_stints - s - 1))
+            split.append(length)
+            left -= length
+        split.append(left)
+        if all(s >= min_stint for s in split) and sum(split) == total_laps:
+            if split not in splits:
+                splits.append(split)
+
+    # Add a few asymmetric splits
+    for first_frac in [0.3, 0.4, 0.5, 0.6]:
+        split = []
+        first_len = max(min_stint, int(total_laps * first_frac))
+        left = total_laps - first_len
+        split.append(first_len)
+        for s in range(n_stints - 2):
+            length = max(min_stint, left // (n_stints - 1 - s))
+            split.append(length)
+            left -= length
+        split.append(left)
+        if all(s >= min_stint for s in split) and sum(split) == total_laps:
+            if split not in splits:
+                splits.append(split)
+
+    return splits[:20]  # cap at 20 splits per stop count
+
+
+def _sim_strategy(
+    stint_laps: list[int],
+    compounds: list[str],
+    deg_lookup: dict[str, float],
+    pit_loss_s: float,
+    fuel_effect_s: float,
+    total_laps: int,
+) -> dict:
+    """Simulate a single strategy and return total race time + breakdown.
+
+    For each stint, compute lap times as:
+      lap_time = baseline + degradation * tyre_age + fuel_effect(lap)
+
+    The baseline is normalized to 0 so we compare relative times.
+    """
+    total_time = 0.0
+    stint_details = []
+    global_lap = 0
+
+    for i, (length, compound) in enumerate(zip(stint_laps, compounds)):
+        deg = _get_deg(compound, deg_lookup)
+        stint_time = 0.0
+        for tyre_lap in range(length):
+            lap_delta = deg * tyre_lap + _fuel_effect(global_lap, total_laps, fuel_effect_s)
+            stint_time += lap_delta
+            global_lap += 1
+
+        # Add pit stop time (not on the last stint)
+        pit = pit_loss_s if i < len(stint_laps) - 1 else 0.0
+        total_time += stint_time + pit
+
+        stint_details.append({
+            "stint": i + 1,
+            "compound": compound,
+            "laps": length,
+            "stint_delta_s": round(stint_time, 3),
+            "pit_s": pit,
+        })
+
+    return {
+        "total_delta_s": round(total_time, 3),
+        "stops": len(stint_laps) - 1,
+        "stints": stint_details,
+        "stint_laps": stint_laps,
+        "compounds": compounds,
+    }
+
+
+@router.post("/strategy/simulate")
+async def strategy_simulate(body: StrategySimRequest):
+    """Interactive strategy simulator.
+
+    Runs Monte Carlo-style exploration of all N-stop strategies
+    using tyre degradation curves from MongoDB. Returns ranked
+    strategies with time deltas relative to the fastest option.
+    """
+    db = _get_db()
+    deg_lookup = _load_deg_lookup(db, body.race_name)
+
+    all_results = []
+
+    for n_stops in range(0, body.max_stops + 1):
+        splits = _generate_splits(body.total_laps, n_stops)
+        if not splits:
+            continue
+
+        # Generate compound permutations for this stop count
+        from itertools import product
+        n_stints = n_stops + 1
+        compound_combos = list(product(body.compounds, repeat=n_stints))
+        # Cap to avoid explosion
+        if len(compound_combos) > 50:
+            compound_combos = compound_combos[:50]
+
+        for split in splits:
+            for combo in compound_combos:
+                result = _sim_strategy(
+                    split, list(combo), deg_lookup,
+                    body.pit_loss_s, body.fuel_effect_s, body.total_laps,
+                )
+                all_results.append(result)
+
+    # Sort by total time
+    all_results.sort(key=lambda r: r["total_delta_s"])
+
+    # Compute deltas relative to the best strategy
+    best_time = all_results[0]["total_delta_s"] if all_results else 0
+    for r in all_results:
+        r["gap_to_best_s"] = round(r["total_delta_s"] - best_time, 3)
+
+    # Return top 20 strategies
+    top = all_results[:20]
+
+    return _sanitize({
+        "race_name": body.race_name,
+        "total_laps": body.total_laps,
+        "pit_loss_s": body.pit_loss_s,
+        "fuel_effect_s": body.fuel_effect_s,
+        "deg_rates": deg_lookup,
+        "strategies_evaluated": len(all_results),
+        "top_strategies": top,
     })
