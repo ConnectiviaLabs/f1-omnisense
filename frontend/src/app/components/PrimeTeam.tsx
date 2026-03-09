@@ -1,78 +1,22 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, AreaChart, Area,
+  ComposedChart, ReferenceLine,
 } from 'recharts';
-import { Loader2, TrendingUp, Trophy, Users, Timer, Gauge, Flag, ArrowLeft, GitCompare } from 'lucide-react';
-import { ForecastChart } from './ForecastChart';
+import { TrendingUp, TrendingDown, Minus, Trophy, Users, Timer, Gauge, Flag, ArrowLeft, GitCompare, AlertTriangle, Loader2 } from 'lucide-react';
+import { ForecastChart, DEFAULT_SYSTEM_FEATURES, featureToSystem, prettyLabel } from './ForecastChart';
 import KexBriefingCard from './KexBriefingCard';
+import { TEAMS, TEAM_COLORS_BY_ID as TEAM_COLORS, TEAM_LOGOS, TEAM_VP_NAME, teamIdFromName } from '../constants/teams';
+import { LoadingSpinner } from './LoadingSpinner';
 import { HealthGauge } from './HealthGauge';
 import { StatusBadge } from './StatusBadge';
 import {
-  type VehicleData, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
+  type VehicleData, type FeatureForecast, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
 } from './anomalyHelpers';
 import type { Pillar } from './Sidebar';
 
-/* ─── Team Constants ─── */
-
-const TEAMS = [
-  { id: 'red_bull', name: 'Red Bull' },
-  { id: 'mclaren', name: 'McLaren' },
-  { id: 'ferrari', name: 'Ferrari' },
-  { id: 'mercedes', name: 'Mercedes' },
-  { id: 'aston_martin', name: 'Aston Martin' },
-  { id: 'alpine', name: 'Alpine' },
-  { id: 'williams', name: 'Williams' },
-  { id: 'rb', name: 'RB' },
-  { id: 'sauber', name: 'Kick Sauber' },
-  { id: 'haas', name: 'Haas' },
-];
-
-const TEAM_COLORS: Record<string, string> = {
-  red_bull: '#3671C6', mclaren: '#FF8000', ferrari: '#E8002D',
-  mercedes: '#27F4D2', aston_martin: '#229971', alpine: '#FF87BC',
-  williams: '#64C4FF', rb: '#6692FF', sauber: '#52E252', haas: '#B6BABD',
-};
-
-const F1_CDN = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026';
-const TEAM_LOGOS: Record<string, string> = {
-  red_bull: `${F1_CDN}/redbullracing/2026redbullracinglogowhite.webp`,
-  mclaren: `${F1_CDN}/mclaren/2026mclarenlogowhite.webp`,
-  ferrari: `${F1_CDN}/ferrari/2026ferrarilogowhite.webp`,
-  mercedes: `${F1_CDN}/mercedes/2026mercedeslogowhite.webp`,
-  aston_martin: `${F1_CDN}/astonmartin/2026astonmartinlogowhite.webp`,
-  alpine: `${F1_CDN}/alpine/2026alpinelogowhite.webp`,
-  williams: `${F1_CDN}/williams/2026williamslogowhite.webp`,
-  rb: `${F1_CDN}/racingbulls/2026racingbullslogowhite.webp`,
-  sauber: `${F1_CDN}/audi/2026audilogowhite.webp`,
-  haas: `${F1_CDN}/haasf1team/2026haasf1teamlogowhite.webp`,
-};
-
-// Map anomaly data team names → constructor_id
-const TEAM_NAME_MAP: Record<string, string> = {
-  'red bull racing': 'red_bull', 'mclaren': 'mclaren', 'ferrari': 'ferrari',
-  'mercedes': 'mercedes', 'aston martin': 'aston_martin', 'alpine': 'alpine',
-  'williams': 'williams', 'rb': 'rb', 'kick sauber': 'sauber', 'haas f1 team': 'haas',
-  'haas': 'haas', 'sauber': 'sauber', 'racing bulls': 'rb', 'visa cash app rb': 'rb',
-};
-
-// Map constructor_id → VectorProfiles team name (for similarity API)
-const TEAM_VP_NAME: Record<string, string> = {
-  red_bull: 'Red Bull', mclaren: 'McLaren', ferrari: 'Ferrari',
-  mercedes: 'Mercedes', aston_martin: 'Aston Martin', alpine: 'Alpine F1 Team',
-  williams: 'Williams', rb: 'RB F1 Team', sauber: 'Sauber', haas: 'Haas F1 Team',
-};
-
 interface SimilarTeam { team: string; score: number; drivers: string[] }
 interface IntraTeamPair { driver_a: string; driver_b: string; score: number }
-
-function teamIdFromName(teamName: string): string {
-  const lower = teamName.toLowerCase();
-  if (TEAM_NAME_MAP[lower]) return TEAM_NAME_MAP[lower];
-  for (const [key, id] of Object.entries(TEAM_NAME_MAP)) {
-    if (lower.includes(key) || key.includes(lower)) return id;
-  }
-  return lower.replace(/\s+/g, '_');
-}
 
 /* ─── Props ─── */
 
@@ -99,9 +43,6 @@ export function PrimeTeam({ prefetchedVehicles, activePillar }: PrimeTeamProps) 
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [prefetchedVehicles]);
-
-  const teamColor = selectedTeam ? (TEAM_COLORS[selectedTeam] ?? '#FF8000') : '#FF8000';
-  const teamName = selectedTeam ? (TEAMS.find(t => t.id === selectedTeam)?.name ?? selectedTeam) : '';
 
   // Show grid overview when no team selected (telemetry pillar)
   if (activePillar === 'telemetry' && !selectedTeam) {
@@ -195,11 +136,7 @@ function TeamGrid({ vehicles, loading, onSelect }: {
   }, [vehicles]);
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading teams...
-      </div>
-    );
+    return <LoadingSpinner text="Loading teams..." />;
   }
 
   const mclarenTeam = teamData.find(t => t.teamId === 'mclaren');
@@ -392,11 +329,7 @@ function TeamTelemetryView({ teamId, teamName, teamColor, season, vehicles: _veh
   }, [profile, season, teamId]);
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading team profile...
-      </div>
-    );
+    return <LoadingSpinner text="Loading team profile..." />;
   }
 
   if (!profile) {
@@ -650,11 +583,7 @@ function TeamAnomalyView({ teamId, teamName, teamColor, vehicles, loading }: {
   }, [teamDrivers, loading, teamId]);
 
   if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
-        <Loader2 className="w-4 h-4 animate-spin text-primary" /> Loading anomaly data...
-      </div>
-    );
+    return <LoadingSpinner text="Loading anomaly data..." />;
   }
 
   if (teamDrivers.length === 0) {
@@ -825,6 +754,9 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
   const [profile, setProfile] = useState<ConstructorProfile | null>(null);
   const [forecastKex, setForecastKex] = useState<any>(null);
   const [forecastKexLoading, setForecastKexLoading] = useState(false);
+  const [teamForecasts, setTeamForecasts] = useState<FeatureForecast[]>([]);
+  const [teamForecastLoading, setTeamForecastLoading] = useState(false);
+  const [expandedDrivers, setExpandedDrivers] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch(`/api/constructor_profiles?season=${season}&constructor_id=${teamId}`)
@@ -856,9 +788,51 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
       .finally(() => setForecastKexLoading(false));
   }, [profile, season, teamId]);
 
-  if (driverCodes.length === 0) {
-    return <div className="text-sm text-muted-foreground py-8 text-center">No driver data for {teamName} to forecast</div>;
-  }
+  // Fetch team-aggregated forecasts (combined across drivers)
+  useEffect(() => {
+    setTeamForecasts([]);
+    setTeamForecastLoading(true);
+
+    const teamSlug = teamName.toLowerCase().replace(/\s+/g, '_');
+    const featureList = Object.values(DEFAULT_SYSTEM_FEATURES).flat();
+
+    Promise.all(
+      featureList.map(col =>
+        fetch(`/api/omni/analytics/forecast/team/${teamSlug}?column=${encodeURIComponent(col)}&horizon=12&method=auto&year=${season}`, { method: 'POST' })
+          .then(r => r.ok ? r.json() : null)
+          .catch(() => null)
+      )
+    ).then(results => {
+      const fcs: FeatureForecast[] = [];
+      for (const r of results) {
+        if (!r?.values) continue;
+        fcs.push({
+          column: r.column,
+          method: r.method,
+          mae: r.mae,
+          rmse: r.rmse,
+          trend_direction: r.trend_direction,
+          trend_pct: r.trend_pct,
+          volatility: r.volatility,
+          risk_flag: r.risk_flag,
+          history: r.history,
+          history_timestamps: r.history_timestamps,
+          data: r.values.map((val: number, i: number) => ({
+            step: r.timestamps?.[i] ?? `+${i + 1}`,
+            value: val,
+            lower: r.lower_bound?.[i] ?? val,
+            upper: r.upper_bound?.[i] ?? val,
+          })),
+        });
+      }
+      setTeamForecasts(fcs);
+    })
+    .catch(() => setTeamForecasts([]))
+    .finally(() => setTeamForecastLoading(false));
+  }, [teamName, season]);
+
+  const toggleDriver = (code: string) =>
+    setExpandedDrivers(prev => ({ ...prev, [code]: !prev[code] }));
 
   return (
     <div className="space-y-4">
@@ -871,16 +845,138 @@ function TeamForecastView({ teamId, teamName, teamColor, vehicles, season }: {
         loadingText="Generating team forecast intelligence…"
       />
 
-      {/* Forecast panels per driver */}
-      {driverCodes.map(code => (
-        <div key={code} className="bg-card rounded-lg border border-border p-3">
-          <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
-            <TrendingUp className="w-3 h-3" style={{ color: teamColor }} />
-            Feature Forecasts — {code}
-          </h3>
-          <ForecastChart driverCode={code} />
+      {/* Team-aggregated forecast charts */}
+      <div className="bg-card rounded-lg border border-border p-3">
+        <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5" style={{ color: teamColor }} />
+          Team Combined Forecasts
+          <span className="text-[10px] text-muted-foreground ml-1">
+            (averaged across {driverCodes.length > 0 ? driverCodes.join(', ') : 'all drivers'})
+          </span>
+        </h3>
+
+        {teamForecastLoading ? (
+          <div className="flex items-center gap-2 text-[12px] text-muted-foreground py-8 justify-center">
+            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            Forecasting team-wide metrics…
+          </div>
+        ) : teamForecasts.length === 0 ? (
+          <div className="text-center py-6 text-[12px] text-muted-foreground">
+            No team forecast data available.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {teamForecasts.map(fc => {
+              const system = featureToSystem(fc.column);
+              const label = prettyLabel(fc.column);
+              const displayLabel = system ? `${system} (${label})` : label;
+
+              const TrendIcon = fc.trend_direction === 'rising' ? TrendingUp
+                : fc.trend_direction === 'falling' ? TrendingDown : Minus;
+              const trendColor = fc.trend_direction === 'rising' ? '#05DF72'
+                : fc.trend_direction === 'falling' ? '#FB2C36' : '#9090A8';
+
+              const historyData = (fc.history ?? []).map((v, i) => ({
+                step: fc.history_timestamps?.[i] ?? `R${i + 1}`,
+                actual: v, value: null as number | null,
+                lower: null as number | null, upper: null as number | null,
+              }));
+              const bridgeStep = fc.history?.length
+                ? { step: 'Now', actual: fc.history[fc.history.length - 1], value: fc.data[0]?.value ?? null, lower: null as number | null, upper: null as number | null }
+                : null;
+              const forecastData = fc.data.map(d => ({
+                step: d.step, actual: null as number | null,
+                value: d.value, lower: d.lower, upper: d.upper,
+              }));
+              const chartData = [...historyData, ...(bridgeStep ? [bridgeStep] : []), ...forecastData];
+
+              const allVals = chartData.flatMap(d => [d.actual, d.value, d.lower, d.upper].filter((v): v is number => v != null));
+              const yMin = Math.min(...allVals);
+              const yMax = Math.max(...allVals);
+              const yPad = (yMax - yMin) * 0.15 || 1;
+              const yDomain: [number, number] = [Math.floor(yMin - yPad), Math.ceil(yMax + yPad)];
+
+              const totalPts = chartData.length;
+              const tickInterval = totalPts > 15 ? Math.ceil(totalPts / 10) : 0;
+
+              return (
+                <div key={fc.column} className="bg-background/50 rounded-lg p-4 border border-border/50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[13px] font-semibold text-foreground">{displayLabel}</span>
+                    <div className="flex items-center gap-2">
+                      {fc.risk_flag && <AlertTriangle className="w-3.5 h-3.5 text-primary" />}
+                      <span
+                        className="flex items-center gap-1 text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full"
+                        style={{ color: trendColor, background: `${trendColor}18` }}
+                      >
+                        <TrendIcon className="w-3 h-3" />
+                        {fc.trend_pct != null ? `${fc.trend_pct > 0 ? '+' : ''}${fc.trend_pct.toFixed(1)}%` : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: 8 }}>
+                      <XAxis dataKey="step" tick={{ fontSize: 9, fill: '#9090A8' }} axisLine={false} tickLine={false} interval={tickInterval} />
+                      <YAxis domain={yDomain} tick={{ fontSize: 9, fill: '#9090A8' }} axisLine={false} tickLine={false} width={50} />
+                      <Tooltip
+                        contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 12, color: '#E8E8F0' }}
+                        labelStyle={{ color: '#9090A8' }}
+                        formatter={(v: any, name: string) => v != null ? [Number(v).toFixed(2), name] : ['-', name]}
+                      />
+                      <ReferenceLine
+                        x="Now"
+                        stroke="rgba(255,255,255,0.4)"
+                        strokeDasharray="4 3"
+                        label={{ value: 'Now', position: 'top', fontSize: 10, fill: '#E8E8F0' }}
+                      />
+                      <Line type="monotone" dataKey="upper" stroke={`${teamColor}60`} strokeWidth={1} strokeDasharray="4 3" dot={false} name="Upper 95%" connectNulls={false} legendType="none" />
+                      <Line type="monotone" dataKey="lower" stroke={`${teamColor}60`} strokeWidth={1} strokeDasharray="4 3" dot={false} name="Lower 95%" connectNulls={false} legendType="none" />
+                      <Line type="monotone" dataKey="value" stroke={teamColor} strokeWidth={2.5} dot={{ r: 3, fill: teamColor }} name="Forecast" connectNulls={false} />
+                      <Line type="monotone" dataKey="actual" stroke="#9090A8" strokeWidth={1.5} dot={false} name="History" connectNulls />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+
+                  <div className="flex items-center gap-4 mt-1 text-[10px] text-muted-foreground font-mono">
+                    {fc.mae != null && <span>MAE: {fc.mae.toFixed(2)}</span>}
+                    {fc.rmse != null && <span>RMSE: {fc.rmse.toFixed(2)}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Per-driver drill-down (collapsed by default) */}
+      {driverCodes.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-[11px] text-muted-foreground uppercase tracking-wider px-1">Driver Breakdown</h4>
+          {driverCodes.map(code => {
+            const isOpen = expandedDrivers[code] ?? false;
+            return (
+              <div key={code} className="bg-card rounded-lg border border-border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleDriver(code)}
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-background/40 transition-colors"
+                >
+                  <span className="text-[12px] font-medium text-foreground flex items-center gap-1.5">
+                    <TrendingUp className="w-3 h-3" style={{ color: teamColor }} />
+                    {code} — Individual Forecasts
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div className="px-3 pb-3">
+                    <ForecastChart driverCode={code} hideKex />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
     </div>
   );
 }

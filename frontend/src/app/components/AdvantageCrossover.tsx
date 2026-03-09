@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   Users,
   Shield,
@@ -14,6 +14,9 @@ import {
   ArrowRightLeft,
   ChevronDown,
   ChevronUp,
+  Search,
+  SlidersHorizontal,
+  TriangleRight,
 } from 'lucide-react';
 import {
   ScatterChart,
@@ -112,9 +115,9 @@ interface AvailableEntity {
 // ── Constants ───────────────────────────────────────────────────────────
 
 const ENTITY_TABS = [
-  { value: 'driver', label: 'Driver', icon: Users },
-  { value: 'team', label: 'Team', icon: Shield },
-  { value: 'car', label: 'Car', icon: Box },
+  { value: 'driver', label: 'Driver', icon: Users, hint: 'Compare driver performance and behavioral profiles' },
+  { value: 'team', label: 'Team', icon: Shield, hint: 'Compare team-level operational and strategic profiles' },
+  { value: 'car', label: 'Car', icon: Box, hint: 'Compare car telemetry and mechanical profiles' },
 ];
 
 const SOURCE_OPTIONS: { value: string; label: string; entities: string[] }[] = [
@@ -124,24 +127,32 @@ const SOURCE_OPTIONS: { value: string; label: string; entities: string[] }[] = [
   { value: 'victory_team_kb', label: 'Victory Team', entities: ['team'] },
 ];
 
+// Preferred source per entity type (Victory-specific first, VectorProfiles as fallback)
+const PREFERRED_SOURCE: Record<string, string> = {
+  driver: 'victory_driver_profiles',
+  car: 'victory_car_profiles',
+  team: 'victory_team_kb',
+};
+
 const CLUSTER_COLORS = ['#FF8000', '#3B82F6', '#05DF72', '#FB2C36', '#A855F7', '#F59E0B'];
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 function simColor(score: number): string {
   // Low → dim gray, High → bright orange
-  if (score >= 0.95) return '#FF8000';
-  if (score >= 0.85) return 'rgba(255,128,0,0.7)';
-  if (score >= 0.75) return 'rgba(255,128,0,0.4)';
-  if (score >= 0.60) return 'rgba(255,128,0,0.2)';
+  if (score >= 0.95) return 'rgba(255,128,0,0.85)';
+  if (score >= 0.85) return 'rgba(255,128,0,0.55)';
+  if (score >= 0.75) return 'rgba(255,128,0,0.35)';
+  if (score >= 0.60) return 'rgba(255,128,0,0.18)';
   return 'rgba(255,128,0,0.06)';
 }
 
 function simText(score: number): string {
-  if (score >= 0.95) return '#FF8000';
-  if (score >= 0.80) return '#FF8000';
-  if (score >= 0.65) return 'rgba(255,128,0,0.7)';
-  return 'rgba(144,144,168,0.6)';
+  // High contrast: white on bright cells, warm on mid, dim on low
+  if (score >= 0.90) return '#FFFFFF';
+  if (score >= 0.80) return 'rgba(255,255,255,0.95)';
+  if (score >= 0.70) return 'rgba(255,220,180,0.9)';
+  return 'rgba(200,200,215,0.7)';
 }
 
 function simLabel(score: number): { label: string; color: string } {
@@ -202,7 +213,7 @@ function EntityMetricCard({ code, metrics }: { code: string; metrics: Record<str
 
 export function AdvantageCrossover() {
   const [entityType, setEntityType] = useState('driver');
-  const [source, setSource] = useState('VectorProfiles');
+  const [source, setSource] = useState(() => PREFERRED_SOURCE['driver'] ?? 'VectorProfiles');
   const [activeView, setActiveView] = useState<'matrix' | 'cluster' | 'insight' | 'compare'>('matrix');
 
   const [matrixData, setMatrixData] = useState<MatrixResult | null>(null);
@@ -215,6 +226,13 @@ export function AdvantageCrossover() {
   const [error, setError] = useState('');
   const [nClusters, setNClusters] = useState(4);
   const [building, setBuilding] = useState(false);
+
+
+  // Matrix enhancements
+  const [matrixFilter, setMatrixFilter] = useState('');
+  const [hoveredCell, setHoveredCell] = useState<{ row: number; col: number } | null>(null);
+  const [minCorr, setMinCorr] = useState(0);
+  const [triangleMode, setTriangleMode] = useState<'full' | 'upper' | 'lower'>('full');
 
   // Compare state
   const [availableEntities, setAvailableEntities] = useState<AvailableEntity[]>([]);
@@ -261,7 +279,22 @@ export function AdvantageCrossover() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, source }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        // Fallback to VectorProfiles if preferred source fails
+        if (source !== 'VectorProfiles') {
+          const fallback = await fetch('/api/advantage/crossover/matrix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entity_type: entityType, source: 'VectorProfiles' }),
+          });
+          if (fallback.ok) {
+            setSource('VectorProfiles');
+            setMatrixData(await fallback.json());
+            return;
+          }
+        }
+        throw new Error(await res.text());
+      }
       setMatrixData(await res.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to compute matrix');
@@ -279,7 +312,21 @@ export function AdvantageCrossover() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entity_type: entityType, source, n_clusters: nClusters }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        if (source !== 'VectorProfiles') {
+          const fallback = await fetch('/api/advantage/crossover/cluster', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entity_type: entityType, source: 'VectorProfiles', n_clusters: nClusters }),
+          });
+          if (fallback.ok) {
+            setSource('VectorProfiles');
+            setClusterData(await fallback.json());
+            return;
+          }
+        }
+        throw new Error(await res.text());
+      }
       setClusterData(await res.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to compute clusters');
@@ -381,24 +428,56 @@ export function AdvantageCrossover() {
     if (view === 'cluster' && !clusterData && !clusterLoading) fetchCluster();
   };
 
+  // ── Matrix computed stats ──
+  const matrixStats = useMemo(() => {
+    if (!matrixData) return null;
+    const { entities, matrix } = matrixData;
+    let sum = 0, count = 0;
+    let maxScore = -1, minScore = 2;
+    let maxPair = { a: '', b: '' }, minPair = { a: '', b: '' };
+    for (let i = 0; i < entities.length; i++) {
+      for (let j = i + 1; j < entities.length; j++) {
+        const s = matrix[i][j];
+        if (s == null) continue;
+        sum += s; count++;
+        if (s > maxScore) { maxScore = s; maxPair = { a: entities[i], b: entities[j] }; }
+        if (s < minScore) { minScore = s; minPair = { a: entities[i], b: entities[j] }; }
+      }
+    }
+    return {
+      avg: count > 0 ? sum / count : 0,
+      max: maxScore, min: minScore,
+      maxPair, minPair,
+    };
+  }, [matrixData]);
+
+  // ── Filtered matrix indices ──
+  const filteredIndices = useMemo(() => {
+    if (!matrixData) return [];
+    const filter = matrixFilter.toLowerCase().trim();
+    if (!filter) return matrixData.entities.map((_, i) => i);
+    return matrixData.entities
+      .map((e, i) => ({ e, i }))
+      .filter(({ e }) => e.toLowerCase().includes(filter))
+      .map(({ i }) => i);
+  }, [matrixData, matrixFilter]);
+
   return (
     <div className="pt-4 space-y-4">
       {/* Controls Bar */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         {/* Entity Type Tabs */}
         <div className="flex items-center gap-1 bg-card rounded-lg p-0.5">
-          {ENTITY_TABS.map(({ value, label, icon: Icon }) => (
+          {ENTITY_TABS.map(({ value, label, icon: Icon, hint }) => (
             <button
               key={value}
+              title={hint}
               onClick={() => {
                 setEntityType(value);
                 setMatrixData(null); setClusterData(null); setInsightData(null);
                 setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null);
-                // Auto-select first compatible source
-                const compatible = SOURCE_OPTIONS.filter(o => o.entities.includes(value));
-                if (compatible.length > 0 && !compatible.some(o => o.value === source)) {
-                  setSource(compatible[0].value);
-                }
+                setMatrixFilter(''); setMinCorr(0); setTriangleMode('full');
+                setSource(PREFERRED_SOURCE[value] ?? 'VectorProfiles');
               }}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all ${
                 entityType === value
@@ -408,19 +487,44 @@ export function AdvantageCrossover() {
             >
               <Icon className="w-3.5 h-3.5" />
               {label}
+              {matrixData && matrixData.entity_type === value && (
+                <span className="text-[10px] font-mono bg-primary/10 px-1.5 py-0.5 rounded">{matrixData.count}</span>
+              )}
             </button>
           ))}
         </div>
 
-        {/* Source Selector — filtered by entity type */}
+        {/* Source selector — always visible, grouped by category */}
         <select
+          title="Data source for embeddings — Victory Profiles are curated multi-source profiles; Base Profiles use raw Vector Profiles"
           value={source}
-          onChange={e => { setSource(e.target.value); setMatrixData(null); setClusterData(null); setCompareData(null); setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null); }}
-          className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary/40 transition-colors"
+          onChange={e => {
+            setSource(e.target.value);
+            setMatrixData(null); setClusterData(null); setCompareData(null);
+            setSelectedEntities([]); setAvailableEntities([]); setCrossInsight(null);
+            setError('');
+          }}
+          className="bg-card border border-border rounded-lg px-3 py-2 text-[11px] text-foreground focus:outline-none focus:border-primary/40 transition-colors"
         >
-          {SOURCE_OPTIONS.filter(o => o.entities.includes(entityType)).map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+          {(() => {
+            const available = SOURCE_OPTIONS.filter(o => o.entities.includes(entityType));
+            const victory = available.filter(o => o.value.startsWith('victory_'));
+            const base = available.filter(o => !o.value.startsWith('victory_'));
+            return (
+              <>
+                {victory.length > 0 && (
+                  <optgroup label="Victory Profiles">
+                    {victory.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </optgroup>
+                )}
+                {base.length > 0 && (
+                  <optgroup label="Base Profiles">
+                    {base.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </optgroup>
+                )}
+              </>
+            );
+          })()}
         </select>
       </div>
 
@@ -435,7 +539,7 @@ export function AdvantageCrossover() {
           }`}
         >
           <Grid3X3 className="w-3.5 h-3.5" />
-          Similarity Matrix
+          <span title="Pairwise cosine similarity heatmap — shows how alike each pair of entities is based on their embedding vectors">Similarity Matrix</span>
         </button>
         <button
           onClick={() => handleViewChange('cluster')}
@@ -446,7 +550,7 @@ export function AdvantageCrossover() {
           }`}
         >
           <ScatterIcon className="w-3.5 h-3.5" />
-          Cluster Map
+          <span title="PCA dimensionality reduction + KMeans clustering — groups similar entities and shows what metrics differentiate the clusters">Cluster Map</span>
         </button>
         <button
           onClick={() => handleViewChange('insight')}
@@ -457,7 +561,7 @@ export function AdvantageCrossover() {
           }`}
         >
           <Brain className="w-3.5 h-3.5" />
-          AI Insights
+          <span title="LLM-generated analysis of the most/least similar pairs, identifying behavioral patterns and strategic implications">AI Insights</span>
         </button>
         <button
           onClick={() => handleViewChange('compare')}
@@ -468,7 +572,7 @@ export function AdvantageCrossover() {
           }`}
         >
           <GitCompareArrows className="w-3.5 h-3.5" />
-          Compare
+          <span title="Select 2-8 entities for direct pairwise comparison with metric breakdowns and cross-entity LLM intelligence">Compare</span>
         </button>
       </div>
 
@@ -490,7 +594,7 @@ export function AdvantageCrossover() {
 
       {/* ── Matrix View ─────────────────────────────────── */}
       {activeView === 'matrix' && (
-        <div>
+        <div className="space-y-4">
           {!matrixData && !matrixLoading && (
             <div className="flex flex-col items-center justify-center py-16">
               <button
@@ -501,7 +605,7 @@ export function AdvantageCrossover() {
                 Compute Similarity Matrix
               </button>
               <p className="text-[12px] text-muted-foreground/50 mt-3">
-                Pairwise cosine similarity across all {entityType}s
+Computes cosine similarity between all {entityType} embedding vectors — scores range from 0 (completely different) to 1 (identical)
               </p>
             </div>
           )}
@@ -513,60 +617,200 @@ export function AdvantageCrossover() {
             </div>
           )}
 
-          {matrixData && (
-            <div className="rounded-lg border border-border bg-card/30 overflow-hidden">
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <span className="text-sm text-foreground font-medium">
-                  {matrixData.count} {entityType}s — {matrixData.source}
-                </span>
+          {matrixData && matrixStats && (
+            <>
+              {/* ── Summary Stats Bar ── */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border border-border bg-card/30 p-3" title="Mean cosine similarity across all unique pairs — higher means entities are more alike overall">
+                  <div className="text-[10px] text-muted-foreground tracking-widest uppercase mb-1">Avg Similarity</div>
+                  <div className="text-xl font-bold font-mono text-foreground">{matrixStats.avg.toFixed(2)}</div>
+                </div>
+                <div className="rounded-lg border border-border bg-card/30 p-3" title="The pair with the highest cosine similarity — these entities share the most similar profile characteristics">
+                  <div className="text-[10px] text-muted-foreground tracking-widest uppercase mb-1">Most Similar Pair</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[12px] text-foreground font-medium">{matrixStats.maxPair.a}–{matrixStats.maxPair.b}</span>
+                    <span className="text-xl font-bold font-mono text-success">{matrixStats.max.toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-card/30 p-3" title="The pair with the lowest cosine similarity — these entities have the most different profiles">
+                  <div className="text-[10px] text-muted-foreground tracking-widest uppercase mb-1">Least Similar Pair</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[12px] text-foreground font-medium">{matrixStats.minPair.a}–{matrixStats.minPair.b}</span>
+                    <span className="text-xl font-bold font-mono text-danger">{matrixStats.min.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Filter + Controls row ── */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Entity name filter */}
+                <div className="relative flex-1 min-w-[140px] max-w-[200px]">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50" />
+                  <input
+                    type="text"
+                    value={matrixFilter}
+                    onChange={e => setMatrixFilter(e.target.value)}
+                    placeholder="Filter entities..."
+                    className="w-full bg-card border border-border rounded-lg pl-8 pr-3 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/40 transition-colors"
+                  />
+                </div>
+
+                {/* Separator */}
+                <div className="w-px h-6 bg-border" />
+
+                {/* Correlation threshold */}
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground/60" />
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Minimum cosine similarity threshold — cells below this value are dimmed to highlight strong relationships">Min Corr</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.99}
+                    step={0.01}
+                    value={minCorr}
+                    onChange={e => setMinCorr(parseFloat(e.target.value))}
+                    title="Minimum correlation threshold"
+                    className="w-24 h-1.5 accent-primary cursor-pointer"
+                  />
+                  <span className="text-[11px] font-mono text-primary w-10 text-right">{minCorr > 0 ? minCorr.toFixed(2) : 'Off'}</span>
+                </div>
+
+                {/* Separator */}
+                <div className="w-px h-6 bg-border" />
+
+                {/* Triangle slice toggle */}
+                <div className="flex items-center gap-1 bg-card rounded-lg p-0.5">
+                  {(['full', 'upper', 'lower'] as const).map(mode => (
+                    <button
+                      type="button"
+                      key={mode}
+                      onClick={() => setTriangleMode(mode)}
+                      className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] tracking-wide transition-all ${
+                        triangleMode === mode
+                          ? 'bg-primary/15 text-primary font-medium'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                      title={mode === 'full' ? 'Full matrix' : mode === 'upper' ? 'Upper triangle only' : 'Lower triangle only'}
+                    >
+                      {mode === 'full' ? (
+                        <Grid3X3 className="w-3 h-3" />
+                      ) : (
+                        <TriangleRight className={`w-3 h-3 ${mode === 'lower' ? 'rotate-90' : ''}`} />
+                      )}
+                      {mode === 'full' ? 'Full' : mode === 'upper' ? 'Upper' : 'Lower'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Separator */}
+                <div className="w-px h-6 bg-border" />
+
+                {/* Color scale legend */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground font-mono">Low</span>
+                  <div
+                    className="w-24 h-2 rounded-full"
+                    style={{ background: 'linear-gradient(to right, rgba(255,128,0,0.06), rgba(255,128,0,0.4), rgba(255,128,0,0.7), #FF8000)' }}
+                  />
+                  <span className="text-[10px] text-muted-foreground font-mono">High</span>
+                </div>
+
                 <button
                   onClick={fetchMatrix}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors ml-auto"
                 >
                   Refresh
                 </button>
               </div>
-              <div className="overflow-auto max-h-[500px]">
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr>
-                      <th className="sticky top-0 left-0 z-20 bg-card px-2 py-1.5 text-left text-muted-foreground font-medium" />
-                      {matrixData.entities.map(e => (
-                        <th
-                          key={e}
-                          className="sticky top-0 z-10 bg-card px-1.5 py-1.5 text-center text-muted-foreground font-medium whitespace-nowrap"
-                          style={{ writingMode: matrixData.count > 15 ? 'vertical-rl' : undefined, minWidth: matrixData.count > 15 ? '28px' : '48px' }}
-                        >
-                          {e}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {matrixData.entities.map((rowEntity, i) => (
-                      <tr key={rowEntity}>
-                        <td className="sticky left-0 z-10 bg-card px-2 py-1 text-foreground font-medium whitespace-nowrap border-r border-border">
-                          {rowEntity}
-                        </td>
-                        {matrixData.matrix[i].map((score, j) => (
-                          <td
+
+              {/* ── Matrix Table ── */}
+              <div className="rounded-lg border border-border bg-card/30 overflow-hidden">
+                <div className="overflow-auto max-h-[520px]">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="sticky top-0 left-0 z-20 bg-card px-2 py-1.5 text-left text-muted-foreground font-medium" />
+                        {filteredIndices.map(j => (
+                          <th
                             key={j}
-                            className="px-1 py-1 text-center font-mono cursor-default transition-colors"
-                            style={{
-                              background: i === j ? 'rgba(255,128,0,0.03)' : simColor(score),
-                              color: i === j ? 'rgba(144,144,168,0.3)' : simText(score),
-                            }}
-                            title={`${rowEntity} ↔ ${matrixData.entities[j]}: ${score?.toFixed(4)}`}
+                            className={`sticky top-0 z-10 bg-card px-1.5 py-1.5 text-center font-medium whitespace-nowrap transition-colors ${
+                              hoveredCell?.col === j ? 'text-primary' : 'text-muted-foreground'
+                            }`}
+                            style={{ writingMode: filteredIndices.length > 15 ? 'vertical-rl' : undefined, minWidth: filteredIndices.length > 15 ? '28px' : '48px' }}
                           >
-                            {i === j ? '—' : score?.toFixed(2)}
-                          </td>
+                            {matrixData.entities[j]}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredIndices.map(i => (
+                        <tr key={i}>
+                          <td className={`sticky left-0 z-10 bg-card px-2 py-1 font-medium whitespace-nowrap border-r border-border transition-colors ${
+                            hoveredCell?.row === i ? 'text-primary' : 'text-foreground'
+                          }`}>
+                            {matrixData.entities[i]}
+                          </td>
+                          {filteredIndices.map(j => {
+                            const score = matrixData.matrix[i][j];
+                            const isDiag = i === j;
+                            const isHoveredRow = hoveredCell?.row === i;
+                            const isHoveredCol = hoveredCell?.col === j;
+                            const isHoveredCell = isHoveredRow && isHoveredCol;
+                            // Triangle slicing: hide the mirrored half
+                            const isSliced = (triangleMode === 'upper' && i > j) || (triangleMode === 'lower' && i < j);
+                            // Correlation threshold: dim cells below min
+                            const isBelowThreshold = !isDiag && !isSliced && minCorr > 0 && score < minCorr;
+                            return (
+                              <td
+                                key={j}
+                                className={`px-1 py-1 text-center font-mono cursor-default transition-colors ${
+                                  isHoveredCell ? 'ring-1 ring-primary ring-inset' : ''
+                                }`}
+                                style={{
+                                  background: isDiag
+                                    ? 'rgba(255,128,0,0.03)'
+                                    : isSliced
+                                      ? 'transparent'
+                                      : isBelowThreshold
+                                        ? 'rgba(255,128,0,0.02)'
+                                        : (isHoveredRow || isHoveredCol)
+                                          ? simColor(score)
+                                          : simColor(score),
+                                  color: isDiag
+                                    ? 'rgba(144,144,168,0.3)'
+                                    : isSliced
+                                      ? 'transparent'
+                                      : isBelowThreshold
+                                        ? 'rgba(144,144,168,0.15)'
+                                        : simText(score),
+                                  outline: (isHoveredRow || isHoveredCol) && !isDiag && !isHoveredCell && !isSliced ? '1px solid rgba(255,128,0,0.08)' : undefined,
+                                }}
+                                title={isDiag ? matrixData.entities[i] : isSliced ? '' : `${matrixData.entities[i]} ↔ ${matrixData.entities[j]}: ${score?.toFixed(4)}`}
+                                onMouseEnter={() => !isSliced && setHoveredCell({ row: i, col: j })}
+                                onMouseLeave={() => setHoveredCell(null)}
+                              >
+                                {isDiag ? '—' : isSliced ? '' : score?.toFixed(2)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ── Matrix Footer ── */}
+                <div className="px-4 py-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground/60">
+                  <span>
+                    {filteredIndices.length} × {filteredIndices.length} matrix · {filteredIndices.length} entities shown
+                    {triangleMode !== 'full' && <> · {triangleMode} triangle</>}
+                    {minCorr > 0 && <> · ≥{minCorr.toFixed(2)} corr</>}
+                  </span>
+                  <span className="font-mono">{matrixData.source}</span>
+                </div>
               </div>
-            </div>
+            </>
           )}
         </div>
       )}
@@ -598,7 +842,7 @@ export function AdvantageCrossover() {
                 </div>
               </div>
               <p className="text-[12px] text-muted-foreground/50 mt-3">
-                PCA 3D projection + KMeans clustering
+PCA reduces profile dimensions for visualization, KMeans groups similar entities into clusters
               </p>
             </div>
           )}
@@ -615,7 +859,7 @@ export function AdvantageCrossover() {
               {/* Scatter Plot */}
               <div className="rounded-lg border border-border bg-card/30 p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-foreground font-medium">PCA Projection</span>
+                  <span className="text-sm text-foreground font-medium cursor-help" title="Principal Component Analysis reduces high-dimensional embedding vectors into 2D/3D coordinates for visualization — nearby points share similar characteristics">PCA Projection</span>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 mr-2">
                       <span className="text-[11px] text-muted-foreground">Clusters:</span>
@@ -653,7 +897,7 @@ export function AdvantageCrossover() {
                       dataKey="x"
                       name="PC1"
                       tick={{ fill: '#9090A8', fontSize: 10 }}
-                      axisLine={{ stroke: 'rgba(255,128,0,0.1)' }}
+                      axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
                       tickLine={false}
                       label={{ value: `PC1 (${(clusterData.explained_variance[0] * 100).toFixed(1)}%)`, position: 'bottom', fill: '#9090A8', fontSize: 11 }}
                     />
@@ -662,7 +906,7 @@ export function AdvantageCrossover() {
                       dataKey="y"
                       name="PC2"
                       tick={{ fill: '#9090A8', fontSize: 10 }}
-                      axisLine={{ stroke: 'rgba(255,128,0,0.1)' }}
+                      axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
                       tickLine={false}
                       label={{ value: `PC2 (${(clusterData.explained_variance[1] * 100).toFixed(1)}%)`, angle: -90, position: 'left', fill: '#9090A8', fontSize: 11 }}
                     />
@@ -698,7 +942,7 @@ export function AdvantageCrossover() {
 
                 {/* Variance info */}
                 <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground/50">
-                  <span>Explained variance: {clusterData.explained_variance.map((v, i) => `PC${i + 1}: ${(v * 100).toFixed(1)}%`).join(', ')}</span>
+                  <span title="How much of the total data variation each principal component captures — higher % means that axis explains more of the differences between entities">Explained variance: {clusterData.explained_variance.map((v, i) => `PC${i + 1}: ${(v * 100).toFixed(1)}%`).join(', ')}</span>
                 </div>
               </div>
 
@@ -756,7 +1000,7 @@ export function AdvantageCrossover() {
               {/* Discriminating Features — what separates these clusters */}
               {clusterData.discriminators && clusterData.discriminators.length > 0 && (
                 <div className="rounded-lg border border-border bg-card/30 p-4">
-                  <div className="text-sm font-medium text-foreground mb-3">
+                  <div className="text-sm font-medium text-foreground mb-3 cursor-help" title="Metrics with the highest variance between cluster averages — these are the characteristics that most differentiate the groups">
                     What Separates These Clusters
                   </div>
                   <div className="space-y-2">
@@ -819,7 +1063,7 @@ export function AdvantageCrossover() {
               {/* Pairs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="rounded-lg border border-[rgba(5,223,114,0.15)] bg-[rgba(5,223,114,0.04)] p-4">
-                  <div className="text-[12px] font-medium text-[#05DF72] mb-3 tracking-wide">MOST SIMILAR</div>
+                  <div className="text-[12px] font-medium text-[#05DF72] mb-3 tracking-wide cursor-help" title="Entity pairs with the highest cosine similarity scores — their embedding vectors point in nearly the same direction, indicating shared characteristics">MOST SIMILAR</div>
                   <div className="space-y-2">
                     {insightData.pairs.most_similar.map((p, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
@@ -832,7 +1076,7 @@ export function AdvantageCrossover() {
                   </div>
                 </div>
                 <div className="rounded-lg border border-[rgba(251,44,54,0.15)] bg-[rgba(251,44,54,0.04)] p-4">
-                  <div className="text-[12px] font-medium text-[#FB2C36] mb-3 tracking-wide">MOST DISSIMILAR</div>
+                  <div className="text-[12px] font-medium text-[#FB2C36] mb-3 tracking-wide cursor-help" title="Entity pairs with the lowest cosine similarity scores — their profiles diverge the most, suggesting fundamentally different characteristics">MOST DISSIMILAR</div>
                   <div className="space-y-2">
                     {insightData.pairs.most_dissimilar.map((p, i) => (
                       <div key={i} className="flex items-center justify-between text-sm">
@@ -850,8 +1094,8 @@ export function AdvantageCrossover() {
               <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.04)] p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Brain className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium text-primary">Pattern Analysis</span>
-                  <span className="text-[11px] text-muted-foreground ml-auto">{insightData.model_used}</span>
+                  <span className="text-sm font-medium text-primary cursor-help" title="LLM-synthesized analysis of embedding similarity patterns, identifying strategic and behavioral implications">Pattern Analysis</span>
+                  <span className="text-[11px] text-muted-foreground ml-auto" title="The LLM model used to generate this analysis">{insightData.model_used}</span>
                 </div>
                 <div className="text-[13px] text-foreground/85 leading-relaxed whitespace-pre-line">
                   {insightData.insight}
@@ -866,7 +1110,7 @@ export function AdvantageCrossover() {
                 <Sparkles className="w-6 h-6 text-primary/40" />
               </div>
               <p className="text-sm text-muted-foreground">
-                Click "Analyze Patterns" to get LLM-synthesized insights about {entityType} similarity groupings
+Click "Analyze Patterns" to generate LLM-synthesized insights about {entityType} similarity groupings, identifying the most/least similar pairs and their strategic implications
               </p>
             </div>
           )}
@@ -976,7 +1220,7 @@ export function AdvantageCrossover() {
 
               {/* Pairwise cards */}
               <div className="rounded-lg border border-border bg-card/30 p-4">
-                <div className="text-sm font-medium text-foreground mb-3">Pairwise Similarity</div>
+                <div className="text-sm font-medium text-foreground mb-3 cursor-help" title="Cosine similarity between each pair of selected entities — 100% means identical profiles, lower values indicate divergence">Pairwise Similarity</div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto">
                   {compareData.pairs.map((p, i) => {
                     const { color } = simLabel(p.similarity);
@@ -1003,7 +1247,7 @@ export function AdvantageCrossover() {
             <div className="rounded-lg border border-border bg-[rgba(255,128,0,0.02)] p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Brain className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium text-primary">Cross-Entity Intelligence</span>
+                <span className="text-sm font-medium text-primary cursor-help" title="Ask questions about the compared entities — the LLM uses their metrics, similarity scores, and metric correlations as context">Cross-Entity Intelligence</span>
               </div>
 
               {/* Suggested questions */}
@@ -1052,10 +1296,10 @@ export function AdvantageCrossover() {
                         <div key={i} className="text-[10px] font-mono px-2 py-1 rounded-md bg-[rgba(255,128,0,0.06)] border border-border">
                           <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>
                           {c.converging.length > 0 && (
-                            <span className="text-[#05DF72]/80 ml-1.5">+{c.converging.length} converging</span>
+                            <span className="text-[#05DF72]/80 ml-1.5" title={`Metrics within 10% of each other: ${c.converging.join(', ')}`}>+{c.converging.length} converging</span>
                           )}
                           {c.diverging.length > 0 && (
-                            <span className="text-[#FB2C36]/80 ml-1.5">-{c.diverging.length} diverging</span>
+                            <span className="text-[#FB2C36]/80 ml-1.5" title={`Metrics differing by more than 50%: ${c.diverging.join(', ')}`}>-{c.diverging.length} diverging</span>
                           )}
                         </div>
                       ))}
@@ -1073,7 +1317,7 @@ export function AdvantageCrossover() {
 
                   {/* Model + provider attribution */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] text-muted-foreground/50 font-mono">
+                    <span className="text-[10px] text-muted-foreground/50 font-mono" title="The LLM model used to generate this cross-entity intelligence">
                       via {crossInsight.model_used || 'auto'}
                     </span>
                   </div>
@@ -1096,7 +1340,7 @@ export function AdvantageCrossover() {
                       {/* Detailed correlations in expanded view */}
                       {crossInsight.correlations_found && crossInsight.correlations_found.length > 0 && (
                         <div className="border-t border-border pt-3 mt-3 space-y-2">
-                          <div className="text-[11px] text-muted-foreground font-medium">Metric Correlations</div>
+                          <div className="text-[11px] text-muted-foreground font-medium cursor-help" title="Converging metrics are within 10% of each other (similar values), diverging metrics differ by more than 50% (opposite behavior)">Metric Correlations</div>
                           {crossInsight.correlations_found.slice(0, 6).map((c, i) => (
                             <div key={i} className="text-[11px] space-y-0.5">
                               <span className="text-foreground/70">{c.pair[0]} ↔ {c.pair[1]}</span>

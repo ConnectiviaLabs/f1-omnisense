@@ -14,6 +14,7 @@ import { HealthGauge } from './HealthGauge';
 import { StatusBadge } from './StatusBadge';
 import { parseAnomalyDrivers, type VehicleData } from './anomalyHelpers';
 import { getCarTelemetryKex, type CarTelemetryKex } from '../api/driverIntel';
+import { COMPOUND_COLORS as compoundColors } from '../constants/teams';
 // All data fetched from MongoDB via JSON API endpoints
 
 const MCLAREN_LOGO = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026/mclaren/2026mclarenlogowhite.webp';
@@ -21,10 +22,6 @@ const MCLAREN_LOGO = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_aut
 const DRIVER_INFO: Record<string, { name: string; nationality: string; flag: string; number: number }> = {
   NOR: { name: 'Lando Norris', nationality: 'British', flag: '\u{1F1EC}\u{1F1E7}', number: 4 },
   PIA: { name: 'Oscar Piastri', nationality: 'Australian', flag: '\u{1F1E6}\u{1F1FA}', number: 81 },
-};
-
-const compoundColors: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
 };
 
 interface TelemetryMeta {

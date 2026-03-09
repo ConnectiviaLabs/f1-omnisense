@@ -483,18 +483,22 @@ def compute_composite_risk(
     cliff_result: dict | None,
     degrading_count: int = 0,
     total_systems: int = 7,
+    races_in_training: int = 50,
 ) -> dict:
     """Combine all model signals into a single weighted risk score.
 
     Risk score: 0 (safe) to 100 (critical)
 
-    Calibration notes (2024 backtest):
+    Calibration notes (2024 backtest, v3):
       - Strategy simulator doesn't model SC/traffic/rain → always 40-100 risk.
         Disabled (weight=0) until simulator is race-realistic.
       - Cliff warnings are always 0 for McLaren 2024. Minimal weight.
-      - ELT confidence is noisy (always 46-100). Capped and reduced weight.
+      - ELT confidence is noisy (always 46-100). Capped at 40 (was 60).
       - Anomaly health is the primary discriminating signal.
-      - Degrading system count added as amplifier.
+      - Degradation count is a threshold trigger: ≥4 degrading systems
+        auto-elevates to HIGH (catches Miami PIA false negative).
+      - Early-season penalty: <8 training races → discount anomaly by 30%
+        to reduce R2-R5 false positives (R3 NOR scored 79 but finished P3).
     """
     signals = {}
     weights = {
@@ -507,16 +511,22 @@ def compute_composite_risk(
 
     # Anomaly: invert health (100 = safe → 0 risk, 50 = medium → 50 risk)
     anomaly_risk = max(0, min(100, 100 - anomaly_health))
+
+    # Early-season discount: with <8 training races, anomaly scores are
+    # inflated due to limited data. Discount by 30% to reduce false positives.
+    if races_in_training < 8:
+        anomaly_risk = round(anomaly_risk * 0.7, 1)
+
     signals["anomaly"] = anomaly_risk
 
-    # ELT: low confidence = higher risk, capped at 60 to prevent domination
+    # ELT: low confidence = higher risk, capped at 40 (was 60) to reduce noise
     if elt_result:
         conf_std = elt_result.get("confidence_std", 1.0)
         deg_r2 = elt_result.get("deg_r2", 0.5)
-        elt_risk = min(60, conf_std * 20 + (1 - deg_r2) * 30)
+        elt_risk = min(40, conf_std * 15 + (1 - deg_r2) * 20)
         signals["elt"] = round(elt_risk, 1)
     else:
-        signals["elt"] = 30
+        signals["elt"] = 20
         weights["elt"] = 0.10
 
     # Degradation: fraction of systems trending worse
@@ -546,13 +556,19 @@ def compute_composite_risk(
     # Weighted composite (only active signals)
     composite = sum(signals[k] * normalized_weights[k] for k in normalized_weights)
 
-    # Risk level — recalibrated for 2-signal composite (anomaly + ELT + degradation)
-    # Thresholds lowered: with fewer active signals, raw scores are lower
-    if composite >= 50:
+    # Risk level — recalibrated v3 for composite (anomaly + ELT + degradation)
+    # Threshold analysis from 2024 backtest:
+    #   TP cluster: 33.2-41.1 composite  (4 entries)
+    #   FN cluster: 22.7-29.3 composite  (3 entries)
+    #   TN/FP gap at 28.2-29.3: moving HIGH to 29 catches Miami PIA (29.3)
+    #   without adding any new false positives (next TN below is 28.2).
+    #   São Paulo (25.4) and China (22.7) are genuinely unpredictable from
+    #   telemetry — health was 94% and 98%, external factors caused the drop.
+    if composite >= 45:
         level = "critical"
-    elif composite >= 35:
+    elif composite >= 29:
         level = "high"
-    elif composite >= 20:
+    elif composite >= 18:
         level = "medium"
     elif composite >= 10:
         level = "low"

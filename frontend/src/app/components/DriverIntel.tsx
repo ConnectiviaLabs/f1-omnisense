@@ -4,7 +4,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Users, Search, Loader2, Target, Zap, ChevronRight, X, GitCompare, Disc, ArrowLeft, TrendingUp, TrendingDown, Minus, Gauge, Activity } from 'lucide-react';
+import { Users, Search, Target, Zap, ChevronRight, X, GitCompare, Disc, ArrowLeft, TrendingUp, TrendingDown, Minus, Gauge, Activity } from 'lucide-react';
 import type { DriverPerformanceMarker, DriverOvertakeProfile, DriverTelemetryProfile } from '../types';
 import * as api from '../api/driverIntel';
 import type { DriverKex, SimilarDriver, ComparisonKex } from '../api/driverIntel';
@@ -16,60 +16,10 @@ import {
   parseAnomalyDrivers, levelColor, levelBg,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
+import { TEAM_COLORS_BY_NAME as teamColors, TEAM_LOGOS, TEAM_NAME_TO_ID as TEAM_NAME_TO_LOGO, NATIONALITY_FLAGS, COMPOUND_COLORS } from '../constants/teams';
+import { LoadingSpinner } from './LoadingSpinner';
 
 /* ─── Constants ─── */
-
-const teamColors: Record<string, string> = {
-  'Red Bull': '#3671C6', 'McLaren': '#FF8000', 'Ferrari': '#E8002D',
-  'Mercedes': '#27F4D2', 'Aston Martin': '#229971', 'Alpine': '#FF87BC',
-  'Williams': '#64C4FF', 'RB': '#6692FF', 'Kick Sauber': '#52E252',
-  'Haas F1 Team': '#B6BABD', 'AlphaTauri': '#6692FF', 'Alfa Romeo': '#C92D4B',
-  'Racing Point': '#F596C8', 'Renault': '#FFF500', 'Toro Rosso': '#469BFF',
-  'Force India': '#F596C8',
-};
-
-const NATIONALITY_FLAGS: Record<string, string> = {
-  'British': '\u{1F1EC}\u{1F1E7}', 'Dutch': '\u{1F1F3}\u{1F1F1}', 'Spanish': '\u{1F1EA}\u{1F1F8}',
-  'Monegasque': '\u{1F1F2}\u{1F1E8}', 'Mexican': '\u{1F1F2}\u{1F1FD}', 'Australian': '\u{1F1E6}\u{1F1FA}',
-  'Canadian': '\u{1F1E8}\u{1F1E6}', 'German': '\u{1F1E9}\u{1F1EA}', 'French': '\u{1F1EB}\u{1F1F7}',
-  'Finnish': '\u{1F1EB}\u{1F1EE}', 'Thai': '\u{1F1F9}\u{1F1ED}', 'Japanese': '\u{1F1EF}\u{1F1F5}',
-  'Chinese': '\u{1F1E8}\u{1F1F3}', 'Danish': '\u{1F1E9}\u{1F1F0}', 'American': '\u{1F1FA}\u{1F1F8}',
-  'Italian': '\u{1F1EE}\u{1F1F9}', 'Brazilian': '\u{1F1E7}\u{1F1F7}', 'New Zealander': '\u{1F1F3}\u{1F1FF}',
-  'Argentine': '\u{1F1E6}\u{1F1F7}', 'Polish': '\u{1F1F5}\u{1F1F1}', 'Indonesian': '\u{1F1EE}\u{1F1E9}',
-  'Russian': '\u{1F1F7}\u{1F1FA}', 'Indian': '\u{1F1EE}\u{1F1F3}', 'Belgian': '\u{1F1E7}\u{1F1EA}',
-  'Colombian': '\u{1F1E8}\u{1F1F4}', 'Venezuelan': '\u{1F1FB}\u{1F1EA}', 'Swedish': '\u{1F1F8}\u{1F1EA}',
-  'Malaysian': '\u{1F1F2}\u{1F1FE}', 'Austrian': '\u{1F1E6}\u{1F1F9}', 'Swiss': '\u{1F1E8}\u{1F1ED}',
-  'South African': '\u{1F1FF}\u{1F1E6}', 'Irish': '\u{1F1EE}\u{1F1EA}', 'Portuguese': '\u{1F1F5}\u{1F1F9}',
-  'Hungarian': '\u{1F1ED}\u{1F1FA}', 'Czech': '\u{1F1E8}\u{1F1FF}', 'Korean': '\u{1F1F0}\u{1F1F7}',
-  'Chilean': '\u{1F1E8}\u{1F1F1}', 'Uruguayan': '\u{1F1FA}\u{1F1FE}', 'Peruvian': '\u{1F1F5}\u{1F1EA}',
-  'Romanian': '\u{1F1F7}\u{1F1F4}', 'Norwegian': '\u{1F1F3}\u{1F1F4}', 'Emirati': '\u{1F1E6}\u{1F1EA}',
-  'Saudi': '\u{1F1F8}\u{1F1E6}', 'Qatari': '\u{1F1F6}\u{1F1E6}', 'Bahraini': '\u{1F1E7}\u{1F1ED}',
-};
-
-const F1_CDN = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026';
-const TEAM_LOGOS: Record<string, string> = {
-  red_bull: `${F1_CDN}/redbullracing/2026redbullracinglogowhite.webp`,
-  mclaren: `${F1_CDN}/mclaren/2026mclarenlogowhite.webp`,
-  ferrari: `${F1_CDN}/ferrari/2026ferrarilogowhite.webp`,
-  mercedes: `${F1_CDN}/mercedes/2026mercedeslogowhite.webp`,
-  aston_martin: `${F1_CDN}/astonmartin/2026astonmartinlogowhite.webp`,
-  alpine: `${F1_CDN}/alpine/2026alpinelogowhite.webp`,
-  williams: `${F1_CDN}/williams/2026williamslogowhite.webp`,
-  rb: `${F1_CDN}/racingbulls/2026racingbullslogowhite.webp`,
-  sauber: `${F1_CDN}/audi/2026audilogowhite.webp`,
-  haas: `${F1_CDN}/haasf1team/2026haasf1teamlogowhite.webp`,
-};
-const TEAM_NAME_TO_LOGO: Record<string, string> = {
-  'Red Bull': 'red_bull', 'McLaren': 'mclaren', 'Ferrari': 'ferrari',
-  'Mercedes': 'mercedes', 'Aston Martin': 'aston_martin', 'Alpine': 'alpine',
-  'Williams': 'williams', 'RB': 'rb', 'Kick Sauber': 'sauber', 'Haas F1 Team': 'haas',
-  'Haas': 'haas', 'Sauber': 'sauber', 'Racing Bulls': 'rb',
-};
-
-const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: '#FF3333', MEDIUM: '#FFC300', HARD: '#EEEEEE',
-  INTERMEDIATE: '#39B54A', WET: '#0072C6',
-};
 
 const COMPARE_COLORS = ['#FF8000', '#3671C6', '#E8002D', '#27F4D2'];
 
@@ -323,7 +273,7 @@ function DriverGrid({ onSelect, anomalyVehicles }: { onSelect: (code: string) =>
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
+    return <LoadingSpinner text="" className="py-20" />;
   }
 
   const sortBtn = (key: SortKey, label: string) => (
@@ -643,7 +593,7 @@ function PerformanceProfile({ driverCode, onSelect, anomalyVehicles, onCompare, 
   }, [selectedVehicle]);
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
+    return <LoadingSpinner text="" className="py-20" />;
   }
 
   if (!driverCode) {
@@ -1181,7 +1131,7 @@ function CompareDrivers() {
   });
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
+    return <LoadingSpinner text="" className="py-20" />;
   }
 
   const selectedCodes = selected.map(getDriverCode);

@@ -149,34 +149,41 @@ def _fetch_all_sources(db) -> dict:
 
 
 def _fetch_season_sources(db, season: int) -> dict:
-    """Fetch sources filtered to a specific season (2025+).
+    """Fetch sources filtered to a specific season.
 
-    Performance markers, overtake profiles, and telemetry profiles are
-    filtered by season. Anomaly snapshot and KeX briefings are snapshot
-    data (current state) — included as-is.
+    First tries upstream season-tagged collections (2025+).
+    Falls back to computing per-season metrics from raw jolpica/fastf1 data.
+    Anomaly snapshot and KeX briefings are snapshot data — included as-is.
     """
     sources = {}
 
-    # 1. Performance markers — season-filtered
+    # 1. Performance markers — try season-filtered upstream first
     sources["performance"] = {
         doc["Driver"]: {k: v for k, v in doc.items() if k not in ("_id", "Driver", "season")}
         for doc in db["driver_performance_markers"].find({"season": season}, {"_id": 0})
         if doc.get("Driver")
     }
+    # Fallback: compute from raw jolpica + fastf1 data
+    if not sources["performance"]:
+        sources["performance"] = _compute_season_performance(db, season)
 
-    # 2. Overtake profiles — season-filtered
+    # 2. Overtake profiles — try upstream first
     sources["overtaking"] = {
         doc["driver_code"]: {k: v for k, v in doc.items() if k not in ("_id", "driver_code", "season")}
         for doc in db["driver_overtake_profiles"].find({"season": season}, {"_id": 0})
         if doc.get("driver_code")
     }
+    if not sources["overtaking"]:
+        sources["overtaking"] = _compute_season_overtaking(db, season)
 
-    # 3. Telemetry profiles — season-filtered
+    # 3. Telemetry profiles — try upstream first
     sources["telemetry"] = {
         doc["driver_code"]: {k: v for k, v in doc.items() if k not in ("_id", "driver_code", "season")}
         for doc in db["driver_telemetry_profiles"].find({"season": season}, {"_id": 0})
         if doc.get("driver_code")
     }
+    if not sources["telemetry"]:
+        sources["telemetry"] = _compute_season_telemetry(db, season)
 
     # 4. Anomaly snapshot — current state, not season-specific
     health = {}
@@ -228,6 +235,156 @@ def _fetch_season_sources(db, season: int) -> dict:
     return sources
 
 
+# ── Per-season metric computation from raw data ─────────────────────────
+
+
+def _to_python(obj):
+    """Convert numpy types to Python builtins for MongoDB storage."""
+    if isinstance(obj, dict):
+        return {k: _to_python(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_python(v) for v in obj]
+    if hasattr(obj, 'item'):
+        return obj.item()
+    return obj
+
+
+def _compute_season_performance(db, season: int) -> dict:
+    """Compute performance markers from jolpica_race_results + fastf1_laps."""
+    results = {}
+    drivers = db["jolpica_race_results"].distinct("driver_code", {"season": season})
+
+    for driver in drivers:
+        # Get race results
+        races = list(db["jolpica_race_results"].find(
+            {"season": season, "driver_code": driver},
+            {"_id": 0, "grid": 1, "position": 1, "points": 1, "status": 1,
+             "race_name": 1, "constructor_name": 1},
+        ))
+        if not races:
+            continue
+
+        # Get lap data
+        laps = list(db["fastf1_laps"].find(
+            {"Year": season, "Driver": driver, "IsAccurate": True},
+            {"_id": 0, "LapTime": 1, "Sector1Time": 1, "Sector2Time": 1,
+             "Sector3Time": 1, "SpeedST": 1, "TyreLife": 1, "Compound": 1},
+        ))
+
+        perf: dict = {}
+        perf["races_count"] = len(races)
+        perf["avg_grid"] = round(np.mean([
+            float(r["grid"]) for r in races
+            if r.get("grid") and str(r["grid"]).isdigit()
+        ] or [0]), 1)
+        perf["avg_position"] = round(np.mean([
+            float(r["position"]) for r in races
+            if r.get("position") and str(r["position"]).isdigit()
+        ] or [0]), 1)
+        perf["total_points"] = sum(float(r.get("points", 0) or 0) for r in races)
+        perf["team"] = races[0].get("constructor_name", "")
+
+        if laps:
+            lap_times = [float(l["LapTime"]) for l in laps if l.get("LapTime")]
+            if lap_times:
+                perf["avg_lap_time_s"] = round(np.mean(lap_times), 3)
+                perf["lap_time_consistency_std"] = round(np.std(lap_times), 3)
+
+            speeds = [float(l["SpeedST"]) for l in laps if l.get("SpeedST")]
+            if speeds:
+                perf["avg_top_speed_kmh"] = round(np.mean(speeds), 1)
+
+            # Sector CVs
+            for si in [1, 2, 3]:
+                col = f"Sector{si}Time"
+                vals = [float(l[col]) for l in laps if l.get(col)]
+                if vals:
+                    perf[f"sector{si}_cv"] = round(np.std(vals) / max(np.mean(vals), 0.01), 4)
+
+            # Degradation slope (simple: lap time vs tyre life)
+            tyre_data = [(float(l["TyreLife"]), float(l["LapTime"]))
+                         for l in laps if l.get("TyreLife") and l.get("LapTime")]
+            if len(tyre_data) > 10:
+                x = np.array([t[0] for t in tyre_data])
+                y = np.array([t[1] for t in tyre_data])
+                if np.std(x) > 0:
+                    slope = float(np.polyfit(x, y, 1)[0])
+                    perf["degradation_slope_s_per_lap"] = round(slope, 4)
+
+        results[driver] = _to_python(perf)
+    return results
+
+
+def _compute_season_overtaking(db, season: int) -> dict:
+    """Compute overtake metrics from jolpica_race_results positions_gained."""
+    results = {}
+    drivers = db["jolpica_race_results"].distinct("driver_code", {"season": season})
+
+    for driver in drivers:
+        races = list(db["jolpica_race_results"].find(
+            {"season": season, "driver_code": driver},
+            {"_id": 0, "grid": 1, "position": 1, "positions_gained": 1},
+        ))
+        if not races:
+            continue
+
+        gains = [
+            float(r["positions_gained"])
+            for r in races if r.get("positions_gained") is not None
+        ]
+        if not gains:
+            continue
+
+        made = sum(max(0, g) for g in gains)
+        lost = sum(abs(min(0, g)) for g in gains)
+        n = len(gains)
+
+        results[driver] = {
+            "races_analysed": n,
+            "total_overtakes_made": int(made),
+            "total_times_overtaken": int(lost),
+            "overtakes_per_race": round(made / max(n, 1), 1),
+            "times_overtaken_per_race": round(lost / max(n, 1), 1),
+            "overtake_net": int(made - lost),
+            "overtake_ratio": round(made / max(made + lost, 1), 3),
+        }
+    return results
+
+
+def _compute_season_telemetry(db, season: int) -> dict:
+    """Compute telemetry profile from telemetry_race_summary."""
+    results = {}
+    for doc in db["telemetry_race_summary"].find({"Year": season}, {"_id": 0}):
+        driver = doc.get("Driver")
+        if not driver:
+            continue
+        if driver not in results:
+            results[driver] = {"_races": []}
+        results[driver]["_races"].append(doc)
+
+    final = {}
+    for driver, data in results.items():
+        races = data["_races"]
+        if not races:
+            continue
+        prof: dict = {}
+        for key in ["avg_speed", "top_speed", "avg_throttle", "brake_pct", "drs_pct"]:
+            vals = [float(r[key]) for r in races if r.get(key)]
+            if vals:
+                if key == "avg_speed":
+                    prof["avg_race_speed_kmh"] = round(np.mean(vals), 1)
+                elif key == "top_speed":
+                    prof["top_speed_kmh"] = round(np.mean(vals), 1)
+                elif key == "avg_throttle":
+                    prof["avg_throttle_pct"] = round(np.mean(vals), 1)
+                elif key == "brake_pct":
+                    prof["avg_brake_pct"] = round(np.mean(vals), 1)
+                elif key == "drs_pct":
+                    prof["drs_usage_ratio"] = round(np.mean(vals) / 100, 3)
+        final[driver] = _to_python(prof)
+    return final
+
+
 # ── Per-driver merge ─────────────────────────────────────────────────────
 
 
@@ -236,9 +393,10 @@ def _merge_driver(code: str, sources: dict) -> dict:
     found = []
     doc = {"driver_code": code}
 
-    # Team from health data
+    # Team from health data or performance data
     health = sources["health"].get(code)
-    doc["team"] = health["team"] if health else ""
+    perf_team = (sources["performance"].get(code) or {}).get("team", "")
+    doc["team"] = (health["team"] if health else "") or perf_team
 
     # Performance
     perf = sources["performance"].get(code)
@@ -430,8 +588,8 @@ def _embed_narratives(narratives: list[str]) -> list[list[float]]:
 
 
 def _season_filter(season: int | None) -> dict:
-    """Build MongoDB filter for season: 2025+ uses season field, else legacy (None)."""
-    if season is not None and season >= 2025:
+    """Build MongoDB filter for season: integer season or None for legacy."""
+    if season is not None:
         return {"season": season}
     return {"season": None}
 
@@ -598,24 +756,23 @@ def main(rebuild: bool = False):
 
     print(f"       Legacy: {result.upserted_count} new, {result.modified_count} updated")
 
-    # ── Per-season profiles (2025+) ────────────────────────────────────
-    # Find available seasons from upstream collections
+    # ── Per-season profiles ──────────────────────────────────────────────
+    # Find available seasons from raw data (jolpica has race results per season)
     available_seasons = set()
-    for s in db["driver_performance_markers"].distinct("season"):
-        if s is not None and int(s) >= 2025:
-            available_seasons.add(int(s))
-    for s in db["driver_overtake_profiles"].distinct("season"):
-        if s is not None and int(s) >= 2025:
-            available_seasons.add(int(s))
-    for s in db["driver_telemetry_profiles"].distinct("season"):
-        if s is not None and int(s) >= 2025:
+    for s in db["jolpica_race_results"].distinct("season"):
+        if s is not None:
             available_seasons.add(int(s))
 
     if available_seasons:
         print(f"\n[6/6] Building per-season profiles for: {sorted(available_seasons)}")
         for season in sorted(available_seasons):
             season_sources = _fetch_season_sources(db, season)
-            season_codes = _collect_season_driver_codes(db, season)
+
+            # Collect drivers from raw race results for this season
+            season_codes = sorted(
+                db["jolpica_race_results"].distinct("driver_code", {"season": season})
+            )
+            season_codes = [c for c in season_codes if c and len(c) == 3]
 
             # Only include drivers that have at least 1 season-specific source
             season_codes = [
@@ -656,7 +813,7 @@ def main(rebuild: bool = False):
             s_result = coll.bulk_write(s_ops)
             print(f"       Season {season}: {s_result.upserted_count} new, {s_result.modified_count} updated ({len(season_docs)} drivers)")
     else:
-        print(f"\n[6/6] No 2025+ season data in upstream collections (expected)")
+        print(f"\n[6/6] No season data found in jolpica_race_results")
 
     # Log to pipeline_log
     db["pipeline_log"].insert_one({
@@ -685,5 +842,6 @@ def main(rebuild: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build VectorProfiles collection")
     parser.add_argument("--rebuild", action="store_true", help="Drop and rebuild from scratch")
+    parser.add_argument("--season", type=int, help="Build only a specific season (e.g. 2024)")
     args = parser.parse_args()
     main(rebuild=args.rebuild)

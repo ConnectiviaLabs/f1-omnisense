@@ -71,7 +71,7 @@ function projectCoordinates(
 function buildPathD(points: Point[], close = true): string {
   if (points.length === 0) return '';
   return points
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
     .join(' ') + (close ? ' Z' : '');
 }
 
@@ -215,10 +215,11 @@ export function TrackMap({
     setPan({ x: 0, y: 0 });
   }, [geojsonPath]);
 
-  const WIDTH = 500;
+  const WIDTH = 1200;
+  const INTERNAL_H = Math.round(height * (1200 / 500));
   const projected = useMemo(
-    () => (coords.length > 0 ? projectCoordinates(coords, 16, WIDTH, height) : []),
-    [coords, height],
+    () => (coords.length > 0 ? projectCoordinates(coords, 40, WIDTH, INTERNAL_H) : []),
+    [coords, INTERNAL_H],
   );
 
   const fullPathD = useMemo(() => buildPathD(projected), [projected]);
@@ -280,7 +281,7 @@ export function TrackMap({
   // Kerb markers at turn apexes
   const kerbMarkers = useMemo(() => {
     if (!turns || turns.length === 0 || projected.length === 0) return [];
-    return computeKerbs(projected, turns.map(t => t.position), 9);
+    return computeKerbs(projected, turns.map(t => t.position), 22);
   }, [turns, projected]);
 
   // Car position dots
@@ -385,7 +386,7 @@ export function TrackMap({
         onMouseLeave={handleMouseUp}
       >
         <svg
-          viewBox={`0 0 ${WIDTH} ${height}`}
+          viewBox={`0 0 ${WIDTH} ${INTERNAL_H}`}
           className="w-full"
           style={{
             height: height - 36,
@@ -403,11 +404,11 @@ export function TrackMap({
               </feMerge>
             </filter>
             {/* Checkered pattern for start/finish */}
-            <pattern id="checkered" width="4" height="4" patternUnits="userSpaceOnUse">
-              <rect width="2" height="2" fill="white" />
-              <rect x="2" y="2" width="2" height="2" fill="white" />
-              <rect x="2" width="2" height="2" fill="#333" />
-              <rect y="2" width="2" height="2" fill="#333" />
+            <pattern id="checkered" width="8" height="8" patternUnits="userSpaceOnUse">
+              <rect width="4" height="4" fill="white" />
+              <rect x="4" y="4" width="4" height="4" fill="white" />
+              <rect x="4" width="4" height="4" fill="#333" />
+              <rect y="4" width="4" height="4" fill="#333" />
             </pattern>
           </defs>
 
@@ -416,7 +417,7 @@ export function TrackMap({
             d={fullPathD}
             fill="none"
             stroke="#222838"
-            strokeWidth="14"
+            strokeWidth="34"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -431,7 +432,7 @@ export function TrackMap({
                   d={seg.d}
                   fill="none"
                   stroke={seg.color}
-                  strokeWidth="5"
+                  strokeWidth="12"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeOpacity="0.85"
@@ -448,7 +449,7 @@ export function TrackMap({
                   d={d}
                   fill="none"
                   stroke={SECTOR_COLORS[i]}
-                  strokeWidth="10"
+                  strokeWidth="24"
                   strokeOpacity="0.12"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -461,7 +462,7 @@ export function TrackMap({
                   d={d}
                   fill="none"
                   stroke={SECTOR_COLORS[i]}
-                  strokeWidth="4.5"
+                  strokeWidth="11"
                   strokeOpacity="0.8"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -471,19 +472,19 @@ export function TrackMap({
               {sectorMidpoints.map((pt, i) => (
                 <g key={`label-${i}`}>
                   <rect
-                    x={pt.x - 8}
-                    y={pt.y - 16}
-                    width="16"
-                    height="10"
-                    rx="2"
+                    x={pt.x - 19}
+                    y={pt.y - 38}
+                    width="38"
+                    height="24"
+                    rx="5"
                     fill={SECTOR_COLORS[i]}
                     fillOpacity="0.2"
                   />
                   <text
                     x={pt.x}
-                    y={pt.y - 8.5}
+                    y={pt.y - 20}
                     fill={SECTOR_COLORS[i]}
-                    fontSize="7"
+                    fontSize="17"
                     fontWeight="700"
                     fontFamily="monospace"
                     textAnchor="middle"
@@ -500,7 +501,7 @@ export function TrackMap({
                 d={fullPathD}
                 fill="none"
                 stroke={accentColor}
-                strokeWidth="10"
+                strokeWidth="24"
                 strokeOpacity="0.12"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -509,7 +510,7 @@ export function TrackMap({
                 d={fullPathD}
                 fill="none"
                 stroke={accentColor}
-                strokeWidth="4.5"
+                strokeWidth="11"
                 strokeOpacity="0.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -522,8 +523,8 @@ export function TrackMap({
             d={fullPathD}
             fill="none"
             stroke="rgba(255,255,255,0.1)"
-            strokeWidth="1"
-            strokeDasharray="8 6"
+            strokeWidth="2"
+            strokeDasharray="19 14"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -533,7 +534,7 @@ export function TrackMap({
             d={fullPathD}
             fill="none"
             stroke="rgba(255,255,255,0.06)"
-            strokeWidth="16"
+            strokeWidth="38"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -545,17 +546,17 @@ export function TrackMap({
               <line
                 x1={k.x1} y1={k.y1} x2={k.x2} y2={k.y2}
                 stroke={KERB_RED}
-                strokeWidth="3"
+                strokeWidth="7"
                 strokeOpacity="0.6"
-                strokeDasharray="3 2"
+                strokeDasharray="7 5"
               />
               <line
                 x1={k.x1} y1={k.y1} x2={k.x2} y2={k.y2}
                 stroke={KERB_WHITE}
-                strokeWidth="1.5"
+                strokeWidth="3.5"
                 strokeOpacity="0.4"
-                strokeDasharray="2 3"
-                strokeDashoffset="3"
+                strokeDasharray="5 7"
+                strokeDashoffset="7"
               />
             </g>
           ))}
@@ -567,7 +568,7 @@ export function TrackMap({
                 d={drs.d}
                 fill="none"
                 stroke={DRS_COLOR}
-                strokeWidth="8"
+                strokeWidth="19"
                 strokeOpacity="0.35"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -576,28 +577,28 @@ export function TrackMap({
                 d={drs.d}
                 fill="none"
                 stroke={DRS_COLOR}
-                strokeWidth="3"
+                strokeWidth="7"
                 strokeOpacity="0.9"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
               <rect
-                x={drs.mid.x - 10}
-                y={drs.mid.y - 14}
-                width="20"
-                height="10"
-                rx="2"
+                x={drs.mid.x - 24}
+                y={drs.mid.y - 34}
+                width="48"
+                height="24"
+                rx="5"
                 fill="#0D1117"
                 fillOpacity="0.8"
                 stroke={DRS_COLOR}
-                strokeWidth="0.5"
+                strokeWidth="1"
                 strokeOpacity="0.5"
               />
               <text
                 x={drs.mid.x}
-                y={drs.mid.y - 6.5}
+                y={drs.mid.y - 16}
                 fill={DRS_COLOR}
-                fontSize="6"
+                fontSize="14"
                 fontWeight="700"
                 fontFamily="monospace"
                 textAnchor="middle"
@@ -615,21 +616,21 @@ export function TrackMap({
             return (
               <g>
                 <rect
-                  x={sf.x - 5}
-                  y={sf.y - 3}
-                  width="10"
-                  height="6"
+                  x={sf.x - 12}
+                  y={sf.y - 7}
+                  width="24"
+                  height="14"
                   fill="url(#checkered)"
                   transform={`rotate(${angle}, ${sf.x}, ${sf.y})`}
-                  rx="1"
+                  rx="2"
                 />
-                <circle cx={sf.x} cy={sf.y} r="7" fill={accentColor} fillOpacity="0.2" />
-                <circle cx={sf.x} cy={sf.y} r="3" fill={accentColor} />
+                <circle cx={sf.x} cy={sf.y} r="17" fill={accentColor} fillOpacity="0.2" />
+                <circle cx={sf.x} cy={sf.y} r="7" fill={accentColor} />
                 <text
                   x={sf.x}
-                  y={sf.y + 14}
+                  y={sf.y + 30}
                   fill="rgba(255,255,255,0.5)"
-                  fontSize="6"
+                  fontSize="14"
                   fontWeight="600"
                   fontFamily="monospace"
                   textAnchor="middle"
@@ -660,17 +661,17 @@ export function TrackMap({
                 onMouseLeave={() => setHoveredTurn(null)}
               >
                 {/* Glow ring color-coded by speed */}
-                <circle cx={turn.px} cy={turn.py} r="8" fill={color} fillOpacity="0.1" />
+                <circle cx={turn.px} cy={turn.py} r="19" fill={color} fillOpacity="0.1" />
                 {/* Background */}
-                <circle cx={turn.px} cy={turn.py} r="6" fill="#0D1117" fillOpacity="0.85" />
+                <circle cx={turn.px} cy={turn.py} r="14" fill="#0D1117" fillOpacity="0.85" />
                 {/* Border ring */}
-                <circle cx={turn.px} cy={turn.py} r="5.5" fill="none" stroke={color} strokeWidth="0.8" strokeOpacity="0.6" />
+                <circle cx={turn.px} cy={turn.py} r="13" fill="none" stroke={color} strokeWidth="1.8" strokeOpacity="0.6" />
                 {/* Turn number */}
                 <text
                   x={turn.px}
-                  y={turn.py + 2.5}
+                  y={turn.py + 5.5}
                   fill={color}
-                  fontSize="5.5"
+                  fontSize="13"
                   fontWeight="700"
                   fontFamily="monospace"
                   textAnchor="middle"
@@ -681,9 +682,9 @@ export function TrackMap({
                 {turn.name && turn.name !== `Turn ${turn.number}` && (
                   <text
                     x={turn.px}
-                    y={turn.py + 13}
+                    y={turn.py + 28}
                     fill="rgba(255,255,255,0.4)"
-                    fontSize="4"
+                    fontSize="10"
                     fontWeight="600"
                     fontFamily="monospace"
                     textAnchor="middle"
@@ -699,33 +700,33 @@ export function TrackMap({
           {carDots.map((car) => (
             <g key={car.driverNumber}>
               {/* Glow */}
-              <circle cx={car.px} cy={car.py} r="8" fill={car.color} fillOpacity="0.15" />
+              <circle cx={car.px} cy={car.py} r="19" fill={car.color} fillOpacity="0.15" />
               {/* Dot */}
               <circle
                 cx={car.px}
                 cy={car.py}
-                r="4.5"
+                r="11"
                 fill={car.color}
                 stroke="#0D1117"
-                strokeWidth="1.2"
+                strokeWidth="2.8"
                 style={{ transition: 'cx 0.5s ease-out, cy 0.5s ease-out' }}
               />
               {/* Position badge */}
               <rect
-                x={car.px + 6}
-                y={car.py - 5}
-                width={car.code.length * 5 + 8}
-                height="10"
-                rx="2"
+                x={car.px + 14}
+                y={car.py - 12}
+                width={car.code.length * 12 + 16}
+                height="24"
+                rx="5"
                 fill="#0D1117"
                 fillOpacity="0.75"
               />
               {/* Label */}
               <text
-                x={car.px + 10}
-                y={car.py + 2.5}
+                x={car.px + 22}
+                y={car.py + 5}
                 fill={car.color}
-                fontSize="7"
+                fontSize="17"
                 fontWeight="700"
                 fontFamily="monospace"
               >

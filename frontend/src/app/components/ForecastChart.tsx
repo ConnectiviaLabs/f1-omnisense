@@ -7,14 +7,14 @@ import type { FeatureForecast } from './anomalyHelpers';
 import KexBriefingCard from './KexBriefingCard';
 
 /* ── Default features per system (always forecastable) ─────────────── */
-const DEFAULT_SYSTEM_FEATURES: Record<string, string[]> = {
+export const DEFAULT_SYSTEM_FEATURES: Record<string, string[]> = {
   'Performance':      ['LapTime_mean', 'Sector1Time_mean', 'Sector2Time_mean', 'Sector3Time_mean'],
   'Speed Traps':      ['SpeedI1_mean', 'SpeedI2_mean', 'SpeedFL_mean', 'SpeedST_mean'],
   'Tyre Management':  ['TyreLife_mean'],
 };
 
 /* Map feature column back to its system label */
-function featureToSystem(col: string): string {
+export function featureToSystem(col: string): string {
   const norm = col.toLowerCase();
   for (const [sys, feats] of Object.entries(DEFAULT_SYSTEM_FEATURES)) {
     if (feats.some(f => f.toLowerCase() === norm)) return sys;
@@ -23,7 +23,7 @@ function featureToSystem(col: string): string {
 }
 
 /* Pretty-print a feature column name */
-function prettyLabel(col: string): string {
+export function prettyLabel(col: string): string {
   return col
     .replace(/_mean$/, '')
     .replace(/([A-Z])/g, ' $1')
@@ -39,9 +39,10 @@ const SEVERITY_CASCADE = ['critical', 'high', 'medium', 'low'];
 interface ForecastChartProps {
   driverCode: string;
   features?: string[];
+  hideKex?: boolean;
 }
 
-export function ForecastChart({ driverCode, features }: ForecastChartProps) {
+export function ForecastChart({ driverCode, features, hideKex }: ForecastChartProps) {
   const [forecasts, setForecasts] = useState<FeatureForecast[]>([]);
   const [loading, setLoading] = useState(!!driverCode);
   const [kex, setKex] = useState<{ text: string; scores?: Record<string, number>; summary?: string; model_used?: string; provider_used?: string; generated_at?: number; grounding_score?: number } | null>(null);
@@ -131,16 +132,16 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
       .finally(() => setLoading(false));
   }, [driverCode, features]);
 
-  /* ── Fetch KeX forecast briefing ─────────────────────────────────── */
+  /* ── Fetch KeX forecast briefing (skip when hideKex) ─────────────── */
   useEffect(() => {
-    if (!driverCode) return;
+    if (!driverCode || hideKex) return;
     setKexLoading(true);
     fetch(`/api/forecast/kex/${driverCode}`, { method: 'POST' })
       .then(r => r.ok ? r.json() : null)
       .then(data => setKex(data?.text ? data : null))
       .catch(() => setKex(null))
       .finally(() => setKexLoading(false));
-  }, [driverCode]);
+  }, [driverCode, hideKex]);
 
   if (loading) {
     return (
@@ -170,8 +171,8 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
 
           const TrendIcon = fc.trend_direction === 'rising' ? TrendingUp
             : fc.trend_direction === 'falling' ? TrendingDown : Minus;
-          const trendColor = fc.trend_direction === 'rising' ? '#3FB950'
-            : fc.trend_direction === 'falling' ? '#F85149' : '#8B949E';
+          const trendColor = fc.trend_direction === 'rising' ? '#05DF72'
+            : fc.trend_direction === 'falling' ? '#FB2C36' : '#9090A8';
 
           const historyData = (fc.history ?? []).map((v, i) => ({
             step: fc.history_timestamps?.[i] ?? `R${i + 1}`,
@@ -199,10 +200,10 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
           const tickInterval = totalPts > 15 ? Math.ceil(totalPts / 10) : 0;
 
           return (
-            <div key={fc.column} className="bg-[#161B22] rounded-lg p-4 border border-[#30363D]">
+            <div key={fc.column} className="bg-card rounded-lg p-4 border border-border">
               {/* Header */}
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[14px] font-semibold text-[#E6EDF3]">{displayLabel}</span>
+                <span className="text-[14px] font-semibold text-foreground">{displayLabel}</span>
                 <div className="flex items-center gap-2">
                   {fc.risk_flag && (
                     <AlertTriangle className="w-3.5 h-3.5 text-primary" />
@@ -220,28 +221,28 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
               {/* Chart */}
               <ResponsiveContainer width="100%" height={240}>
                 <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: 8 }}>
-                  <XAxis dataKey="step" tick={{ fontSize: 9, fill: '#8B949E' }} axisLine={false} tickLine={false} interval={tickInterval} />
-                  <YAxis domain={yDomain} tick={{ fontSize: 9, fill: '#8B949E' }} axisLine={false} tickLine={false} width={50} />
+                  <XAxis dataKey="step" tick={{ fontSize: 9, fill: '#9090A8' }} axisLine={false} tickLine={false} interval={tickInterval} />
+                  <YAxis domain={yDomain} tick={{ fontSize: 9, fill: '#9090A8' }} axisLine={false} tickLine={false} width={50} />
                   <Tooltip
-                    contentStyle={{ background: '#161B22', border: '1px solid #30363D', borderRadius: 8, fontSize: 12, color: '#E6EDF3' }}
-                    labelStyle={{ color: '#8B949E' }}
+                    contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 12, color: '#E8E8F0' }}
+                    labelStyle={{ color: '#9090A8' }}
                     formatter={(v: any, name: string) => v != null ? [Number(v).toFixed(2), name] : ['-', name]}
                   />
                   <ReferenceLine
                     x="Now"
                     stroke="rgba(255,255,255,0.4)"
                     strokeDasharray="4 3"
-                    label={{ value: 'Now', position: 'top', fontSize: 10, fill: '#E6EDF3' }}
+                    label={{ value: 'Now', position: 'top', fontSize: 10, fill: '#E8E8F0' }}
                   />
                   <Line type="monotone" dataKey="upper" stroke="rgba(255,128,0,0.35)" strokeWidth={1} strokeDasharray="4 3" dot={false} name="Upper 95%" connectNulls={false} legendType="none" />
                   <Line type="monotone" dataKey="lower" stroke="rgba(255,128,0,0.35)" strokeWidth={1} strokeDasharray="4 3" dot={false} name="Lower 95%" connectNulls={false} legendType="none" />
                   <Line type="monotone" dataKey="value" stroke="#FF8000" strokeWidth={2.5} dot={{ r: 3, fill: '#FF8000' }} name="Forecast" connectNulls={false} />
-                  <Line type="monotone" dataKey="actual" stroke="#8B949E" strokeWidth={1.5} dot={false} name="History" connectNulls />
+                  <Line type="monotone" dataKey="actual" stroke="#9090A8" strokeWidth={1.5} dot={false} name="History" connectNulls />
                 </ComposedChart>
               </ResponsiveContainer>
 
               {/* Footer — MAE / RMSE */}
-              <div className="flex items-center gap-4 mt-2 text-[11px] text-[#8B949E] font-mono">
+              <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground font-mono">
                 {fc.mae != null && <span>MAE: {fc.mae.toFixed(2)}</span>}
                 {fc.rmse != null && <span>RMSE: {fc.rmse.toFixed(2)}</span>}
               </div>
@@ -251,13 +252,15 @@ export function ForecastChart({ driverCode, features }: ForecastChartProps) {
       </div>
 
       {/* ── KeX Forecast Briefing (Gen UI) ─────────────────────────── */}
-      <KexBriefingCard
-        title="WISE Forecast Briefing"
-        icon="sparkles"
-        kex={kex}
-        loading={kexLoading}
-        loadingText="Generating forecast intelligence…"
-      />
+      {!hideKex && (
+        <KexBriefingCard
+          title="WISE Forecast Briefing"
+          icon="sparkles"
+          kex={kex}
+          loading={kexLoading}
+          loadingText="Generating forecast intelligence…"
+        />
+      )}
     </div>
   );
 }

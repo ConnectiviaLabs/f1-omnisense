@@ -72,6 +72,7 @@ export function CircuitIntel() {
   const [kex, setKex] = useState<CircuitKex | null>(null);
   const [kexLoading, setKexLoading] = useState(false);
 
+
   useEffect(() => {
     Promise.all([
       api.getCircuits(),
@@ -128,7 +129,6 @@ export function CircuitIntel() {
     [...pitLoss].sort((a, b) => b.est_pit_lane_loss_s - a.est_pit_lane_loss_s),
     [pitLoss]
   );
-
 
   if (loading) {
     return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
@@ -244,13 +244,13 @@ export function CircuitIntel() {
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={selectedAirData}>
                     <CartesianGrid stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="year" tick={{ fill: '#888', fontSize: 11 }} />
-                    <YAxis yAxisId="temp" tick={{ fill: '#888', fontSize: 11 }} />
-                    <YAxis yAxisId="density" orientation="right" tick={{ fill: '#888', fontSize: 11 }} />
+                    <XAxis dataKey="year" tick={{ fill: '#9090A8', fontSize: 11 }} />
+                    <YAxis yAxisId="temp" tick={{ fill: '#9090A8', fontSize: 11 }} />
+                    <YAxis yAxisId="density" orientation="right" tick={{ fill: '#9090A8', fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Line yAxisId="temp" type="monotone" dataKey="avg_temp_c" name="Temp (C)" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line yAxisId="temp" type="monotone" dataKey="avg_humidity_pct" name="Humidity (%)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line yAxisId="density" type="monotone" dataKey="air_density_kg_m3" name="Air Density" stroke="#FF8000" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line yAxisId="temp" type="monotone" dataKey="avg_temp_c" name="Temp (C)" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Line yAxisId="temp" type="monotone" dataKey="avg_humidity_pct" name="Humidity (%)" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    <Line yAxisId="density" type="monotone" dataKey="air_density_kg_m3" name="Air Density" stroke="#FF8000" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
                 <div className="flex items-center justify-center gap-6 mt-2 text-xs text-muted-foreground">
@@ -364,7 +364,7 @@ export function CircuitIntel() {
                     <ResponsiveContainer width="100%" height={Math.max(200, history.top_constructors.length * 32)}>
                       <BarChart data={history.top_constructors} layout="vertical" margin={{ left: 80, right: 20 }}>
                         <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
-                        <XAxis type="number" tick={{ fill: '#888', fontSize: 11 }} />
+                        <XAxis type="number" tick={{ fill: '#9090A8', fontSize: 11 }} />
                         <YAxis type="category" dataKey="name" tick={{ fill: '#ccc', fontSize: 11 }} width={75} />
                         <Tooltip content={<CustomTooltip />} />
                         <Bar dataKey="points" name="Points" radius={[0, 4, 4, 0]}>
@@ -410,6 +410,7 @@ export function CircuitIntel() {
                 loadingText="Extracting circuit intelligence\u2026"
               />
             )}
+
           </>
         )}
       </div>

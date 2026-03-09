@@ -14,6 +14,7 @@ import type { OpenF1Session, OpenF1Lap, OpenF1Driver, OpenF1Stint } from '../typ
 import { TrackMapGL } from './TrackMapGL';
 import { LiveAnalyticsSidebar } from './LiveAnalyticsSidebar';
 import { getCircuitByShortName } from '../data/circuits';
+import { COMPOUND_COLORS } from '../constants/teams';
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
@@ -34,10 +35,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 const SPEED_OPTIONS = [1, 2, 5, 10, 30];
-
-const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
-};
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.floor(ms / 1000);

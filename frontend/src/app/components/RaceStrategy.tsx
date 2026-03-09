@@ -9,12 +9,9 @@ import {
 } from 'lucide-react';
 import { strategy } from '../api/local';
 import { getOpponentDrivers } from '../api/driverIntel';
+import { COMPOUND_COLORS as compoundColors } from '../constants/teams';
 
 // ─── Constants ──────────────────────────────────────────────────────
-const compoundColors: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0',
-  INTERMEDIATE: '#22c55e', WET: '#3b82f6', UNKNOWN: '#6b7280',
-};
 
 const compoundTextColors: Record<string, string> = {
   SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#d4d4d8',

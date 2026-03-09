@@ -20,7 +20,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
           </div>
           <span className="text-foreground text-lg font-semibold tracking-[0.2em] uppercase">McLaren Intelligence Platform</span>
         </div>
-        <p className="text-[11px] text-muted-foreground tracking-[0.15em] uppercase">Operational Mode Selection</p>
+        <p className="text-[11px] text-text-faint tracking-[0.15em] uppercase">Operational Mode Selection</p>
       </div>
 
       {/* Cards */}
@@ -159,7 +159,7 @@ export function Home_v3({ onSelectPlatform }: HomeProps) {
 
       {/* Footer */}
       <div className="relative z-10 mt-8">
-        <span className="text-[10px] text-muted-foreground/40 tracking-[0.2em] uppercase">McLaren Intelligence Platform</span>
+        <span className="text-[10px] text-text-faint tracking-[0.2em] uppercase">McLaren Intelligence Platform</span>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import KexBriefingCard from './KexBriefingCard';
 import {
   type VehicleData, parseAnomalyDrivers, levelColor, MAINTENANCE_LABELS,
 } from './anomalyHelpers';
+import { TEAM_COLORS_BY_ID as teamColors, TEAM_DISPLAY_NAMES as teamDisplayNames, COMPOUND_COLORS as compoundColors } from '../constants/teams';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface CarSummary {
@@ -21,24 +22,6 @@ interface CarSummary {
 }
 
 // ─── Shared helpers ─────────────────────────────────────────────────
-const teamColors: Record<string, string> = {
-  'red_bull': '#3671C6', 'mclaren': '#FF8000', 'ferrari': '#E8002D',
-  'mercedes': '#27F4D2', 'aston_martin': '#229971', 'alpine': '#FF87BC',
-  'williams': '#64C4FF', 'rb': '#6692FF', 'sauber': '#52E252',
-  'haas': '#B6BABD',
-};
-
-const teamDisplayNames: Record<string, string> = {
-  'red_bull': 'Red Bull', 'mclaren': 'McLaren', 'ferrari': 'Ferrari',
-  'mercedes': 'Mercedes', 'aston_martin': 'Aston Martin', 'alpine': 'Alpine',
-  'williams': 'Williams', 'rb': 'RB', 'sauber': 'Kick Sauber',
-  'haas': 'Haas', 'alphatauri': 'AlphaTauri', 'alfa': 'Alfa Romeo',
-  'toro_rosso': 'Toro Rosso', 'renault': 'Renault', 'racing_point': 'Racing Point',
-};
-
-const compoundColors: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
-};
 
 const matchSeason = (docSeason: any, year: string) => String(docSeason) === year;
 

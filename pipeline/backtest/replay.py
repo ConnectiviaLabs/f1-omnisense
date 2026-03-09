@@ -486,6 +486,7 @@ def run_backtest(
                 anomaly["overall_health"], elt_result, strategy_result, cliff_result,
                 degrading_count=len(degrading_systems),
                 total_systems=len(anomaly.get("systems", {})) or 7,
+                races_in_training=anomaly.get("races_in_training", 50),
             )
 
             # Risk from composite (replaces simple anomaly-only check)

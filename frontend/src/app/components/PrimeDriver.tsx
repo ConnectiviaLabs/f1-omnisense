@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Search, TrendingUp, Brain } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import KexBriefingCard from './KexBriefingCard';
 import { DriverIntel } from './DriverIntel';
 import { ForecastChart } from './ForecastChart';
@@ -10,6 +10,7 @@ import {
   parseAnomalyDrivers, levelColor,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
+import { TEAM_COLORS_BY_ID as TEAM_COLORS, teamIdFromName } from '../constants/teams';
 import type { Pillar } from './Sidebar';
 
 interface PrimeDriverProps {
@@ -36,6 +37,13 @@ export function PrimeDriver({ prefetchedVehicles, activePillar }: PrimeDriverPro
       .finally(() => setLoading(false));
   }, [prefetchedVehicles]);
 
+  // Auto-select first McLaren driver when data loads
+  useEffect(() => {
+    if (selectedDriver || vehicles.length === 0) return;
+    const mcl = vehicles.find(v => v.team === 'McLaren');
+    if (mcl) setSelectedDriver(mcl.code);
+  }, [vehicles, selectedDriver]);
+
   return (
     <div className="space-y-4">
       {activePillar === 'telemetry' && <DriverIntel showTabBar={false} prefetchedVehicles={vehicles} />}
@@ -58,7 +66,11 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
   const filtered = vehicles.filter(v =>
     !search || v.driver.toLowerCase().includes(search.toLowerCase()) || v.code.toLowerCase().includes(search.toLowerCase())
   );
+  const isMcLaren = (v: VehicleData) => v.team === 'McLaren';
   const sorted = [...filtered].sort((a, b) => {
+    // McLaren always first, then by severity
+    if (isMcLaren(a) && !isMcLaren(b)) return -1;
+    if (!isMcLaren(a) && isMcLaren(b)) return 1;
     const order = { critical: 0, warning: 1, nominal: 2 };
     return (order[a.level] ?? 3) - (order[b.level] ?? 3);
   });
@@ -96,26 +108,50 @@ function DriverAnomalyView({ vehicles, loading, search, setSearch, selectedDrive
             />
           </div>
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-            {sorted.map(v => (
-              <button
-                key={v.code}
-                onClick={() => setSelectedDriver(v.code === selectedDriver ? null : v.code)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all ${
-                  v.code === selectedDriver
-                    ? 'bg-primary/10 border border-primary/30'
-                    : 'bg-card border border-transparent hover:border-border'
-                }`}
-              >
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: levelColor(v.level) }} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-medium text-foreground truncate">{v.code} — {v.driver}</div>
-                  <div className="text-[10px] text-muted-foreground">{v.team}</div>
+            {sorted.map((v, i) => {
+              const mcl = isMcLaren(v);
+              const vColor = TEAM_COLORS[teamIdFromName(v.team)] ?? '#888';
+              const isSelected = v.code === selectedDriver;
+              // Insert divider between McLaren and rest
+              const showDivider = mcl === false && i > 0 && isMcLaren(sorted[i - 1]);
+              return (
+                <div key={v.code}>
+                  {showDivider && (
+                    <div className="flex items-center gap-2 py-1.5 px-1">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Field</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDriver(v.code === selectedDriver ? null : v.code)}
+                    className={`w-full flex items-center gap-2.5 rounded-lg text-left transition-all ${
+                      isSelected
+                        ? 'bg-primary/10 border border-primary/30'
+                        : mcl
+                          ? 'bg-primary/[0.04] border border-primary/10 hover:border-primary/25'
+                          : 'bg-card border border-transparent hover:border-border'
+                    } ${mcl ? 'px-3 py-2.5' : 'px-3 py-2'}`}
+                  >
+                    <div
+                      className={`rounded-full shrink-0 ${mcl ? 'w-2.5 h-2.5' : 'w-2 h-2'}`}
+                      style={{ background: mcl ? vColor : levelColor(v.level) }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className={`font-medium text-foreground truncate ${mcl ? 'text-[13px]' : 'text-[12px]'}`}>
+                        {v.code} — {v.driver}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">{v.team}</div>
+                    </div>
+                    {mcl && <HealthGauge value={v.overallHealth} size={28} />}
+                    <span className="text-[11px] font-mono tabular-nums" style={{ color: levelColor(v.level) }}>
+                      {v.overallHealth.toFixed(0)}%
+                    </span>
+                  </button>
                 </div>
-                <span className="text-[11px] font-mono tabular-nums" style={{ color: levelColor(v.level) }}>
-                  {v.overallHealth.toFixed(0)}%
-                </span>
-              </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -159,16 +195,21 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
   }, [vehicle.code]);
 
   const recentRaces = useMemo(() => vehicle.races.slice(-10), [vehicle.races]);
+  const mcl = vehicle.team === 'McLaren';
+  const detailColor = TEAM_COLORS[teamIdFromName(vehicle.team)] ?? '#888';
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-card rounded-lg border border-border p-4">
+      <div
+        className={`bg-card rounded-lg border p-4 ${mcl ? 'border-primary/20' : 'border-border'}`}
+        style={{ borderTop: `3px solid ${detailColor}` }}
+      >
         <div className="flex items-center gap-4">
-          <HealthGauge value={vehicle.overallHealth} size={64} />
+          <HealthGauge value={vehicle.overallHealth} size={mcl ? 72 : 64} />
           <div>
-            <div className="text-lg font-semibold text-foreground">{vehicle.code} — {vehicle.driver}</div>
-            <div className="text-sm text-muted-foreground">{vehicle.team}</div>
+            <div className={`font-semibold text-foreground ${mcl ? 'text-xl' : 'text-lg'}`}>{vehicle.code} — {vehicle.driver}</div>
+            <div className="text-sm" style={{ color: detailColor }}>{vehicle.team}</div>
             <div className="flex items-center gap-2 mt-1">
               <StatusBadge status={vehicle.level} />
               <span className="text-[11px] text-muted-foreground">Last race: {vehicle.lastRace}</span>
@@ -279,12 +320,14 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
 
 /* ─── Forecast View ─── */
 
-function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriver }: {
+function DriverForecastView({ vehicles, loading }: {
   vehicles: VehicleData[];
   loading: boolean;
   selectedDriver: string | null;
   setSelectedDriver: (d: string | null) => void;
 }) {
+  const [expandedField, setExpandedField] = useState<Record<string, boolean>>({});
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
@@ -294,33 +337,80 @@ function DriverForecastView({ vehicles, loading, selectedDriver, setSelectedDriv
     );
   }
 
-  const driverOptions = vehicles.map(v => v.code).sort();
-  const effectiveDriver = selectedDriver ?? driverOptions[0] ?? null;
+  const mclarenDrivers = vehicles.filter(v => v.team === 'McLaren');
+  const fieldDrivers = vehicles.filter(v => v.team !== 'McLaren').sort((a, b) => {
+    const order = { critical: 0, warning: 1, nominal: 2 };
+    return (order[a.level] ?? 3) - (order[b.level] ?? 3);
+  });
+
+  const toggleField = (code: string) =>
+    setExpandedField(prev => ({ ...prev, [code]: !prev[code] }));
 
   return (
-    <div className="space-y-4">
-      {/* Driver selector */}
-      <div className="flex items-center gap-3">
-        <label className="text-[12px] text-muted-foreground">Driver</label>
-        <select
-          title="Select driver"
-          value={effectiveDriver ?? ''}
-          onChange={e => setSelectedDriver(e.target.value)}
-          className="bg-card border border-border rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none focus:border-primary/30"
-        >
-          {driverOptions.map(code => (
-            <option key={code} value={code}>{code}</option>
-          ))}
-        </select>
-      </div>
+    <div className="space-y-5">
+      {/* ── McLaren drivers — always visible, full forecast ── */}
+      {mclarenDrivers.map(v => {
+        const teamColor = TEAM_COLORS[teamIdFromName(v.team)] ?? '#FF8000';
+        return (
+          <div key={v.code} className="space-y-3">
+            {/* Driver header card */}
+            <div
+              className="bg-card rounded-lg border border-primary/20 p-4"
+              style={{ borderLeft: `4px solid ${teamColor}` }}
+            >
+              <div className="flex items-center gap-4">
+                <HealthGauge value={v.overallHealth} size={56} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[16px] font-bold text-foreground">{v.driver}</div>
+                  <div className="text-[11px]" style={{ color: teamColor }}>{v.code} · {v.team}</div>
+                </div>
+                <StatusBadge status={v.level} />
+              </div>
+            </div>
+            {/* Forecast charts + KeX briefing */}
+            <ForecastChart driverCode={v.code} />
+          </div>
+        );
+      })}
 
-      {effectiveDriver && (
-        <div className="bg-card rounded-lg border border-border p-3">
-          <h3 className="text-[12px] font-medium text-foreground mb-3 flex items-center gap-1.5">
-            <TrendingUp className="w-3 h-3 text-primary" />
-            Feature Forecasts — {effectiveDriver}
-          </h3>
-          <ForecastChart driverCode={effectiveDriver} />
+      {/* ── Field drivers — collapsible ── */}
+      {fieldDrivers.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 py-1">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Field — {fieldDrivers.length} drivers</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          {fieldDrivers.map(v => {
+            const isOpen = expandedField[v.code] ?? false;
+            const vColor = TEAM_COLORS[teamIdFromName(v.team)] ?? '#888';
+            return (
+              <div key={v.code} className="bg-card rounded-lg border border-border overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleField(v.code)}
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-background/40 transition-colors"
+                >
+                  <div className="w-1 h-6 rounded-full shrink-0" style={{ background: vColor }} />
+                  <HealthGauge value={v.overallHealth} size={24} />
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-[12px] font-medium text-foreground">{v.driver}</div>
+                    <div className="text-[10px] text-muted-foreground">{v.code} · {v.team}</div>
+                  </div>
+                  <span className="text-[11px] font-mono tabular-nums" style={{ color: levelColor(v.level) }}>
+                    {v.overallHealth.toFixed(0)}%
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">{isOpen ? '▾' : '▸'}</span>
+                </button>
+                {isOpen && (
+                  <div className="px-3 pb-3">
+                    <ForecastChart driverCode={v.code} hideKex />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

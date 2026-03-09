@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { SidebarProvider } from './hooks/useSidebar';
 import { Sidebar } from './components/Sidebar';
 import { Home_v3 as Home } from './components/Home_v3';
 import { LiveDashboard } from './components/LiveDashboard';
@@ -108,6 +109,7 @@ export default function App() {
   }
 
   return (
+    <SidebarProvider>
     <div className="h-full flex bg-background font-['Inter',sans-serif] overflow-hidden">
       <Sidebar
         activeView={activeView}
@@ -123,12 +125,12 @@ export default function App() {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Bar */}
-        <header className="h-12 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
+        <header className="h-12 border-b border-border bg-background flex items-center justify-between px-4 shrink-0 shadow-sm">
           <nav className="flex items-center gap-1.5 text-[11px] tracking-wide leading-none">
             <span className="text-muted-foreground">F1 OmniSense</span>
-            <ChevronRight className="w-3 h-3 text-[rgba(255,128,0,0.3)] shrink-0" />
+            <ChevronRight className="w-3 h-3 text-primary/30 shrink-0" />
             <span className="text-muted-foreground">{effectivePlatform === 'race-day' ? 'Race Day' : 'Prime'}</span>
-            <ChevronRight className="w-3 h-3 text-[rgba(255,128,0,0.3)] shrink-0" />
+            <ChevronRight className="w-3 h-3 text-primary/30 shrink-0" />
             <span className="text-foreground">{viewTitles[activeView].title}</span>
           </nav>
           <div className="flex items-center gap-4">
@@ -143,7 +145,7 @@ export default function App() {
               </div>
             </div>
             <div className="flex items-center gap-1.5 bg-secondary rounded-lg px-3 py-1">
-              <Clock className="w-3 h-3 text-[#FF8000]" />
+              <Clock className="w-3 h-3 text-primary" />
               <span className="text-[10px] font-mono text-foreground">
                 {currentTime.toLocaleTimeString('en-GB', { hour12: false })}
               </span>
@@ -154,10 +156,10 @@ export default function App() {
         {/* Page Header */}
         <div className="px-5 pt-5 pb-3 shrink-0 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-1 h-7 rounded-full bg-[#FF8000]" />
+            <div className="w-1 h-7 rounded-full bg-primary" />
             <div>
               <h1 className="text-foreground text-xl font-semibold tracking-tight">{viewTitles[activeView].title}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">{viewTitles[activeView].subtitle}</p>
+              <p className="text-[13px] text-muted-foreground mt-px">{viewTitles[activeView].subtitle}</p>
             </div>
           </div>
         </div>
@@ -168,5 +170,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </SidebarProvider>
   );
 }

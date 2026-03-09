@@ -64,23 +64,24 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
           {radarData.length > 0 && (
             <ResponsiveContainer width="100%" height={220}>
               <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="72%">
-                <PolarGrid stroke="rgba(255,255,255,0.05)" />
+                <PolarGrid stroke="rgba(255,255,255,0.06)" />
                 <PolarAngleAxis
                   dataKey="dimension"
-                  tick={{ fontSize: 9, fill: '#888' }}
+                  tick={{ fontSize: 9, fill: '#9090A8' }}
                 />
                 <PolarRadiusAxis
                   domain={[0, scale]}
                   tickCount={6}
-                  tick={{ fontSize: 8, fill: '#555' }}
+                  tick={{ fontSize: 8, fill: '#6E6E88' }}
                   axisLine={false}
                 />
                 <Tooltip
                   contentStyle={{
                     background: '#1A1F2E',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.06)',
                     fontSize: 11,
                     borderRadius: 8,
+                    color: '#E8E8F0',
                   }}
                   formatter={(value: number) => [`${value}/${scale}`, '']}
                 />
@@ -126,7 +127,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
           <div className="flex items-center gap-2 flex-wrap">
             {kex.grounding_score != null && (
               <span className={`text-[8px] font-semibold px-1 py-0.5 rounded ${
-                kex.grounding_score >= 0.7 ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'
+                kex.grounding_score >= 0.7 ? 'bg-success-soft text-success-text' : 'bg-warning-soft text-warning-text'
               }`}>
                 {Math.round(kex.grounding_score * 100)}% grounded
               </span>
@@ -144,7 +145,7 @@ export default function KexBriefingCard({ title, icon = 'brain', kex, loading, l
           {/* ── Expand toggle ── */}
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1.5 text-[11px] text-primary hover:text-[#FF9933] transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-primary/5"
+            className="flex items-center gap-1.5 text-[11px] text-primary hover:text-accent-hover transition-colors w-full justify-center py-1.5 rounded-lg hover:bg-primary/5"
           >
             {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             {expanded ? 'Hide Full Briefing' : 'View Full Briefing'}

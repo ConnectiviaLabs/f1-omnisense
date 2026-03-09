@@ -6,48 +6,20 @@ import {
 import {
   AlertTriangle, CheckCircle2, XCircle, Activity,
   CircleDot, Shield, TrendingUp, TrendingDown, Minus, Fuel,
-  X, Loader2, Sparkles, Gauge, ChevronRight,
+  X, Sparkles, Gauge, ChevronRight,
 } from 'lucide-react';
 import KexBriefingCard from './KexBriefingCard';
 import { ForecastChart } from './ForecastChart';
 import { HealthGauge } from './HealthGauge';
 import { AgentActivity } from './AgentActivity';
+import { LoadingSpinner } from './LoadingSpinner';
 import { getCarTelemetryKex, getAnomalyKex, type CarTelemetryKex } from '../api/driverIntel';
 import {
   type HealthLevel, type VehicleData,
   mapLevel, levelColor, levelBg,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
-
-/* ── Team colors & logos (match DriverIntel) ── */
-const teamColors: Record<string, string> = {
-  'Red Bull': '#3671C6', 'Red Bull Racing': '#3671C6', 'McLaren': '#FF8000', 'Ferrari': '#E8002D',
-  'Mercedes': '#27F4D2', 'Aston Martin': '#229971', 'Alpine': '#FF87BC', 'Alpine F1 Team': '#FF87BC',
-  'Williams': '#64C4FF', 'RB': '#6692FF', 'RB F1 Team': '#6692FF', 'Racing Bulls': '#6692FF',
-  'Kick Sauber': '#52E252', 'Sauber': '#52E252', 'Alfa Romeo': '#C92D4B',
-  'Haas F1 Team': '#B6BABD', 'Haas': '#B6BABD',
-  'AlphaTauri': '#6692FF', 'Toro Rosso': '#469BFF',
-};
-const F1_CDN = 'https://media.formula1.com/image/upload/c_lfill,w_96/q_auto/v1740000000/common/f1/2026';
-const TEAM_LOGOS: Record<string, string> = {
-  red_bull: `${F1_CDN}/redbullracing/2026redbullracinglogowhite.webp`,
-  mclaren: `${F1_CDN}/mclaren/2026mclarenlogowhite.webp`,
-  ferrari: `${F1_CDN}/ferrari/2026ferrarilogowhite.webp`,
-  mercedes: `${F1_CDN}/mercedes/2026mercedeslogowhite.webp`,
-  aston_martin: `${F1_CDN}/astonmartin/2026astonmartinlogowhite.webp`,
-  alpine: `${F1_CDN}/alpine/2026alpinelogowhite.webp`,
-  williams: `${F1_CDN}/williams/2026williamslogowhite.webp`,
-  rb: `${F1_CDN}/racingbulls/2026racingbullslogowhite.webp`,
-  sauber: `${F1_CDN}/audi/2026audilogowhite.webp`,
-  haas: `${F1_CDN}/haasf1team/2026haasf1teamlogowhite.webp`,
-};
-const TEAM_NAME_TO_LOGO: Record<string, string> = {
-  'Red Bull': 'red_bull', 'Red Bull Racing': 'red_bull', 'McLaren': 'mclaren', 'Ferrari': 'ferrari',
-  'Mercedes': 'mercedes', 'Aston Martin': 'aston_martin', 'Alpine': 'alpine', 'Alpine F1 Team': 'alpine',
-  'Williams': 'williams', 'RB': 'rb', 'RB F1 Team': 'rb', 'Racing Bulls': 'rb',
-  'Kick Sauber': 'sauber', 'Sauber': 'sauber', 'Alfa Romeo': 'sauber',
-  'Haas F1 Team': 'haas', 'Haas': 'haas', 'AlphaTauri': 'rb', 'Toro Rosso': 'rb',
-};
+import { TEAM_COLORS_BY_NAME as teamColors, TEAM_LOGOS, TEAM_NAME_TO_ID as TEAM_NAME_TO_LOGO, COMPOUND_COLORS } from '../constants/teams';
 
 function getHealthTrend(vehicle: VehicleData): 'up' | 'down' | 'stable' {
   if (!vehicle.races || vehicle.races.length < 2) return 'stable';
@@ -68,12 +40,6 @@ const TrendIcon = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
   if (trend === 'up') return <TrendingUp className="w-3 h-3 text-green-400" />;
   if (trend === 'down') return <TrendingDown className="w-3 h-3 text-red-400" />;
   return <Minus className="w-3 h-3 text-muted-foreground/50" />;
-};
-
-/* ── Tyre compound colors ── */
-const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: '#FF3333', MEDIUM: '#FFD700', HARD: '#CCCCCC',
-  INTERMEDIATE: '#00CC44', WET: '#0088FF',
 };
 
 /* ── Race telemetry summary type ── */
@@ -743,9 +709,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               </div>
             )}
             {statsLoading && (
-              <div className="px-5 pb-3 flex items-center gap-2 text-[11px] text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin text-primary" /> Loading driver stats...
-              </div>
+              <LoadingSpinner text="Loading driver stats..." className="px-5 pb-3 !py-0 !text-[11px]" />
             )}
           </div>
 
@@ -842,7 +806,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               {/* Performance Metrics */}
               {(s.avgTopSpeed || s.throttleSmoothness || s.overtakesMade) && (
                 <div className="bg-card rounded-lg border border-border p-3">
-                  <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
+                  <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
                     <Activity className="w-3 h-3 text-primary" />
                     Performance Profile
                   </h3>
@@ -894,7 +858,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
               {/* Overtake Stats */}
               {s.overtakesMade != null && (
                 <div className="bg-card rounded-lg border border-border p-3">
-                  <h3 className="text-[12px] font-medium text-foreground mb-2.5 flex items-center gap-1.5">
+                  <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-primary" />
                     Overtake Profile
                   </h3>
@@ -1149,9 +1113,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             </div>
           )}
           {omniLoading && (
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2 justify-center">
-              <Loader2 className="w-3 h-3 animate-spin text-primary" /> Loading OmniHealth assessment...
-            </div>
+            <LoadingSpinner text="Loading OmniHealth assessment..." className="!py-2 !text-[11px]" />
           )}
 
           {/* Season Health Trend Table */}

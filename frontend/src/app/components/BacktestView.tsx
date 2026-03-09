@@ -490,7 +490,7 @@ function rmsseColor(v: number): string {
 }
 
 function ForecastValidationTab() {
-  const [sessionKey, setSessionKey] = useState(9573);
+  const [sessionKey, setSessionKey] = useState(9523);
   const [driverNumber, setDriverNumber] = useState(4);
   const [forecastData, setForecastData] = useState<ForecastBacktestData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -551,7 +551,7 @@ function ForecastValidationTab() {
       <div className="bg-card border border-border rounded-lg p-4">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Session Key</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Race Session</label>
             <input
               type="number"
               value={sessionKey}
@@ -560,7 +560,7 @@ function ForecastValidationTab() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Driver #</label>
+            <label className="text-[10px] text-muted-foreground uppercase tracking-wider">Driver Number</label>
             <input
               type="number"
               value={driverNumber}
@@ -577,7 +577,7 @@ function ForecastValidationTab() {
             {loading ? 'Running...' : 'Run Forecast Backtest'}
           </button>
           {forecastData?.from_cache && (
-            <span className="text-[10px] text-muted-foreground/50 font-mono">cached</span>
+            <span className="text-[10px] text-muted-foreground/50 font-mono">from cache</span>
           )}
         </div>
         {error && (
@@ -585,9 +585,9 @@ function ForecastValidationTab() {
         )}
         {forecastData && (
           <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground/50 font-mono">
-            <span>Series: {forecastData.series_length} pts</span>
-            <span>Windows: {forecastData.total_windows}</span>
-            <span>Generated: {new Date(forecastData.generated_at).toLocaleString()}</span>
+            <span>Data Points: {forecastData.series_length.toLocaleString()}</span>
+            <span>Forecast Windows: {forecastData.total_windows.toLocaleString()}</span>
+            <span>Last Run: {new Date(forecastData.generated_at).toLocaleString()}</span>
           </div>
         )}
       </div>

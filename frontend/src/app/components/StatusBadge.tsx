@@ -4,10 +4,10 @@ interface StatusBadgeProps {
 }
 
 const statusConfig = {
-  nominal: { label: 'NOMINAL', bg: 'bg-green-500/15', text: 'text-green-400', dot: 'bg-green-400' },
-  warning: { label: 'WARNING', bg: 'bg-amber-500/15', text: 'text-amber-400', dot: 'bg-amber-400' },
-  alert: { label: 'ALERT', bg: 'bg-orange-500/15', text: 'text-orange-400', dot: 'bg-orange-400' },
-  critical: { label: 'CRITICAL', bg: 'bg-red-500/15', text: 'text-red-400', dot: 'bg-red-400' },
+  nominal: { label: 'NOMINAL', bg: 'bg-success-soft', text: 'text-success-text', dot: 'bg-success' },
+  warning: { label: 'WARNING', bg: 'bg-warning-soft', text: 'text-warning-text', dot: 'bg-warning' },
+  alert: { label: 'ALERT', bg: 'bg-accent-soft', text: 'text-primary', dot: 'bg-primary' },
+  critical: { label: 'CRITICAL', bg: 'bg-danger-soft', text: 'text-danger-text', dot: 'bg-danger' },
 };
 
 export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
@@ -26,10 +26,10 @@ export function StatusBadge({ status, size = 'sm' }: StatusBadgeProps) {
 
 export function SeverityBadge({ severity }: { severity: 'low' | 'medium' | 'high' | 'critical' }) {
   const config = {
-    low: { bg: 'bg-blue-500/15', text: 'text-blue-400' },
-    medium: { bg: 'bg-amber-500/15', text: 'text-amber-400' },
-    high: { bg: 'bg-orange-500/15', text: 'text-orange-400' },
-    critical: { bg: 'bg-red-500/15', text: 'text-red-400' },
+    low: { bg: 'bg-info-soft', text: 'text-info-text' },
+    medium: { bg: 'bg-warning-soft', text: 'text-warning-text' },
+    high: { bg: 'bg-accent-soft', text: 'text-primary' },
+    critical: { bg: 'bg-danger-soft', text: 'text-danger-text' },
   }[severity];
   return (
     <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[12px] tracking-wider uppercase ${config.bg} ${config.text}`}>

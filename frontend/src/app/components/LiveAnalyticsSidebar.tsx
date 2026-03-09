@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronUp, ChevronDown, Radio } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 import type { OpenF1Driver, OpenF1Stint, OpenF1Position } from '../types';
+import { COMPOUND_COLORS } from '../constants/teams';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface SectorTimeRow {
@@ -34,10 +35,6 @@ interface GapDataPoint {
   lap: number;
   [driverKey: string]: number | null;
 }
-
-const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
-};
 
 interface LiveAnalyticsSidebarProps {
   positions: OpenF1Position[] | null;
