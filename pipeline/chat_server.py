@@ -50,6 +50,7 @@ from pipeline.opponents.server import router as opponents_router, init_profiler_
 from pipeline.updater.server import router as updater_router
 from pipeline.advantage_router import router as advantage_router
 from pipeline.omni_agents_router import router as omni_agents_router
+from pipeline.radio_router import router as radio_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ app.include_router(opponents_router)
 app.include_router(updater_router)
 app.include_router(advantage_router)
 app.include_router(omni_agents_router)
+app.include_router(radio_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None

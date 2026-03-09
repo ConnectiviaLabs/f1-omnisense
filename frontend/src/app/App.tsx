@@ -16,6 +16,7 @@ import { MediaIntelligence } from './components/MediaIntelligence';
 import { Chatbot } from './components/Chatbot';
 import { AdvantageTrident } from './components/AdvantageTrident';
 import { AdvantageCrossover } from './components/AdvantageCrossover';
+import { TeamRadioTimeline } from './components/TeamRadioTimeline';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 import type { Pillar, StrategyTab } from './components/Sidebar';
@@ -39,6 +40,7 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   'ai-insights': { title: 'Knowledge Base', subtitle: 'Pipeline intelligence & extraction stats' },
   regulations: { title: 'Regulations Browser', subtitle: 'FIA technical regulations, specs & equipment extracted via Groq' },
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
+  radio: { title: 'Team Radio', subtitle: 'Signal extraction, driver communication profiles & race radio timeline' },
   chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
 };
 
@@ -94,6 +96,7 @@ export default function App() {
       case 'ai-insights': return <AIInsights />;
       case 'regulations': return <Regulations />;
       case 'media': return <MediaIntelligence />;
+      case 'radio': return <TeamRadioTimeline />;
       case 'chat': return <Chatbot />;
       default: return <LiveDashboard />;
     }

@@ -33,6 +33,7 @@ import {
   Settings,
   LogOut,
   HelpCircle,
+  Radio,
 } from 'lucide-react';
 import type { ViewType } from '../types';
 import { useSidebar } from '../hooks/useSidebar';
@@ -92,6 +93,7 @@ const KNOWLEDGE_ITEMS: NavItem[] = [
   { id: 'regulations', label: 'Regulations', icon: BookOpen },
   { id: 'chat', label: 'Knowledge Agent', icon: MessageCircle },
   { id: 'media', label: 'Media Intel', icon: Video },
+  { id: 'radio' as ViewType, label: 'Team Radio', icon: Radio },
 ];
 
 /* ─── Animation variants ─── */

@@ -145,6 +145,16 @@ def _fetch_all_sources(db) -> dict:
                 k: v for k, v in doc.items() if k not in _OPP_SKIP
             }
 
+    # 7. Communication profiles — aggregated radio signal data per driver
+    sources["communication"] = {}
+    for doc in db["driver_communication_profiles"].find({}, {"_id": 0, "updated_at": 0}):
+        code = doc.get("driver_code")
+        if code:
+            sources["communication"][code] = {
+                k: v for k, v in doc.items()
+                if k not in ("_id", "driver_code", "driver_name", "driver_number", "season", "updated_at")
+            }
+
     return sources
 
 
@@ -230,6 +240,18 @@ def _fetch_season_sources(db, season: int) -> dict:
         if code:
             sources["opponent"][code] = {
                 k: v for k, v in doc.items() if k not in _OPP_SKIP
+            }
+
+    # 7. Communication profiles — per-driver radio signal aggregates
+    sources["communication"] = {}
+    for doc in db["driver_communication_profiles"].find(
+        {"season": season} if season else {}, {"_id": 0, "updated_at": 0}
+    ):
+        code = doc.get("driver_code")
+        if code:
+            sources["communication"][code] = {
+                k: v for k, v in doc.items()
+                if k not in ("_id", "driver_code", "driver_name", "driver_number", "season", "updated_at")
             }
 
     return sources
@@ -445,6 +467,14 @@ def _merge_driver(code: str, sources: dict) -> dict:
     else:
         doc["opponent"] = None
 
+    # Communication profile (radio signals)
+    comm = sources.get("communication", {}).get(code)
+    if comm:
+        doc["communication"] = comm
+        found.append("communication")
+    else:
+        doc["communication"] = None
+
     doc["sources_found"] = found
     return doc
 
@@ -563,6 +593,20 @@ def _build_narrative(doc: dict) -> str:
             f"Consistency: braking G-std {_safe(opp.get('g_consistency'))}, "
             f"throttle smoothness {_safe(opp.get('throttle_smoothness'), '.1f')}, "
             f"position volatility {_safe(opp.get('position_volatility'), '.1f')}."
+        )
+
+    # Communication profile (radio intelligence)
+    comm = doc.get("communication")
+    if comm:
+        sent = comm.get("sentiment_distribution", {})
+        top_signals = ", ".join(comm.get("top_signal_types", [])[:3])
+        parts.append(
+            f"Radio communication: {comm.get('total_messages', 0)} messages, "
+            f"{comm.get('messages_per_session_avg', 0)} per session. "
+            f"Sentiment: {_safe(sent.get('negative'), '.0%')} negative, "
+            f"{_safe(sent.get('positive'), '.0%')} positive. "
+            f"Complaint frequency {_safe(comm.get('complaint_frequency'), '.0%')}. "
+            f"Top signals: {top_signals}."
         )
 
     # Briefing snippet

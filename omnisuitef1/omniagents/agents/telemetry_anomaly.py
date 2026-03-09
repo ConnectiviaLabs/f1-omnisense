@@ -58,7 +58,10 @@ class TelemetryAnomalyAgent(F1Agent):
         # 3. Extract anomalies by severity
         anomalies = self._extract_anomalies(results_df, session_key, driver_number)
 
-        # 4. LLM reasoning on critical/high anomalies
+        # 4. Cross-reference with radio reliability precursors
+        radio_context = await self._fetch_radio_precursors(session_key, driver_number, year)
+
+        # 5. LLM reasoning on critical/high anomalies
         critical = [a for a in anomalies if a["severity"] in ("critical", "high")]
         insight = None
         if critical:
@@ -80,6 +83,8 @@ class TelemetryAnomalyAgent(F1Agent):
             )
             if rag_context and rag_context != "No relevant context found.":
                 prompt += f"\n\nRelevant technical documentation:\n{rag_context}"
+            if radio_context:
+                prompt += f"\n\nDriver radio reports (reliability flags):\n{radio_context}"
 
             insight = await self.reason(prompt, data_context={"anomalies": critical[:10]})
 
@@ -120,6 +125,58 @@ class TelemetryAnomalyAgent(F1Agent):
         return {"summary": output["insight"] or f"{len(anomalies)} anomalies detected", **output}
 
     # ── Internal methods ────────────────────────────────────────────────────
+
+    async def _fetch_radio_precursors(
+        self, session_key: int, driver_number: Optional[int], year: Optional[int]
+    ) -> str:
+        """Look up reliability_precursors for this session's meeting/driver.
+
+        Returns a formatted string of driver radio complaints about mechanical
+        issues, or empty string if none found. This gives the LLM corroborating
+        evidence: 'driver reported vibrations 12 mins before brake temp spike'.
+        """
+        if self._db is None or year is None:
+            return ""
+
+        # Map session_key → meeting name via the session metadata
+        # Try to find the meeting from car_data or openf1_car_data
+        sample = self._db["car_data"].find_one(
+            {"session_key": session_key}, {"meeting_name": 1}
+        ) or self._db["openf1_car_data"].find_one(
+            {"session_key": session_key}, {"meeting_name": 1}
+        )
+        if not sample or not sample.get("meeting_name"):
+            return ""
+
+        meeting = sample["meeting_name"]
+
+        # Build query for reliability_precursors
+        query: Dict[str, Any] = {"year": year, "meeting": {"$regex": meeting, "$options": "i"}}
+
+        # Map driver_number to name if possible
+        if driver_number:
+            # Look up driver name from team_radio_transcripts
+            radio_doc = self._db["team_radio_transcripts"].find_one(
+                {"driver_number": driver_number, "year": year},
+                {"driver_name": 1},
+            )
+            if radio_doc and radio_doc.get("driver_name"):
+                query["driver"] = radio_doc["driver_name"]
+
+        precursors = list(self._db["reliability_precursors"].find(query, {"_id": 0}))
+        if not precursors:
+            return ""
+
+        # Format for LLM context
+        lines = []
+        for p in precursors:
+            lines.append(f"Driver {p.get('driver')} — {p.get('meeting')} (urgency {p.get('max_urgency', 0)}):")
+            for msg in p.get("precursor_messages", [])[:5]:
+                components = ", ".join(msg.get("mentioned_components", []))
+                comp_str = f" [{components}]" if components else ""
+                lines.append(f"  {msg.get('session', '?')} {msg.get('time', '?')}: \"{msg.get('transcript', '')}\" (urgency {msg.get('urgency', 0)}){comp_str}")
+
+        return "\n".join(lines)
 
     def _load_telemetry(self, session_key: int, driver_number: Optional[int]) -> pd.DataFrame:
         """Load car telemetry from MongoDB."""
