@@ -2,7 +2,7 @@
 # F1 OmniSense — RunPod unified entrypoint
 # Handles both first boot (installs deps) and restarts (fast path).
 # Set as RunPod "Start Command": bash /workspace/marip-f1/scripts/runpod_entrypoint.sh
-set -euo pipefail
+set -u  # No strict error exit — container must stay alive for SSH access
 
 # ── Config ────────────────────────────────────────────────────────
 O='\033[0;33m'  # Orange
@@ -12,7 +12,7 @@ C='\033[0m'     # Reset
 
 PORT="${API_PORT:-8300}"
 VOLUME="/workspace"
-ROOT="$VOLUME/marip-f1"
+ROOT="$VOLUME/f1"
 VENV="$VOLUME/venv"
 MONGO_DATA="$VOLUME/mongodb_data"
 LOG_DIR="$VOLUME/logs"
