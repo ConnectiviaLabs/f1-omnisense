@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # F1 OmniSense — RunPod unified entrypoint
-# Handles both first boot (installs deps) and restarts (fast path).
-# Set as RunPod "Start Command": bash /workspace/marip-f1/scripts/runpod_entrypoint.sh
-set -u  # No strict error exit — container must stay alive for SSH access
+# Handles both first boot (full setup) and restarts (reinstall system deps, skip pip/npm).
+# Set as RunPod "Start Command": bash /workspace/f1/scripts/runpod_entrypoint.sh
+#
+# NOTE: Container disk is ephemeral — MongoDB/Node must be reinstalled every boot.
+# Only /workspace (network volume) persists: venv, mongodb_data, frontend/dist, .env
 
 # ── Config ────────────────────────────────────────────────────────
 O='\033[0;33m'  # Orange
@@ -26,13 +28,13 @@ echo -e "${O}══════════════════════�
 if [ ! -d "$VOLUME" ]; then
     echo -e "${R}  [✗] Network volume not found at $VOLUME${C}"
     echo -e "${R}      Attach a network volume and mount at /workspace${C}"
-    exit 1
+    sleep infinity
 fi
 
 if [ ! -d "$ROOT" ]; then
     echo -e "${R}  [✗] Repo not found at $ROOT${C}"
     echo -e "${R}      Clone the repo: git clone <url> $ROOT${C}"
-    exit 1
+    sleep infinity
 fi
 
 cd "$ROOT"
@@ -41,48 +43,52 @@ cd "$ROOT"
 mkdir -p "$MONGO_DATA" "$LOG_DIR" "$HF_CACHE"
 
 # ══════════════════════════════════════════════════════════════════
-# FIRST BOOT — install system deps and create venv
+# SYSTEM DEPS — reinstall every boot (container disk is ephemeral)
+# ══════════════════════════════════════════════════════════════════
+
+# ── Install MongoDB 7 ────────────────────────────────────────────
+if ! command -v mongod &>/dev/null; then
+    echo -e "${O}  Installing MongoDB 7...${C}"
+    apt-get update -qq
+    apt-get install -y -qq gnupg curl > /dev/null
+
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
+        gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg 2>/dev/null
+
+    . /etc/os-release
+    if [[ "${ID:-}" == "ubuntu" ]]; then
+        echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${VERSION_CODENAME}/mongodb-org/7.0 multiverse" \
+            > /etc/apt/sources.list.d/mongodb-org-7.0.list
+    else
+        echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" \
+            > /etc/apt/sources.list.d/mongodb-org-7.0.list
+    fi
+
+    apt-get update -qq
+    apt-get install -y -qq mongodb-org > /dev/null
+    echo -e "${G}  [✓] MongoDB $(mongod --version | head -1)${C}"
+else
+    echo -e "${G}  [✓] MongoDB already installed${C}"
+fi
+
+# ── Install Node.js 20 ───────────────────────────────────────────
+if ! command -v node &>/dev/null; then
+    echo -e "${O}  Installing Node.js 20...${C}"
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
+    apt-get install -y -qq nodejs > /dev/null
+    echo -e "${G}  [✓] Node $(node --version)${C}"
+else
+    echo -e "${G}  [✓] Node already installed: $(node --version)${C}"
+fi
+
+# ══════════════════════════════════════════════════════════════════
+# FIRST BOOT ONLY — create venv and build frontend
 # ══════════════════════════════════════════════════════════════════
 if [ ! -d "$VENV" ]; then
-    echo -e "\n${O}  ── First Boot Detected ──${C}"
-
-    # ── Install MongoDB 7 ─────────────────────────────────────────
-    if ! command -v mongod &>/dev/null; then
-        echo -e "${O}  [1/4] Installing MongoDB 7...${C}"
-        apt-get update -qq
-        apt-get install -y -qq gnupg curl > /dev/null
-
-        curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
-            gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg 2>/dev/null
-
-        . /etc/os-release
-        if [[ "$ID" == "ubuntu" ]]; then
-            echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu ${VERSION_CODENAME}/mongodb-org/7.0 multiverse" \
-                > /etc/apt/sources.list.d/mongodb-org-7.0.list
-        else
-            echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" \
-                > /etc/apt/sources.list.d/mongodb-org-7.0.list
-        fi
-
-        apt-get update -qq
-        apt-get install -y -qq mongodb-org > /dev/null
-        echo -e "${G}  [✓] MongoDB $(mongod --version | head -1)${C}"
-    else
-        echo -e "${G}  [✓] MongoDB already installed${C}"
-    fi
-
-    # ── Install Node.js 20 ────────────────────────────────────────
-    if ! command -v node &>/dev/null; then
-        echo -e "${O}  [2/4] Installing Node.js 20...${C}"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - > /dev/null 2>&1
-        apt-get install -y -qq nodejs > /dev/null
-        echo -e "${G}  [✓] Node $(node --version)${C}"
-    else
-        echo -e "${G}  [✓] Node already installed: $(node --version)${C}"
-    fi
+    echo -e "\n${O}  ── First Boot: Setting up Python + Frontend ──${C}"
 
     # ── Create venv + install pip packages ────────────────────────
-    echo -e "${O}  [3/4] Creating Python venv + installing packages...${C}"
+    echo -e "${O}  Creating Python venv + installing packages...${C}"
     python3 -m venv --system-site-packages "$VENV"
     source "$VENV/bin/activate"
 
@@ -98,17 +104,12 @@ if [ ! -d "$VENV" ]; then
     echo -e "${G}  [✓] Python packages installed${C}"
 
     # ── Build frontend ────────────────────────────────────────────
-    echo -e "${O}  [4/4] Building frontend...${C}"
+    echo -e "${O}  Building frontend...${C}"
     cd "$ROOT/frontend"
     npm install --silent 2>&1 | tail -3
     npm run build
     cd "$ROOT"
     echo -e "${G}  [✓] Frontend built${C}"
-
-    # ── Install mongo-express globally ────────────────────────────
-    if ! npm list -g mongo-express &>/dev/null 2>&1; then
-        npm install -g mongo-express --silent 2>/dev/null || true
-    fi
 
     echo -e "\n${G}  ── First Boot Complete ──${C}"
 fi
@@ -128,40 +129,38 @@ export PYTHONPATH="$ROOT:$ROOT/omnisuitef1:$ROOT/pipeline"
 export API_PORT="$PORT"
 
 # ── Start MongoDB ─────────────────────────────────────────────────
-if command -v mongod &>/dev/null; then
-    if ! pgrep -x mongod &>/dev/null; then
-        echo -e "${O}  Starting MongoDB (data: $MONGO_DATA)...${C}"
+if ! pgrep -x mongod &>/dev/null; then
+    echo -e "${O}  Starting MongoDB (data: $MONGO_DATA)...${C}"
 
-        # Try --fork first, fall back to nohup
-        if ! mongod --dbpath "$MONGO_DATA" --bind_ip 127.0.0.1 --port 27017 \
-                    --fork --logpath "$LOG_DIR/mongod.log" 2>/dev/null; then
-            echo -e "${O}  --fork failed, using nohup fallback...${C}"
-            nohup mongod --dbpath "$MONGO_DATA" --bind_ip 127.0.0.1 --port 27017 \
-                         --logpath "$LOG_DIR/mongod.log" &>/dev/null &
-        fi
-
-        # Wait for ready
-        for i in $(seq 1 20); do
-            if mongosh --quiet --eval "db.runCommand({ping:1})" &>/dev/null; then
-                echo -e "${G}  [✓] MongoDB ready${C}"
-                break
-            fi
-            if [ "$i" -eq 20 ]; then
-                echo -e "${R}  [✗] MongoDB failed to start after 20s${C}"
-                echo -e "${R}      Check: $LOG_DIR/mongod.log${C}"
-                exit 1
-            fi
-            sleep 1
-        done
-    else
-        echo -e "${G}  [✓] MongoDB already running${C}"
+    # Try --fork first, fall back to nohup
+    if ! mongod --dbpath "$MONGO_DATA" --bind_ip 127.0.0.1 --port 27017 \
+                --fork --logpath "$LOG_DIR/mongod.log" 2>/dev/null; then
+        echo -e "${O}  --fork failed, using nohup fallback...${C}"
+        nohup mongod --dbpath "$MONGO_DATA" --bind_ip 127.0.0.1 --port 27017 \
+                     --logpath "$LOG_DIR/mongod.log" &>/dev/null &
     fi
+
+    # Wait for ready
+    for i in $(seq 1 20); do
+        if mongosh --quiet --eval "db.runCommand({ping:1})" &>/dev/null; then
+            echo -e "${G}  [✓] MongoDB ready${C}"
+            break
+        fi
+        if [ "$i" -eq 20 ]; then
+            echo -e "${R}  [✗] MongoDB failed to start after 20s${C}"
+            echo -e "${R}      Check: $LOG_DIR/mongod.log${C}"
+            sleep infinity
+        fi
+        sleep 1
+    done
 else
-    echo -e "${R}  [✗] mongod not found — run first boot or install manually${C}"
-    exit 1
+    echo -e "${G}  [✓] MongoDB already running${C}"
 fi
 
-# ── Start mongo-express (background) ─────────────────────────────
+# ── Install & start mongo-express (background) ───────────────────
+if ! npm list -g mongo-express &>/dev/null 2>&1; then
+    npm install -g mongo-express --silent 2>/dev/null || true
+fi
 pkill -f "mongo-express" 2>/dev/null || true
 sleep 1
 ME_CONFIG_MONGODB_URL="mongodb://localhost:27017/" \
