@@ -3,7 +3,9 @@
 const LOCAL_BASE = '/api';
 
 async function fetchLocal<T>(route: string): Promise<T> {
-  const res = await fetch(`${LOCAL_BASE}/${route}`);
+  const res = await fetch(`${LOCAL_BASE}/${route}`, {
+    headers: { 'Accept': 'application/json' },
+  });
   if (!res.ok) throw new Error(`Local data ${route}: ${res.status}`);
   return res.json();
 }
