@@ -306,6 +306,22 @@ async def get_anomaly(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Track Anomalies (intelligence layer) ──────────────────────────────
+
+
+@router.get("/track-anomalies/{session_id}")
+async def get_track_anomalies(session_id: str):
+    """Track-level intelligence: anomaly zones, point events, degradation, lap deltas."""
+    from pipeline.aim_anomaly import run_track_anomalies
+    try:
+        return run_track_anomalies(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Track anomaly analysis failed: %s", e)
+        raise HTTPException(status_code=500, detail="Analysis failed")
+
+
 # ── Compare ──────────────────────────────────────────────────────────────
 
 
