@@ -42,6 +42,7 @@
     { "source": "/api/mclaren/:path(.*)", "destination": "https://f1-omnisense-backend-production.up.railway.app/api/local/mclaren/:path" },
     { "source": "/api/victory/:path(.*)", "destination": "https://f1-omnisense-backend-production.up.railway.app/api/victory/:path" },
     { "source": "/api/fleet/:path(.*)", "destination": "https://f1-omnisense-backend-production.up.railway.app/api/fleet/:path" },
+    { "source": "/api/aim/:path(.*)", "destination": "https://f1-omnisense-backend-production.up.railway.app/api/aim/:path" },
     { "source": "/api/local/:path(.*)", "destination": "https://f1-omnisense-backend-production.up.railway.app/api/local/:path" }
   ],
   "headers": [
