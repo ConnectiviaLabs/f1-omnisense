@@ -700,12 +700,30 @@ export function RealRacing() {
 
       {/* Session meta bar */}
       {session && (
-        <div className="flex items-center gap-4 text-[11px] text-muted-foreground bg-card border border-border rounded-lg px-4 py-2">
-          <span><span className="text-foreground font-medium">{session.driver}</span> — {session.vehicle}</span>
-          <span>{session.track}</span>
-          <span>{session.date} {session.time}</span>
-          <span>ECU: {session.ecu}</span>
-          <span>{session.lap_count} laps · {session.duration_s.toFixed(1)}s</span>
+        <div className="bg-card border border-border rounded-lg px-4 py-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                <span className="text-primary font-bold text-[11px]">#3</span>
+              </div>
+              <div>
+                <div className="text-foreground font-medium text-sm">{session.driver}</div>
+                <div className="text-[10px] text-muted-foreground">{session.vehicle || 'Radical Prototype'} · {session.championship || 'CNA'}</div>
+              </div>
+            </div>
+            <div className="h-6 w-px bg-border" />
+            <div>
+              <div className="text-foreground text-[11px] font-medium">{session.track}</div>
+              <div className="text-[10px] text-muted-foreground">{session.date} · {session.time}</div>
+            </div>
+            <div className="h-6 w-px bg-border" />
+            <div className="text-[11px]">
+              <span className="text-foreground font-mono">{session.lap_count}</span>
+              <span className="text-muted-foreground"> laps · </span>
+              <span className="text-foreground font-mono">{Math.floor(session.duration_s / 60)}:{(session.duration_s % 60).toFixed(0).padStart(2, '0')}</span>
+              <span className="text-muted-foreground"> duration</span>
+            </div>
+          </div>
         </div>
       )}
 

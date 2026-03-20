@@ -430,9 +430,11 @@ export interface AiMSession {
   date: string;
   time: string;
   vehicle: string;
-  ecu: string;
-  firmware: string;
-  session_file: string;
+  championship?: string;
+  ecu?: string;
+  firmware?: string;
+  session_file?: string;
+  source?: string;
   lap_count: number;
   duration_s: number;
   uploaded_at: string;
