@@ -102,23 +102,12 @@ const CHART_GROUPS: ChartGroup[] = [
     ],
   },
   {
-    id: 'timing',
-    label: 'Timing Deltas',
-    icon: Timer,
+    id: 'electrical',
+    label: 'Electrical',
+    icon: Zap,
     channels: [
-      { key: 'PredictiveTime', color: PAPAYA, label: 'Predictive' },
-      { key: 'RefLapDiff', color: CYAN, label: 'Ref Lap Δ' },
-    ],
-  },
-  {
-    id: 'track-3d',
-    label: 'Track Position',
-    icon: Car,
-    channels: [
-      { key: 'X_m', color: PAPAYA, label: 'X (m)' },
-      { key: 'Y_m', color: CYAN, label: 'Y (m)' },
-      { key: 'Z_m', color: LIME, label: 'Z (m)' },
-      { key: 'Distance_m', color: PURPLE, label: 'Distance (m)' },
+      { key: 'ExternalVoltage_V', color: CYAN, label: 'Battery (V)' },
+      { key: 'FuelPressure_bar', color: PAPAYA, label: 'Fuel Pressure (bar)' },
     ],
   },
 ];
@@ -186,7 +175,7 @@ function KPI({ icon: Icon, label, value, detail, color }: {
 // ── Collapsible Chart Card ──────────────────────────────────────────────
 
 function ChartCard({ group, data }: { group: ChartGroup; data: any[] }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const Icon = group.icon;
 
   // Check which channels actually have data
