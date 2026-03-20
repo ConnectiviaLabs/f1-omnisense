@@ -1527,6 +1527,67 @@ def knowledge_lookup(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RAG vector search
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_rag_retriever = None
+
+
+def _get_rag_retriever():
+    """Lazy singleton for the RAG retriever (same pattern as omniagents.base)."""
+    global _rag_retriever
+    if _rag_retriever is None:
+        try:
+            from omnirag.retriever import RAGRetriever
+            _rag_retriever = RAGRetriever()
+            logger.info("RAG retriever initialized for OnMichine")
+        except Exception as e:
+            logger.warning("RAG retriever unavailable: %s", e)
+            return None
+    return _rag_retriever
+
+
+def rag_search(
+    state: PipelineState,
+    query: str,
+    k: int = 5,
+) -> Dict[str, Any]:
+    """Search the RAG vectorstore for relevant ML methodology and domain knowledge.
+
+    Queries the BGE-1024 embedding vectorstore containing ML reference books
+    (e.g. Timothy Masters' Statistically Sound Machine Learning), F1 regulations,
+    and other ingested documents. Use for statistical validation methodology,
+    feature engineering strategies, model evaluation best practices, etc.
+    """
+    retriever = _get_rag_retriever()
+    if retriever is None:
+        return {
+            "status": "error",
+            "message": "RAG retriever not available (check omnirag installation)",
+        }
+
+    try:
+        context = retriever.get_relevant_context(query, k=min(k, 10))
+        if not context or context == "No relevant context found.":
+            return {
+                "status": "ok",
+                "query": query,
+                "results_count": 0,
+                "context": "",
+                "hint": "No matching documents. Try different keywords or check that PDFs have been ingested.",
+            }
+
+        return {
+            "status": "ok",
+            "query": query,
+            "results_count": context.count("\n---\n") + 1,
+            "context": context,
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"RAG search failed: {e}"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Tool registry builder
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1733,6 +1794,37 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                         },
                     },
                     "required": ["topic"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "rag_search",
+                "description": (
+                    "Search the RAG vectorstore for ML methodology, statistical validation, "
+                    "and domain knowledge from ingested reference books and documents. "
+                    "Contains insights from 'Statistically Sound Machine Learning' (Timothy Masters), "
+                    "F1 regulations, and other technical references. Use for: permutation testing, "
+                    "cross-validation strategies, feature selection validation, model significance "
+                    "testing, stationarity checks, and advanced ML best practices."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "Natural language query describing the ML concept, technique, "
+                                "or methodology to search for."
+                            ),
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description": "Number of results to return (default 5, max 10)",
+                        },
+                    },
+                    "required": ["query"],
                 },
             },
         },

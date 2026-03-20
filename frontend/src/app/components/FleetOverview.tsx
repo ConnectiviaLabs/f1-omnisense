@@ -19,6 +19,7 @@ import {
   mapLevel, levelColor, levelBg,
   MAINTENANCE_LABELS, SEVERITY_COLORS,
 } from './anomalyHelpers';
+import { ModelAgreement } from './ModelAgreement';
 import { TEAM_COLORS_BY_NAME as teamColors, TEAM_LOGOS, TEAM_NAME_TO_ID as TEAM_NAME_TO_LOGO, COMPOUND_COLORS } from '../constants/teams';
 
 function getHealthTrend(vehicle: VehicleData): 'up' | 'down' | 'stable' {
@@ -1061,9 +1062,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                     </div>
                   )}
                   {/* Model consensus */}
-                  <div className="mt-2 text-[10px] text-muted-foreground">
-                    {sys.voteCount}/{sys.totalModels} models agree
-                  </div>
+                  <ModelAgreement voteCount={sys.voteCount} totalModels={sys.totalModels} level={sys.level} />
                 </div>
               );
             })}

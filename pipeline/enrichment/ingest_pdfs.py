@@ -46,6 +46,8 @@ def categorize_pdf(filename: str) -> tuple[str, str]:
         return "fia_general_provisions", "regulation"
     elif "mclaren" in fn:
         return "mclaren_corporate", "corporate_document"
+    elif "machine_learning" in fn or "statistically_sound" in fn or "algorithmic_trading" in fn:
+        return "ml_reference", "technical_reference"
     else:
         return "f1_document", "document"
 
@@ -75,8 +77,8 @@ def main():
     # Import heavy deps after listing files
     from omnidoc.ingest import process_document
     from omnidoc.embedder import get_embedder
-    from langchain_core.documents import Document
-    from pipeline.vectorstore import get_vector_store
+    from omnirag._types import RAGDocument
+    from omnirag.vectorstore import get_vectorstore as get_vector_store
 
     # Init embedder (BGE 1024-dim, no CLIP needed)
     print("\n  Loading BGE embedder...")
@@ -84,7 +86,7 @@ def main():
 
     # Init vectorstore
     vs = get_vector_store()
-    if args.rebuild:
+    if args.rebuild and hasattr(vs, "delete_collection"):
         print("  Dropping existing collection (--rebuild)...")
         vs.delete_collection()
 
@@ -143,11 +145,11 @@ def main():
                 if meta.get(key):
                     doc_meta[key] = meta[key]
 
-            docs.append(Document(page_content=chunk_text, metadata=doc_meta))
+            docs.append(RAGDocument(content=chunk_text, metadata=doc_meta))
 
         # Embed with BGE (1024-dim)
         t0 = time.time()
-        texts = [doc.page_content for doc in docs]
+        texts = [doc.content for doc in docs]
         embeddings = []
         BATCH = 32
         for i in range(0, len(texts), BATCH):
@@ -157,7 +159,7 @@ def main():
         print(f"  Embedded: {len(embeddings)} vectors ({embed_time:.1f}s)")
 
         # Upsert to Atlas
-        count = vs.upsert_documents(docs, embeddings)
+        count = vs.upsert(docs, embeddings)
         total_chunks += count
         total_tables += len(result.tables)
         print(f"  Inserted: {count} docs into f1_knowledge")
@@ -172,8 +174,9 @@ def main():
     print(f"  Collection:     f1_knowledge ({vs.count()} total docs)")
 
     # Try to ensure vector index
-    print("\n  Ensuring vector search index (1024-dim, cosine)...")
-    vs.ensure_vector_index()
+    if hasattr(vs, "ensure_vector_index"):
+        print("\n  Ensuring vector search index (1024-dim, cosine)...")
+        vs.ensure_vector_index()
 
 
 if __name__ == "__main__":

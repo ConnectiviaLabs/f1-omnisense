@@ -5,8 +5,7 @@
   },
   "deploy": {
     "startCommand": "python /app/pipeline/chat_server.py",
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 90,
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

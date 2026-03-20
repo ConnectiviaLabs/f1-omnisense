@@ -4,6 +4,7 @@ import KexBriefingCard from './KexBriefingCard';
 import { DriverIntel } from './DriverIntel';
 import { ForecastChart } from './ForecastChart';
 import { HealthGauge } from './HealthGauge';
+import { ModelAgreement } from './ModelAgreement';
 import { StatusBadge } from './StatusBadge';
 import {
   type VehicleData,
@@ -262,9 +263,7 @@ function DriverAnomalyDetail({ vehicle }: { vehicle: VehicleData }) {
                 </div>
               )}
               {/* Model consensus */}
-              <div className="mt-2 text-[10px] text-muted-foreground">
-                {sys.voteCount}/{sys.totalModels} models agree
-              </div>
+              <ModelAgreement voteCount={sys.voteCount} totalModels={sys.totalModels} level={sys.level} />
             </div>
           );
         })}

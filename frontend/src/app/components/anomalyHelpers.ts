@@ -115,6 +115,23 @@ export const levelColor = (l: HealthLevel) =>
 export const levelBg = (l: HealthLevel) =>
   l === 'nominal' ? 'rgba(34,197,94,0.08)' : l === 'warning' ? 'rgba(255,128,0,0.12)' : 'rgba(239,68,68,0.08)';
 
+/** Model agreement: fraction label + consensus descriptor. */
+export function modelAgreementLabel(voteCount: number, totalModels: number): string {
+  if (totalModels === 0) return 'No models';
+  const ratio = voteCount / totalModels;
+  if (ratio === 0) return `${voteCount}/${totalModels} — Unanimous clear`;
+  if (ratio <= 0.25) return `${voteCount}/${totalModels} — Low signal`;
+  if (ratio <= 0.5) return `${voteCount}/${totalModels} — Split`;
+  if (ratio < 1) return `${voteCount}/${totalModels} — Majority flagged`;
+  return `${voteCount}/${totalModels} — Unanimous alert`;
+}
+
+/** CSS color for each agreement dot (flagged = warm, clear = cool). */
+export function modelDotColor(flagged: boolean, level: HealthLevel): string {
+  if (!flagged) return '#22c55e'; // green — model says clear
+  return level === 'critical' ? '#ef4444' : level === 'warning' ? '#FF8000' : '#eab308';
+}
+
 // ─── Forecast types ───────────────────────────────────────────────
 export interface ForecastPoint { step: string; value: number; lower: number; upper: number }
 export interface FeatureForecast {

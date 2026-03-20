@@ -22,9 +22,12 @@ COPY pipeline/ /app/pipeline/
 # Copy omnisuite packages (deps already covered by main requirements.txt)
 COPY omnisuitef1/ /app/omnisuitef1/
 
-EXPOSE 8100
+# Copy AgentML module (imported by chat_server)
+COPY onmichine/ /app/onmichine/
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')" || exit 1
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8000}/health')" || exit 1
 
 CMD ["python", "/app/pipeline/chat_server.py"]

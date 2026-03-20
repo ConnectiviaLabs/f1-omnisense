@@ -787,6 +787,7 @@ export default defineConfig({
       '/api/constructor_profiles': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/jolpica': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
       '/api/openf1': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },
+      '/api/aim': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/radio': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/opponents': { target: 'http://127.0.0.1:8300', changeOrigin: true },
       '/api/driver_intel': { target: 'http://127.0.0.1:8300', changeOrigin: true, rewrite: (path: string) => path.replace(/^\/api\//, '/api/local/') },

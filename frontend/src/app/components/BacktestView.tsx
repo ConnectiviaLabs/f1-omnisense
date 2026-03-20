@@ -147,7 +147,6 @@ interface BacktestMetrics {
   recall: number;
   f1_score: number;
   outcome_distribution: Record<string, number>;
-  team_accuracy: Record<string, number>;
   // Multi-model
   strategy_match_rate: number | null;
   avg_strategy_delta_s: number | null;
@@ -817,16 +816,6 @@ export function BacktestView() {
       }))
     : [];
 
-  const teamAccData = m?.team_accuracy
-    ? Object.entries(m.team_accuracy)
-        .sort(([, a], [, b]) => b - a)
-        .map(([team, acc]) => ({
-          team: teamDisplayNames[team.toLowerCase().replace(/\s/g, '_')] || team,
-          accuracy: acc,
-          fill: teamColors[team.toLowerCase().replace(/\s/g, '_')] || '#888',
-        }))
-    : [];
-
   const systemData = data?.system_correlations
     ? Object.entries(data.system_correlations)
         .filter(([, v]) => v.flagged_count > 0)
@@ -905,6 +894,7 @@ export function BacktestView() {
               Race Outcome
             </div>
           </button>
+          {/* Forecast Validation tab — disabled until raw car telemetry is available in Atlas
           <button
             onClick={() => setActiveTab('forecast')}
             className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
@@ -916,6 +906,7 @@ export function BacktestView() {
               Forecast Validation
             </div>
           </button>
+          */}
         </div>
       </div>
 
@@ -927,7 +918,7 @@ export function BacktestView() {
         </div>
       )}
 
-      {activeTab === 'forecast' && <ForecastValidationTab />}
+      {/* {activeTab === 'forecast' && <ForecastValidationTab />} */}
 
       {activeTab === 'race' && m && data && (
         <>
@@ -1090,39 +1081,21 @@ export function BacktestView() {
             </div>
           </div>
 
-          {/* ── Team Accuracy + System Prediction Value ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {teamAccData.length > 0 && (
-              <div className="bg-card border border-border rounded-lg p-4">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">Per-Team Accuracy</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={teamAccData} margin={{ left: 0, right: 10 }}>
-                    <XAxis dataKey="team" tick={{ fontSize: 8, fill: '#888' }} interval={0} angle={-30} textAnchor="end" height={60} />
-                    <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: '#555' }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="accuracy" name="Accuracy %" radius={[4, 4, 0, 0]}>
-                      {teamAccData.map((d, i) => <Cell key={i} fill={d.fill} fillOpacity={0.7} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            {systemData.length > 0 && (
-              <div className="bg-card border border-border rounded-lg p-4">
-                <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">System Prediction Value</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <RadarChart data={systemData} cx="50%" cy="50%" outerRadius="68%">
-                    <PolarGrid stroke="rgba(255,255,255,0.05)" />
-                    <PolarAngleAxis dataKey="system" tick={{ fontSize: 9, fill: '#888' }} />
-                    <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 8, fill: '#555' }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Radar dataKey="precision" name="Flag Precision %" stroke="#FF8000" fill="#FF8000" fillOpacity={0.2} strokeWidth={1.5} dot={{ r: 3, fill: '#FF8000' }} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
+          {/* ── System Prediction Value ── */}
+          {systemData.length > 0 && (
+            <div className="bg-card border border-border rounded-lg p-4">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-3">System Prediction Value</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <RadarChart data={systemData} cx="50%" cy="50%" outerRadius="68%">
+                  <PolarGrid stroke="rgba(255,255,255,0.05)" />
+                  <PolarAngleAxis dataKey="system" tick={{ fontSize: 9, fill: '#888' }} />
+                  <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 8, fill: '#555' }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Radar dataKey="precision" name="Flag Precision %" stroke="#FF8000" fill="#FF8000" fillOpacity={0.2} strokeWidth={1.5} dot={{ r: 3, fill: '#FF8000' }} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* ── Case Studies ── */}
           {data.case_studies.length > 0 && (

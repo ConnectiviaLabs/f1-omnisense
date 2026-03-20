@@ -39,6 +39,7 @@ from onmichine.tools import (
     load_and_profile,
     model_explain,
     package_model,
+    rag_search,
     train_models,
     web_search,
 )
@@ -85,6 +86,10 @@ user's dataset and target column.
 10. **knowledge_lookup** — Curated ML domain knowledge base. Search by topic
     (feature_engineering, model_selection, data_quality, etc.) or tags.
     Prefer this over web_search for ML methodology questions.
+11. **rag_search** — Search the RAG vectorstore for ML reference books and
+    domain documents (statistical validation, permutation testing, cross-validation,
+    feature selection). Use for advanced methodology questions beyond the curated
+    knowledge base.
 
 ## Rules:
 
@@ -151,6 +156,7 @@ TOOL_HANDLERS: Dict[str, Callable] = {
     "data_fetch": lambda state, args: data_fetch(state, **args),
     "model_explain": lambda state, args: model_explain(state, **args),
     "knowledge_lookup": lambda state, args: knowledge_lookup(state, **args),
+    "rag_search": lambda state, args: rag_search(state, **args),
 }
 
 

@@ -51,6 +51,7 @@ from pipeline.updater.server import router as updater_router
 from pipeline.advantage_router import router as advantage_router
 from pipeline.omni_agents_router import router as omni_agents_router
 from pipeline.radio_router import router as radio_router
+from pipeline.aim_router import router as aim_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -109,6 +110,7 @@ app.include_router(updater_router)
 app.include_router(advantage_router)
 app.include_router(omni_agents_router)
 app.include_router(radio_router)
+app.include_router(aim_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
@@ -376,11 +378,17 @@ def chat(req: ChatRequest):
 
 @app.get("/health")
 def health():
-    vs = get_vs()
+    # Lightweight health check — no model loading, just DB connectivity
+    try:
+        db = get_data_db()
+        db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
     return {
-        "status": "ok",
+        "status": "ok" if db_ok else "degraded",
         "model": GROQ_MODEL,
-        "documents": vs.count(),
+        "db": "connected" if db_ok else "error",
         "services": ["knowledge_agent", "3d_model_gen"],
     }
 
@@ -611,7 +619,7 @@ from pathlib import Path as _Path
 _MEDIA_DIR = _Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
 
 @app.get("/media/{filename:path}")
-async def serve_media(filename: str):
+async def serve_media(filename: str, request: Request):
     """Serve media files: videos from disk, images from MongoDB."""
     # If path has a slash, it's a subfolder image (e.g., gdino_results/img.jpg)
     if "/" in filename:
@@ -620,13 +628,45 @@ async def serve_media(filename: str):
         if doc:
             return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
         return _Response(status_code=404, content=b"Not found")
-    # Single filename — serve video/file from disk
+    # Single filename — try disk first, then GridFS
     fpath = _MEDIA_DIR / filename
     if fpath.is_file():
         suffix = fpath.suffix.lower()
         mime = {".mp4": "video/mp4", ".webm": "video/webm", ".avi": "video/x-msvideo",
                 ".mov": "video/quicktime", ".mkv": "video/x-matroska"}.get(suffix, "application/octet-stream")
         return _FileResponse(fpath, media_type=mime)
+    # Fallback: serve from MongoDB GridFS with Range support for video playback
+    import gridfs as _gridfs
+    db = get_data_db()
+    fs = _gridfs.GridFS(db, collection="media_files")
+    gf = fs.find_one({"filename": filename})
+    if gf:
+        total = gf.length
+        mime = gf.content_type or "video/mp4"
+        range_header = request.headers.get("range")
+        if range_header:
+            # Parse Range: bytes=start-end
+            import re as _re
+            m = _re.match(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1)) if m else 0
+            end = int(m.group(2)) if m and m.group(2) else total - 1
+            end = min(end, total - 1)
+            length = end - start + 1
+            gf.seek(start)
+            data = gf.read(length)
+            return _Response(
+                content=data, status_code=206, media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                },
+            )
+        # No range — serve full file
+        return _Response(
+            content=gf.read(), media_type=mime,
+            headers={"Accept-Ranges": "bytes", "Content-Length": str(total)},
+        )
     return _Response(status_code=404, content=b"Not found")
 
 @app.get("/api/local/jolpica/race_results")
@@ -4810,61 +4850,34 @@ async def run_backtest_endpoint(
     season: int | None = None,
     force: bool = False,
 ):
-    """Run backtest replay. Returns stored results if available, else runs fresh.
-    Pass force=true to skip cache and retrain from scratch."""
-    from pipeline.backtest.replay import run_backtest, push_backtest_results
+    """Serve stored backtest results. Heavy computation must be run locally
+    via: PYTHONPATH=.:pipeline:omnisuitef1 python -m pipeline.backtest.replay --team McLaren"""
     from pipeline.backtest.evaluate import compute_metrics, find_case_studies, find_system_correlations
 
     target_season = season or 2024
     db = get_data_db()
 
-    # Return stored results unless force=true or specific race filter
-    if not force and not race:
-        stored = db["backtest_results"].find_one(
-            {"season": target_season}, {"_id": 0}, sort=[("stored_at", -1)]
-        )
-        if stored and stored.get("results"):
-            results = stored["results"]
-            metrics = compute_metrics(results)
-            cases = find_case_studies(results, team_filter=team or "")
-            correlations = find_system_correlations(results)
-            return {
-                "season": stored["season"],
-                "races_evaluated": stored["races_evaluated"],
-                "total_predictions": stored["total_predictions"],
-                "metrics": metrics,
-                "case_studies": cases[:10],
-                "system_correlations": correlations,
-                "results": results,
-                "generated_at": stored["generated_at"],
-                "from_cache": True,
-            }
-
-    data = run_backtest(
-        season=target_season,
-        driver_filter=driver,
-        team_filter=team,
-        round_filter=race,
-        force=force,
+    stored = db["backtest_results"].find_one(
+        {"season": target_season}, {"_id": 0}, sort=[("stored_at", -1)]
     )
-    if not data or not data.get("results"):
-        raise HTTPException(404, "No backtest results generated")
+    if not stored or not stored.get("results"):
+        raise HTTPException(404, "No backtest results found. Run pipeline locally first.")
 
-    metrics = compute_metrics(data["results"])
-    cases = find_case_studies(data["results"], team_filter=team or "")
-    correlations = find_system_correlations(data["results"])
-
-    push_backtest_results(data)
+    results = stored["results"]
+    metrics = compute_metrics(results)
+    cases = find_case_studies(results, team_filter=team or "")
+    correlations = find_system_correlations(results)
 
     return {
-        "season": data["season"],
-        "races_evaluated": data["races_evaluated"],
-        "total_predictions": data["total_predictions"],
+        "season": stored["season"],
+        "races_evaluated": stored.get("races_evaluated"),
+        "total_predictions": stored.get("total_predictions"),
         "metrics": metrics,
         "case_studies": cases[:10],
         "system_correlations": correlations,
-        "results": data["results"],
-        "generated_at": data["generated_at"],
+        "results": results,
+        "generated_at": stored.get("generated_at"),
+        "from_cache": True,
     }
 
 
@@ -5075,41 +5088,16 @@ async def run_forecast_backtest(
     driver_number: int,
     force: bool = False,
 ):
-    """Run walk-forward forecast backtest for a single session+driver."""
-    import asyncio as _asyncio
-    from omnianalytics.forecast_backtest import backtest_session
-    from omnianalytics.telemetry_loader import load_session_telemetry
-
+    """Serve stored forecast backtest results. Run heavy computation locally."""
     db = get_data_db()
 
-    # Return cached unless forced
-    if not force:
-        stored = db["backtest_forecast_results"].find_one(
-            {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
-        )
-        if stored and stored.get("results"):
-            return {**stored, "from_cache": True}
-
-    # Load telemetry
-    telemetry_df = await _asyncio.to_thread(load_session_telemetry, db, session_key, driver_number)
-    if telemetry_df.empty:
-        raise HTTPException(404, f"No telemetry for session {session_key} driver {driver_number}")
-
-    # Run backtest
-    result = await _asyncio.to_thread(backtest_session, telemetry_df)
-    if not result.get("features_tested"):
-        raise HTTPException(404, "No valid telemetry features found")
-
-    # Store
-    from datetime import datetime as _dt, timezone as _tz
-    doc = {"session_key": session_key, "driver_number": driver_number, **result}
-    db["backtest_forecast_results"].update_one(
-        {"session_key": session_key, "driver_number": driver_number},
-        {"$set": doc, "$setOnInsert": {"created_at": _dt.now(_tz.utc)}},
-        upsert=True,
+    stored = db["backtest_forecast_results"].find_one(
+        {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
     )
+    if stored and stored.get("results"):
+        return {**stored, "from_cache": True}
 
-    return doc
+    raise HTTPException(404, "No forecast backtest results found. Run pipeline locally first.")
 
 
 @app.get("/api/local/backtest/forecast/results")
@@ -5129,11 +5117,8 @@ async def get_forecast_backtest_results(
 
 @app.post("/api/local/backtest/forecast/run-multi")
 async def run_forecast_backtest_multi(body: dict):
-    """Run forecast backtest across multiple sessions, aggregate results."""
-    import asyncio as _asyncio
-    from datetime import datetime as _dt, timezone as _tz
-    from omnianalytics.forecast_backtest import backtest_session, METHODS, DEFAULT_HORIZONS, DEFAULT_FEATURES
-    from omnianalytics.telemetry_loader import load_session_telemetry
+    """Serve stored forecast backtest results across multiple sessions. Run heavy computation locally."""
+    from omnianalytics.forecast_backtest import METHODS, DEFAULT_HORIZONS, DEFAULT_FEATURES
 
     session_keys = body.get("session_keys", [])
     driver_number = body.get("driver_number")
@@ -5149,26 +5134,9 @@ async def run_forecast_backtest_multi(body: dict):
         )
         if stored and stored.get("results"):
             all_results.append(stored)
-            continue
-
-        telemetry_df = await _asyncio.to_thread(load_session_telemetry, db, sk, driver_number)
-        if telemetry_df.empty:
-            continue
-
-        result = await _asyncio.to_thread(backtest_session, telemetry_df)
-        if not result.get("features_tested"):
-            continue
-
-        doc = {"session_key": sk, "driver_number": driver_number, **result}
-        db["backtest_forecast_results"].update_one(
-            {"session_key": sk, "driver_number": driver_number},
-            {"$set": doc, "$setOnInsert": {"created_at": _dt.now(_tz.utc)}},
-            upsert=True,
-        )
-        all_results.append(doc)
 
     if not all_results:
-        raise HTTPException(404, "No results generated for any session")
+        raise HTTPException(404, "No forecast results found. Run pipeline locally first.")
 
     # Aggregate: average metrics across sessions per (method, feature, horizon)
     agg_results: dict = {m: {} for m in METHODS}

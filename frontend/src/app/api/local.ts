@@ -109,6 +109,39 @@ export const automl = {
   },
 };
 
+// AiM RaceStudio 3 data
+export const aim = {
+  sessions: (driver?: string, track?: string) => {
+    const params = new URLSearchParams();
+    if (driver) params.set('driver', driver);
+    if (track) params.set('track', track);
+    const qs = params.toString();
+    return fetchLocal<any[]>(`aim/sessions${qs ? '?' + qs : ''}`);
+  },
+  session: (id: string) => fetchLocal<any>(`aim/session/${id}`),
+  telemetry: (id: string, lap?: number, channels?: string[]) => {
+    const params = new URLSearchParams();
+    if (lap != null) params.set('lap', String(lap));
+    if (channels?.length) params.set('channels', channels.join(','));
+    const qs = params.toString();
+    return fetchLocal<any>(`aim/telemetry/${id}${qs ? '?' + qs : ''}`);
+  },
+  track: (id: string, lap?: number) => {
+    const qs = lap != null ? `?lap=${lap}` : '';
+    return fetchLocal<any>(`aim/track/${id}${qs}`);
+  },
+  laps: (id: string) => fetchLocal<any>(`aim/laps/${id}`),
+  health: (id: string) => fetchLocal<any>(`aim/health/${id}`),
+  anomaly: (id: string) => fetchLocal<any>(`aim/anomaly/${id}`),
+  compare: (ids: string[]) => fetchLocal<any>(`aim/compare?sessions=${ids.join(',')}`),
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('xrk', file);
+    return fetch('/api/aim/upload', { method: 'POST', body: form })
+      .then(r => { if (!r.ok) throw new Error(`aim/upload: ${r.status}`); return r.json(); });
+  },
+};
+
 // CSV data fetch helper
 export async function fetchCSV(path: string): Promise<string> {
   const res = await fetch(`${LOCAL_BASE}/${path}`);

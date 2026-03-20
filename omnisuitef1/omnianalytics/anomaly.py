@@ -80,6 +80,7 @@ class AnomalyEnsemble:
         session_key: Optional[int] = None,
         driver_number: Optional[int] = None,
         db=None,
+        calibrated_thresholds: Optional[Dict[str, float]] = None,
     ) -> AnomalyResult:
         """Run full ensemble on dataset metric columns.
 
@@ -151,8 +152,8 @@ class AnomalyEnsemble:
         threshold = statistical_threshold(enhanced)
         anomaly_flags = enhanced >= threshold
 
-        # Severity classification
-        severities = self._classify_severity(enhanced, score_std)
+        # Severity classification (use calibrated thresholds if available)
+        severities = self._classify_severity(enhanced, score_std, calibrated_thresholds)
 
         # SHAP explanations for HIGH/CRITICAL
         shap_features = {}
@@ -258,18 +259,35 @@ class AnomalyEnsemble:
 
     def _classify_severity(
         self, enhanced: np.ndarray, score_std: np.ndarray,
+        calibrated_thresholds: Optional[Dict[str, float]] = None,
     ) -> List[SeverityLevel]:
-        """Quantile-based 5-level severity classification."""
-        q = np.percentile(enhanced, [75, 85, 93, 97])
+        """5-level severity classification.
+
+        If calibrated_thresholds is provided (from backtest calibration),
+        uses absolute thresholds keyed by level name. Otherwise falls back
+        to percentile-based thresholds (relative to current session).
+
+        Calibrated thresholds should be: {"low": 0.3, "medium": 0.45, "high": 0.6, "critical": 0.75}
+        """
+        if calibrated_thresholds:
+            t_critical = calibrated_thresholds.get("critical", 0.75)
+            t_high = calibrated_thresholds.get("high", 0.6)
+            t_medium = calibrated_thresholds.get("medium", 0.45)
+            t_low = calibrated_thresholds.get("low", 0.3)
+        else:
+            # Fallback: percentile-based (relative to this session)
+            q = np.percentile(enhanced, [75, 85, 93, 97])
+            t_low, t_medium, t_high, t_critical = q[0], q[1], q[2], q[3]
+
         severities = []
         for i, score in enumerate(enhanced):
-            if score >= q[3]:
+            if score >= t_critical:
                 severities.append(SeverityLevel.CRITICAL)
-            elif score >= q[2]:
+            elif score >= t_high:
                 severities.append(SeverityLevel.HIGH)
-            elif score >= q[1]:
+            elif score >= t_medium:
                 severities.append(SeverityLevel.MEDIUM)
-            elif score >= q[0]:
+            elif score >= t_low:
                 severities.append(SeverityLevel.LOW)
             else:
                 severities.append(SeverityLevel.NORMAL)

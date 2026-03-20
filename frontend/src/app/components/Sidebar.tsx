@@ -22,7 +22,6 @@ import {
   Layers,
   GitCompare,
   FlaskConical,
-  ClipboardList,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -39,7 +38,7 @@ import type { ViewType } from '../types';
 import { useSidebar } from '../hooks/useSidebar';
 
 export type Pillar = 'telemetry' | 'anomaly' | 'forecast';
-export type StrategyTab = 'race-strategy' | 'circuit-intel' | 'season-analytics' | 'backtest' | 'prep-mode';
+export type StrategyTab = 'race-strategy' | 'circuit-intel' | 'season-analytics' | 'backtest';
 
 interface SidebarProps {
   activeView: ViewType;
@@ -76,11 +75,14 @@ const PILLAR_ITEMS: SubItem[] = [
 ];
 
 const STRATEGY_ITEMS: SubItem[] = [
-  { id: 'prep-mode', label: 'Prep Mode', icon: ClipboardList },
   { id: 'race-strategy', label: 'Race Strategy', icon: Flag },
   { id: 'circuit-intel', label: 'Circuit Intel', icon: MapPin },
   { id: 'season-analytics', label: 'Season Analytics', icon: BarChart3 },
   { id: 'backtest', label: 'Backtest', icon: FlaskConical },
+];
+
+const REAL_RACING_ITEMS: NavItem[] = [
+  { id: 'real-racing', label: 'AiM Telemetry', icon: Activity },
 ];
 
 const ADVANTAGE_ITEMS: NavItem[] = [
@@ -412,6 +414,14 @@ export function Sidebar({ activeView, onViewChange, onGoHome, platform, anomalyC
                 </AnimatePresence>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Real Racing */}
+        {isPrime && (
+          <div>
+            {renderSectionLabel('REAL RACING')}
+            {REAL_RACING_ITEMS.map(({ id, label, icon }) => renderNavItem(id, label, icon))}
           </div>
         )}
 

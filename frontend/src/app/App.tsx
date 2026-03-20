@@ -17,6 +17,7 @@ import { Chatbot } from './components/Chatbot';
 import { AdvantageTrident } from './components/AdvantageTrident';
 import { AdvantageCrossover } from './components/AdvantageCrossover';
 import { TeamRadioTimeline } from './components/TeamRadioTimeline';
+import { RealRacing } from './components/RealRacing';
 import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 import type { Pillar, StrategyTab } from './components/Sidebar';
@@ -42,6 +43,7 @@ const viewTitles: Record<ViewType, { title: string; subtitle: string }> = {
   media: { title: 'Media Intelligence', subtitle: 'GroundingDINO, SAM2, VideoMAE, TimeSformer, Gemma 3 & CLIP results' },
   radio: { title: 'Team Radio', subtitle: 'Signal extraction, driver communication profiles & race radio timeline' },
   chat: { title: 'Knowledge Agent', subtitle: 'RAG chatbot over FIA regulations & technical specs' },
+  'real-racing': { title: 'Real Racing Data', subtitle: 'AiM RaceStudio 3 telemetry, track maps, health & anomaly analysis' },
 };
 
 export default function App() {
@@ -55,12 +57,14 @@ export default function App() {
   const platform: 'race-day' | 'prime' = RACE_DAY_VIEWS.has(activeView) ? 'race-day' : 'prime';
 
   // Remember last platform for Knowledge views (so sidebar stays correct)
+  const isPrimeView = (v: ViewType) => v.startsWith('prime-') || v.startsWith('advantage-') || v === 'real-racing';
+
   useEffect(() => {
     if (RACE_DAY_VIEWS.has(activeView)) setLastPlatform('race-day');
-    else if (activeView.startsWith('prime-') || activeView.startsWith('advantage-')) setLastPlatform('prime');
+    else if (isPrimeView(activeView)) setLastPlatform('prime');
   }, [activeView]);
 
-  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || activeView.startsWith('prime-') || activeView.startsWith('advantage-')
+  const effectivePlatform = RACE_DAY_VIEWS.has(activeView) || isPrimeView(activeView)
     ? platform
     : lastPlatform;
 
@@ -98,6 +102,7 @@ export default function App() {
       case 'media': return <MediaIntelligence />;
       case 'radio': return <TeamRadioTimeline />;
       case 'chat': return <Chatbot />;
+      case 'real-racing': return <RealRacing />;
       default: return <LiveDashboard />;
     }
   };

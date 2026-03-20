@@ -3,8 +3,8 @@
 CLIP: Encodes both images and text into the same 512-dim vector space,
       enabling cross-modal search (find diagrams by text description).
 
-Nomic: 768-dim text embeddings via sentence-transformers (HuggingFace),
-       optimized for document search. No Ollama dependency.
+Nomic: 768-dim text embeddings via Nomic API,
+       optimized for document search.
 
 Usage:
     from pipeline.embeddings import EmbeddingEngine
@@ -24,45 +24,55 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
+import requests
 
-# ── Nomic text embeddings (via sentence-transformers / HuggingFace) ────
+
+# ── Nomic text embeddings (via Nomic API) ─────────────────────────────
 
 class NomicEmbedder:
-    """Text embeddings using nomic-embed-text-v1.5 from HuggingFace.
+    """Text embeddings using nomic-embed-text-v1.5 via the Nomic API.
 
     768-dim vectors, optimized for document/technical search.
-    Downloads model on first use (~270MB), cached in ~/.cache/huggingface/.
+    Requires NOMIC_API_KEY environment variable.
     """
 
-    MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+    API_URL = "https://api-atlas.nomic.ai/v1/embedding/text"
+    MODEL = "nomic-embed-text-v1.5"
 
     def __init__(self):
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
-            raise ValueError(
-                "sentence-transformers not installed. Run:\n"
-                "  pip install sentence-transformers"
-            )
-        self._model = SentenceTransformer(self.MODEL_NAME, trust_remote_code=True)
-        print(f"  Nomic {self.MODEL_NAME}: loaded ({self._model.device})")
+        self._api_key = os.getenv("NOMIC_API_KEY")
+        if not self._api_key:
+            raise ValueError("NOMIC_API_KEY environment variable is required")
+        print(f"  Nomic {self.MODEL}: API mode")
+
+    def _call_api(self, texts: list[str], task_type: str) -> list[list[float]]:
+        """Call the Nomic embedding API."""
+        resp = requests.post(
+            self.API_URL,
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.MODEL,
+                "texts": texts,
+                "task_type": task_type,
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        return resp.json()["embeddings"]
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of text strings into 768-dim vectors."""
-        # nomic-embed-text expects "search_document: " or "search_query: " prefix
-        # For general embedding, use "search_document: " prefix
-        prefixed = [f"search_document: {t}" for t in texts]
-        embeddings = self._model.encode(prefixed, normalize_embeddings=True)
-        return embeddings.tolist()
+        return self._call_api(texts, task_type="search_document")
 
     def embed_query(self, text: str) -> list[float]:
-        """Embed a search query (uses 'search_query:' prefix for better retrieval)."""
-        embeddings = self._model.encode(
-            [f"search_query: {text}"], normalize_embeddings=True
-        )
-        return embeddings[0].tolist()
+        """Embed a search query (uses 'search_query' task for better retrieval)."""
+        return self._call_api([text], task_type="search_query")[0]
 
     def embed_one(self, text: str) -> list[float]:
         """Embed a single text string."""
