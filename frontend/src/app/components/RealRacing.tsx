@@ -127,6 +127,47 @@ const CHART_GROUPS: ChartGroup[] = [
   },
 ];
 
+// ── Lap overlay colors ──────────────────────────────────────────────────
+const LAP_COLORS = [PAPAYA, CYAN, LIME, PURPLE, PINK, TEAL, AMBER];
+
+const METRIC_OPTIONS: { key: string; label: string; unit: string }[] = [
+  { key: 'GPS_Speed_kmh', label: 'Speed', unit: 'km/h' },
+  { key: 'FrontBrake_bar', label: 'Braking', unit: 'bar' },
+  { key: 'Throttle_pct', label: 'Throttle', unit: '%' },
+  { key: 'LateralAcc_g', label: 'Lateral G', unit: 'g' },
+  { key: 'Gear', label: 'Gear', unit: '' },
+];
+
+function metricColor(key: string, value: number, min: number, max: number): string {
+  const range = max - min || 1;
+  const ratio = Math.max(0, Math.min(1, (value - min) / range));
+
+  if (key === 'Gear') {
+    const gearColors = ['#EF4444', '#F59E0B', '#EAB308', '#22C55E', '#47C7FC', '#3B82F6', '#A855F7'];
+    return gearColors[Math.round(value)] || '#666';
+  }
+  if (key === 'FrontBrake_bar') {
+    return `rgba(239, 68, 68, ${0.1 + ratio * 0.9})`;
+  }
+  if (key === 'Throttle_pct') {
+    return `rgba(34, 197, 94, ${0.1 + ratio * 0.9})`;
+  }
+  if (key === 'LateralAcc_g') {
+    if (ratio < 0.5) {
+      const t = ratio * 2;
+      return `rgb(${Math.round(100 + 155 * t)}, ${Math.round(100 + 155 * t)}, 255)`;
+    } else {
+      const t = (ratio - 0.5) * 2;
+      return `rgb(255, ${Math.round(255 - 155 * t)}, ${Math.round(255 - 155 * t)})`;
+    }
+  }
+  // Speed: green → yellow → orange → red
+  const r = Math.round(255 * ratio);
+  const g = Math.round(255 * (1 - ratio * 0.5));
+  const b = Math.round(80 * (1 - ratio));
+  return `rgb(${r},${g},${b})`;
+}
+
 // ── KPI Card ────────────────────────────────────────────────────────────
 
 function KPI({ icon: Icon, label, value, detail, color }: {
@@ -218,12 +259,59 @@ function ChartCard({ group, data }: { group: ChartGroup; data: any[] }) {
   );
 }
 
-// ── Track Map (XY scatter) ──────────────────────────────────────────────
+// ── Track Map Overlay (Lap Compare + Metric) ────────────────────────────
 
-function TrackMap({ trackData }: { trackData: any[] }) {
+function TrackMapOverlay({ trackData, laps, activeLap }: {
+  trackData: any[];
+  laps: { lap_number: number; lap_time_s: number }[];
+  activeLap: number | null;
+}) {
+  const [mode, setMode] = useState<'compare' | 'metric'>('compare');
+  const [selectedLaps, setSelectedLaps] = useState<Set<number>>(new Set([1]));
+  const [metric, setMetric] = useState('GPS_Speed_kmh');
+
+  // Group points by lap
+  const lapGroups = useMemo(() => {
+    const groups = new Map<number, any[]>();
+    for (const pt of trackData) {
+      const lap = pt.lap ?? 1;
+      if (!groups.has(lap)) groups.set(lap, []);
+      groups.get(lap)!.push(pt);
+    }
+    return groups;
+  }, [trackData]);
+
+  const lapNumbers = useMemo(() => [...lapGroups.keys()].sort((a, b) => a - b), [lapGroups]);
+
+  const toggleLap = (lap: number) => {
+    setSelectedLaps(prev => {
+      const next = new Set(prev);
+      if (next.has(lap)) {
+        next.delete(lap);
+      } else {
+        if (next.size >= 3) {
+          const oldest = next.values().next().value;
+          if (oldest !== undefined) next.delete(oldest);
+        }
+        next.add(lap);
+      }
+      return next;
+    });
+  };
+
+  const renderGroups = useMemo(() => {
+    if (mode === 'compare') {
+      return [...selectedLaps].map(lap => ({
+        lap,
+        points: lapGroups.get(lap) || [],
+      }));
+    }
+    const pts = activeLap != null ? (lapGroups.get(activeLap) || []) : trackData;
+    return [{ lap: activeLap ?? 0, points: pts }];
+  }, [mode, selectedLaps, activeLap, lapGroups, trackData]);
+
   if (!trackData.length) return null;
 
-  // Get XY bounds for SVG viewBox
   const xs = trackData.map(d => d.X_m ?? d.GPS_Lon).filter(Boolean);
   const ys = trackData.map(d => d.Y_m ?? d.GPS_Lat).filter(Boolean);
   if (!xs.length || !ys.length) return null;
@@ -231,56 +319,134 @@ function TrackMap({ trackData }: { trackData: any[] }) {
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
-  const pad = 20;
-  const w = 500, h = 400;
+  const pad = 20, w = 500, h = 400;
 
-  const points = trackData.map(d => {
-    const x = pad + ((d.X_m ?? d.GPS_Lon) - minX) / rangeX * (w - 2 * pad);
-    const y = pad + (1 - ((d.Y_m ?? d.GPS_Lat) - minY) / rangeY) * (h - 2 * pad);
-    const speed = d.GPS_Speed_kmh ?? d.Track_Speed_kmh ?? 0;
-    return { x, y, speed };
+  const toSvg = (d: any) => ({
+    x: pad + ((d.X_m ?? d.GPS_Lon) - minX) / rangeX * (w - 2 * pad),
+    y: pad + (1 - ((d.Y_m ?? d.GPS_Lat) - minY) / rangeY) * (h - 2 * pad),
   });
 
-  const maxSpeed = Math.max(...points.map(p => p.speed), 1);
+  const metricBounds = (() => {
+    if (mode !== 'metric') return { min: 0, max: 1 };
+    const vals = trackData.map(d => d[metric]).filter((v: any) => v != null);
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  })();
 
   return (
     <div className="bg-card border border-border rounded-xl p-4">
+      {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Navigation className="w-4 h-4 text-primary" />
         <span className="text-sm font-medium text-foreground">Track Map</span>
-        <span className="text-[10px] text-muted-foreground ml-auto">Speed-colored</span>
+        <div className="ml-auto flex gap-1">
+          <button
+            onClick={() => setMode('compare')}
+            className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+              mode === 'compare'
+                ? 'bg-primary text-background border-primary font-medium'
+                : 'border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Lap Compare
+          </button>
+          <button
+            onClick={() => setMode('metric')}
+            className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+              mode === 'metric'
+                ? 'bg-primary text-background border-primary font-medium'
+                : 'border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Metric
+          </button>
+        </div>
       </div>
+
+      {/* SVG Map */}
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ background: 'var(--background)', borderRadius: 8 }}>
-        {points.map((p, i) => {
-          if (i === 0) return null;
-          const prev = points[i - 1];
-          const ratio = p.speed / maxSpeed;
-          const r = Math.round(255 * ratio);
-          const g = Math.round(255 * (1 - ratio * 0.5));
-          const b = Math.round(80 * (1 - ratio));
-          return (
-            <line
-              key={i}
-              x1={prev.x} y1={prev.y}
-              x2={p.x} y2={p.y}
-              stroke={`rgb(${r},${g},${b})`}
-              strokeWidth={2.5}
-              strokeLinecap="round"
-            />
-          );
+        {renderGroups.map(({ lap, points }, groupIdx) => {
+          const color = mode === 'compare'
+            ? LAP_COLORS[lapNumbers.indexOf(lap) % LAP_COLORS.length]
+            : undefined;
+          const strokeW = mode === 'compare'
+            ? ([...selectedLaps].pop() === lap ? 3 : 2)
+            : 2.5;
+
+          return points.map((pt: any, i: number) => {
+            if (i === 0) return null;
+            const prev = points[i - 1];
+            const p1 = toSvg(prev);
+            const p2 = toSvg(pt);
+            const segColor = mode === 'compare'
+              ? color!
+              : metricColor(metric, pt[metric] ?? 0, metricBounds.min, metricBounds.max);
+
+            return (
+              <line
+                key={`${groupIdx}-${i}`}
+                x1={p1.x} y1={p1.y}
+                x2={p2.x} y2={p2.y}
+                stroke={segColor}
+                strokeWidth={strokeW}
+                strokeLinecap="round"
+              />
+            );
+          });
         })}
         {/* Start marker */}
-        {points.length > 0 && (
-          <circle cx={points[0].x} cy={points[0].y} r={5} fill={LIME} stroke="white" strokeWidth={1.5} />
-        )}
+        {trackData.length > 0 && (() => {
+          const start = toSvg(trackData[0]);
+          return <circle cx={start.x} cy={start.y} r={5} fill={LIME} stroke="white" strokeWidth={1.5} />;
+        })()}
       </svg>
-      <div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground">
-        <span>Slow</span>
-        <div className="flex-1 h-2 rounded-full" style={{
-          background: 'linear-gradient(to right, rgb(0,255,80), rgb(255,200,0), rgb(255,128,0), rgb(255,0,0))'
-        }} />
-        <span>Fast</span>
-      </div>
+
+      {/* Controls */}
+      {mode === 'compare' ? (
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          {lapNumbers.map((lap, i) => (
+            <button
+              key={lap}
+              onClick={() => toggleLap(lap)}
+              className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+                selectedLaps.has(lap)
+                  ? 'font-medium border-transparent text-background'
+                  : 'border-border text-muted-foreground hover:text-foreground'
+              }`}
+              style={selectedLaps.has(lap) ? { background: LAP_COLORS[i % LAP_COLORS.length] } : undefined}
+            >
+              L{lap}
+            </button>
+          ))}
+          <span className="text-[9px] text-muted-foreground self-center ml-1">max 3</span>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <select
+            value={metric}
+            onChange={e => setMetric(e.target.value)}
+            className="bg-secondary text-foreground text-[11px] rounded-lg px-3 py-1.5 border border-border focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            {METRIC_OPTIONS.map(m => (
+              <option key={m.key} value={m.key}>{m.label}{m.unit ? ` (${m.unit})` : ''}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>{metric === 'Gear' ? '1' : 'Low'}</span>
+            <div className="flex-1 h-2 rounded-full" style={{
+              background: metric === 'FrontBrake_bar'
+                ? 'linear-gradient(to right, rgba(239,68,68,0.1), rgb(239,68,68))'
+                : metric === 'Throttle_pct'
+                ? 'linear-gradient(to right, rgba(34,197,94,0.1), rgb(34,197,94))'
+                : metric === 'LateralAcc_g'
+                ? 'linear-gradient(to right, rgb(100,100,255), white, rgb(255,100,100))'
+                : metric === 'Gear'
+                ? 'linear-gradient(to right, #EF4444, #F59E0B, #EAB308, #22C55E, #47C7FC, #3B82F6, #A855F7)'
+                : 'linear-gradient(to right, rgb(0,255,80), rgb(255,200,0), rgb(255,128,0), rgb(255,0,0))'
+            }} />
+            <span>{metric === 'Gear' ? '7' : 'High'}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -569,7 +735,7 @@ export function RealRacing() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Left: Track Map + Lap Times */}
           <div className="space-y-4">
-            <TrackMap trackData={trackData} />
+            <TrackMapOverlay trackData={trackData} laps={session?.laps || []} activeLap={activeLap} />
             {session?.laps && <LapTimesChart laps={session.laps} />}
           </div>
 
