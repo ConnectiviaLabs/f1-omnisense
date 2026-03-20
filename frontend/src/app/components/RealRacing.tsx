@@ -748,7 +748,21 @@ export function RealRacing() {
           <div className="lg:col-span-2">
             <TrackMapOverlay trackData={trackData} laps={session?.laps || []} activeLap={activeLap} trackAnomalies={trackAnomalies} />
           </div>
-          <div>
+          <div className="space-y-4">
+            {/* 3D Car Viewer */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2">
+                <Car className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">Radical #3</span>
+                <span className="text-[10px] text-muted-foreground ml-auto">3D Model</span>
+              </div>
+              <iframe
+                src="/glb_viewer.html?url=/models/radical_3.glb&title=Radical%20%233"
+                className="w-full border-0"
+                style={{ height: 260, background: 'var(--background)' }}
+                title="3D Car Model"
+              />
+            </div>
             {session?.laps && <LapTimesChart laps={session.laps} />}
           </div>
         </div>
