@@ -9,10 +9,8 @@ import {
   Navigation, BarChart3,
 } from 'lucide-react';
 import { aim } from '../api/local';
-import { HealthGauge } from './HealthGauge';
 import type {
-  AiMSession, AiMSessionSummary, AiMHealthResult,
-  AiMSystemAnomaly,
+  AiMSession, AiMSessionSummary,
 } from '../types';
 
 // ── Theme colors ────────────────────────────────────────────────────────
@@ -188,7 +186,7 @@ function KPI({ icon: Icon, label, value, detail, color }: {
 // ── Collapsible Chart Card ──────────────────────────────────────────────
 
 function ChartCard({ group, data }: { group: ChartGroup; data: any[] }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const Icon = group.icon;
 
   // Check which channels actually have data
@@ -561,68 +559,7 @@ function LapTimesChart({ laps }: { laps: { lap_number: number; lap_time_s: numbe
   );
 }
 
-// ── Health Dashboard ────────────────────────────────────────────────────
 
-function HealthDashboard({ health, anomaly }: { health: AiMHealthResult | null; anomaly: any }) {
-  if (!health) return null;
-
-  return (
-    <div className="bg-card border border-border rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <Activity className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium text-foreground">7-System Health Assessment</span>
-        <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full`}
-          style={{ background: SEVERITY_COLOR[health.severity] + '20', color: SEVERITY_COLOR[health.severity] }}>
-          {health.severity}
-        </span>
-      </div>
-
-      {/* Overall gauge */}
-      <div className="flex justify-center mb-4">
-        <HealthGauge value={health.overall_health} size={100} label="Overall" />
-      </div>
-
-      {/* Per-system gauges */}
-      <div className="grid grid-cols-4 lg:grid-cols-7 gap-3">
-        {health.systems.map(s => (
-          <div key={s.system} className="flex flex-col items-center gap-1">
-            <HealthGauge value={s.health_pct} size={70} label={s.system} strokeWidth={6} />
-            <span className="text-[9px] text-center text-muted-foreground leading-tight">{s.system}</span>
-            <span className="text-[8px] font-mono px-1.5 rounded"
-              style={{ color: SEVERITY_COLOR[s.severity] }}>
-              {s.severity}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Anomaly timeline per system */}
-      {anomaly?.systems && (
-        <div className="mt-4 space-y-2">
-          <div className="text-[10px] text-muted-foreground tracking-wider uppercase">Per-Lap Anomaly Timeline</div>
-          {anomaly.systems
-            .filter((s: AiMSystemAnomaly) => s.anomaly_scores?.length > 0)
-            .map((s: AiMSystemAnomaly) => (
-              <div key={s.system} className="flex items-center gap-2">
-                <span className="text-[10px] text-muted-foreground w-24 truncate">{s.system}</span>
-                <div className="flex-1 flex gap-0.5">
-                  {s.anomaly_scores.map(sc => (
-                    <div
-                      key={sc.lap}
-                      className="flex-1 h-4 rounded-sm"
-                      style={{ background: SEVERITY_COLOR[sc.severity] || LIME, opacity: 0.3 + sc.score * 0.7 }}
-                      title={`Lap ${sc.lap}: ${sc.severity} (${sc.score.toFixed(3)})`}
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-muted-foreground w-12 text-right">{s.health_pct.toFixed(0)}%</span>
-              </div>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── Main Component ──────────────────────────────────────────────────────
 
@@ -633,8 +570,6 @@ export function RealRacing() {
   const [session, setSession] = useState<AiMSession | null>(null);
   const [telemetry, setTelemetry] = useState<any[]>([]);
   const [trackData, setTrackData] = useState<any[]>([]);
-  const [health, setHealth] = useState<AiMHealthResult | null>(null);
-  const [anomaly, setAnomaly] = useState<any>(null);
   const [trackAnomalies, setTrackAnomalies] = useState<any>(null);
   const [activeLap, setActiveLap] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -661,15 +596,11 @@ export function RealRacing() {
       aim.session(selectedId),
       aim.telemetry(selectedId, activeLap ?? undefined),
       aim.track(selectedId),  // always fetch all laps for overlay
-      aim.health(selectedId).catch(() => null),
-      aim.anomaly(selectedId).catch(() => null),
       aim.trackAnomalies(selectedId).catch(() => null),
-    ]).then(([sess, tel, trk, hlth, anom, trkAnom]) => {
+    ]).then(([sess, tel, trk, trkAnom]) => {
       setSession(sess);
       setTelemetry(tel?.data || []);
       setTrackData(trk?.track_xy || trk?.gps || []);
-      setHealth(hlth);
-      setAnomaly(anom);
       setTrackAnomalies(trkAnom);
     }).catch(err => {
       console.error('Failed to load session data:', err);
@@ -804,28 +735,19 @@ export function RealRacing() {
         </div>
       )}
 
-      {/* ── Section 3+4: Track Map + Telemetry Charts ── */}
+      {/* ── Section 3: Track Map + Lap Times ── */}
       {!telLoading && telemetry.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left: Track Map + Lap Times */}
-          <div className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2">
             <TrackMapOverlay trackData={trackData} laps={session?.laps || []} activeLap={activeLap} trackAnomalies={trackAnomalies} />
-            {session?.laps && <LapTimesChart laps={session.laps} />}
           </div>
-
-          {/* Right: Telemetry Charts */}
-          <div className="space-y-3">
-            {CHART_GROUPS.map(group => (
-              <ChartCard key={group.id} group={group} data={telemetry} />
-            ))}
+          <div>
+            {session?.laps && <LapTimesChart laps={session.laps} />}
           </div>
         </div>
       )}
 
-      {/* ── Section 5: Health Dashboard ── */}
-      {!telLoading && <HealthDashboard health={health} anomaly={anomaly} />}
-
-      {/* ── Section 6: Intelligence Cards ── */}
+      {/* ── Section 4: Intelligence Cards ── */}
       {!telLoading && trackAnomalies && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Anomaly Alerts */}
@@ -938,6 +860,18 @@ export function RealRacing() {
               <div className="text-[11px] text-muted-foreground mt-1">No anomalies or degradation trends detected</div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Section 5: Telemetry Charts (collapsed by default) ── */}
+      {!telLoading && telemetry.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Telemetry Channels</div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {CHART_GROUPS.map(group => (
+              <ChartCard key={group.id} group={group} data={telemetry} />
+            ))}
+          </div>
         </div>
       )}
 
