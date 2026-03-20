@@ -513,6 +513,35 @@ export function MediaIntelligence() {
     finally { setClipSearching(false); }
   };
 
+  const analyzeVideo = async (filename: string) => {
+    setAnalyzing(true);
+    setAnalyzeResult(null);
+    try {
+      const res = await fetch(`/api/omni/vis/analyze-video-by-name`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, tasks: 'detect,classify' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAnalyzeResult(data);
+        // Refresh pipeline data after analysis
+        pipeline.gdino().then(d => setGdinoData(d?.results ? Object.fromEntries(d.results.map((r: any) => [r.filename, r.frames])) : d));
+        pipeline.videomae().then(d => {
+          if (d?.results) {
+            const mapped: Record<string, VideoModelResult> = {};
+            for (const r of d.results) mapped[r.filename] = { total_frames: r.total_frames, fps: r.fps, inference_time_s: r.inference_time_s ?? 0, top_predictions: r.top_predictions };
+            setVideomaeData(mapped);
+          }
+        });
+      }
+    } catch (e) {
+      setAnalyzeResult({ error: String(e) });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
   const filteredByTag = selectedTag && allTags
     ? allTags.filter(img => img.auto_tags.some(t => t.label === selectedTag))
     : null;

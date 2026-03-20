@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>omnisuite — Architecture Map</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding: 40px 20px 20px;
+    position: relative;
+  }
+  .header h1 {
+    font-size: 2.4rem;
+    background: linear-gradient(135deg, #00BCD4, #9C27B0, #FF9800);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+  .header .subtitle {
+    color: #666;
+    font-size: 0.85rem;
+    margin-top: 8px;
+    letter-spacing: 2px;
+  }
+  .header .stats {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin-top: 20px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat .num {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #00BCD4;
+  }
+  .stat .label {
+    font-size: 0.7rem;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── SVG Canvas for Connections ── */
+  .canvas-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Grid Layout ── */
+  .architecture {
+    position: relative;
+    max-width: 1400px;
+    margin: 30px auto;
+    padding: 0 30px;
+  }
+
+  .tier {
+    margin-bottom: 10px;
+  }
+  .tier-label {
+    font-size: 0.65rem;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+    padding-left: 4px;
+    border-left: 2px solid #333;
+    padding: 2px 0 2px 10px;
+  }
+  .tier-row {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  /* ── Package Card ── */
+  .pkg {
+    background: #111122;
+    border: 1px solid #222;
+    border-radius: 12px;
+    padding: 20px;
+    width: 340px;
+    position: relative;
+    z-index: 1;
+    transition: all 0.3s ease;
+    cursor: pointer;
+  }
+  .pkg:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 30px var(--glow);
+    transform: translateY(-4px);
+  }
+  .pkg.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 40px var(--glow);
+  }
+  .pkg .pkg-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .pkg .icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    background: var(--accent);
+    opacity: 0.9;
+  }
+  .pkg .name {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--accent);
+  }
+  .pkg .tagline {
+    font-size: 0.7rem;
+    color: #666;
+    margin-top: 2px;
+  }
+  .pkg .desc {
+    font-size: 0.75rem;
+    color: #888;
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  /* File list */
+  .files {
+    display: none;
+    margin-top: 12px;
+    border-top: 1px solid #222;
+    padding-top: 10px;
+  }
+  .pkg.active .files { display: block; }
+  .file-entry {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 0.68rem;
+  }
+  .file-entry .fname {
+    color: var(--accent);
+    opacity: 0.8;
+  }
+  .file-entry .fdesc {
+    color: #555;
+    text-align: right;
+    max-width: 55%;
+  }
+
+  /* Exports */
+  .exports {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .export-tag {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid #2a2a3a;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 0.6rem;
+    color: #777;
+    transition: all 0.2s;
+  }
+  .pkg:hover .export-tag {
+    border-color: var(--accent);
+    color: var(--accent);
+    opacity: 0.6;
+  }
+
+  /* Meta badges */
+  .badges {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    font-size: 0.58rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid #2a2a3a;
+    color: #555;
+  }
+  .badge.server { border-color: #4CAF50; color: #4CAF50; }
+  .badge.ml { border-color: #FF9800; color: #FF9800; }
+  .badge.storage { border-color: #9C27B0; color: #9C27B0; }
+
+  /* ── Dependency Arrows ── */
+  .dep-section {
+    max-width: 1400px;
+    margin: 20px auto 40px;
+    padding: 0 30px;
+  }
+  .dep-section h2 {
+    font-size: 0.8rem;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    border-left: 2px solid #333;
+    padding-left: 10px;
+  }
+  .dep-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .dep-card {
+    background: #0d0d20;
+    border: 1px solid #1a1a2e;
+    border-radius: 8px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .dep-card .arrow {
+    font-size: 1.2rem;
+    color: #444;
+  }
+  .dep-card .from-pkg, .dep-card .to-pkg {
+    font-size: 0.75rem;
+    font-weight: bold;
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+  .dep-card .reason {
+    font-size: 0.65rem;
+    color: #555;
+    margin-left: auto;
+  }
+
+  /* ── External Deps ── */
+  .ext-section {
+    max-width: 1400px;
+    margin: 20px auto 60px;
+    padding: 0 30px;
+  }
+  .ext-section h2 {
+    font-size: 0.8rem;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    border-left: 2px solid #333;
+    padding-left: 10px;
+  }
+  .ext-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+  }
+  .ext-item {
+    background: #0d0d20;
+    border: 1px solid #1a1a2e;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.7rem;
+  }
+  .ext-item .ext-name {
+    color: #00BCD4;
+    font-weight: bold;
+  }
+  .ext-item .ext-used {
+    color: #444;
+    font-size: 0.6rem;
+    margin-top: 2px;
+  }
+
+  /* ── Color assignments ── */
+  .pkg[data-pkg="omnivis"]      { --accent: #00BCD4; --glow: rgba(0,188,212,0.15); }
+  .pkg[data-pkg="omnidapt"]     { --accent: #FF9800; --glow: rgba(255,152,0,0.15); }
+  .pkg[data-pkg="omnidata"]     { --accent: #4CAF50; --glow: rgba(76,175,80,0.15); }
+  .pkg[data-pkg="omnidoc"]      { --accent: #9C27B0; --glow: rgba(156,39,176,0.15); }
+  .pkg[data-pkg="omnianalytics"]{ --accent: #E91E63; --glow: rgba(233,30,99,0.15); }
+  .pkg[data-pkg="omnirag"]      { --accent: #3F51B5; --glow: rgba(63,81,181,0.15); }
+  .pkg[data-pkg="omnibedding"]  { --accent: #CDDC39; --glow: rgba(205,220,57,0.15); }
+
+  .dep-card .from-pkg.omnivis, .dep-card .to-pkg.omnivis           { background: rgba(0,188,212,0.15); color: #00BCD4; }
+  .dep-card .from-pkg.omnidapt, .dep-card .to-pkg.omnidapt         { background: rgba(255,152,0,0.15); color: #FF9800; }
+  .dep-card .from-pkg.omnidata, .dep-card .to-pkg.omnidata         { background: rgba(76,175,80,0.15); color: #4CAF50; }
+  .dep-card .from-pkg.omnidoc, .dep-card .to-pkg.omnidoc           { background: rgba(156,39,176,0.15); color: #9C27B0; }
+  .dep-card .from-pkg.omnianalytics, .dep-card .to-pkg.omnianalytics { background: rgba(233,30,99,0.15); color: #E91E63; }
+  .dep-card .from-pkg.omnirag, .dep-card .to-pkg.omnirag           { background: rgba(63,81,181,0.15); color: #3F51B5; }
+  .dep-card .from-pkg.omnibedding, .dep-card .to-pkg.omnibedding   { background: rgba(205,220,57,0.15); color: #CDDC39; }
+
+  /* ── Pipeline Flows ── */
+  .flows {
+    max-width: 1400px;
+    margin: 20px auto 40px;
+    padding: 0 30px;
+  }
+  .flows h2 {
+    font-size: 0.8rem;
+    color: #444;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    border-left: 2px solid #333;
+    padding-left: 10px;
+  }
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .flow-step {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: bold;
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    color: #333;
+    font-size: 1.2rem;
+    padding: 0 6px;
+  }
+  .flow-label {
+    font-size: 0.65rem;
+    color: #555;
+    margin-right: 12px;
+    min-width: 100px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────── -->
+<div class="header">
+  <h1>omnisuite</h1>
+  <div class="subtitle">Unified AI/ML Toolkit — Architecture Map</div>
+  <div class="stats">
+    <div class="stat"><div class="num">7</div><div class="label">Packages</div></div>
+    <div class="stat"><div class="num">61</div><div class="label">Python Files</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">FastAPI Servers</div></div>
+    <div class="stat"><div class="num">3</div><div class="label">Cross-Deps</div></div>
+  </div>
+</div>
+
+<!-- ── Architecture Grid ─────────────────────────────────────── -->
+<div class="architecture">
+
+  <!-- Tier 1: Perception -->
+  <div class="tier">
+    <div class="tier-label">Tier 1 — Perception &amp; Ingestion</div>
+    <div class="tier-row">
+
+      <div class="pkg" data-pkg="omnivis" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">👁</div>
+          <div><div class="name">omnivis</div><div class="tagline">Unified Computer Vision</div></div>
+        </div>
+        <div class="desc">Object detection (YOLO26, RF-DETR), segmentation (SAM2), tracking (ByteTrack), action classification (TimeSformer/VideoMAE), CLIP embeddings, drone detection, LLM narration.</div>
+        <div class="badges">
+          <span class="badge server">:8200 server</span>
+          <span class="badge ml">torch + ultralytics</span>
+          <span class="badge">14 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">detect</span>
+          <span class="export-tag">segment</span>
+          <span class="export-tag">track</span>
+          <span class="export-tag">zero_shot_detect</span>
+          <span class="export-tag">classify_actions</span>
+          <span class="export-tag">narrate</span>
+          <span class="export-tag">embed_clip</span>
+          <span class="export-tag">search_by_text</span>
+          <span class="export-tag">detect_drone</span>
+          <span class="export-tag">get_model_manager</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">detectors.py</span><span class="fdesc">YOLO26 + RF-DETR detection</span></div>
+          <div class="file-entry"><span class="fname">segmentation.py</span><span class="fdesc">SAM2 + YOLO-seg</span></div>
+          <div class="file-entry"><span class="fname">grounding.py</span><span class="fdesc">GroundingDINO zero-shot</span></div>
+          <div class="file-entry"><span class="fname">tracking.py</span><span class="fdesc">ByteTrack / BoT-SORT</span></div>
+          <div class="file-entry"><span class="fname">action_classifier.py</span><span class="fdesc">TimeSformer + VideoMAE</span></div>
+          <div class="file-entry"><span class="fname">narration.py</span><span class="fdesc">LLM scene narration</span></div>
+          <div class="file-entry"><span class="fname">clip_embeddings.py</span><span class="fdesc">CLIP ViT-B/32 (512d)</span></div>
+          <div class="file-entry"><span class="fname">drone_pipeline.py</span><span class="fdesc">Multimodal drone detect</span></div>
+          <div class="file-entry"><span class="fname">streaming.py</span><span class="fdesc">MJPEG streaming</span></div>
+          <div class="file-entry"><span class="fname">preprocessing.py</span><span class="fdesc">CLAHE, SAHI tiling</span></div>
+          <div class="file-entry"><span class="fname">model_manager.py</span><span class="fdesc">GPU-aware model cache</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">Detection, SegResult, etc.</span></div>
+          <div class="file-entry"><span class="fname">server.py</span><span class="fdesc">FastAPI endpoints</span></div>
+        </div>
+      </div>
+
+      <div class="pkg" data-pkg="omnidoc" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">📄</div>
+          <div><div class="name">omnidoc</div><div class="tagline">Unified Document Ingestion</div></div>
+        </div>
+        <div class="desc">12+ format loader (PDF, DOCX, HTML, images, Excel…), enhanced PDF extraction (PyMuPDF + tables), 5-pass deep extraction via vision LLMs (Groq/Ollama), dual embedder (BGE 1024d + CLIP 512d).</div>
+        <div class="badges">
+          <span class="badge ml">torch + sentence-transformers</span>
+          <span class="badge">10 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">process_document</span>
+          <span class="export-tag">ProcessedDocument</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">ingest.py</span><span class="fdesc">Unified entry point</span></div>
+          <div class="file-entry"><span class="fname">loaders.py</span><span class="fdesc">12+ format loaders</span></div>
+          <div class="file-entry"><span class="fname">pdf_extractor.py</span><span class="fdesc">PyMuPDF text + images</span></div>
+          <div class="file-entry"><span class="fname">table_extractor.py</span><span class="fdesc">pdfplumber + Camelot</span></div>
+          <div class="file-entry"><span class="fname">renderer.py</span><span class="fdesc">PDF → multi-view images</span></div>
+          <div class="file-entry"><span class="fname">embedder.py</span><span class="fdesc">BGE 1024d + CLIP 512d</span></div>
+          <div class="file-entry"><span class="fname">deep_extractor.py</span><span class="fdesc">5-pass vision extraction</span></div>
+          <div class="file-entry"><span class="fname">extraction_passes.py</span><span class="fdesc">5 extraction definitions</span></div>
+          <div class="file-entry"><span class="fname">vision_client.py</span><span class="fdesc">Groq + Ollama clients</span></div>
+        </div>
+      </div>
+
+      <div class="pkg" data-pkg="omnidata" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">📊</div>
+          <div><div class="name">omnidata</div><div class="tagline">Tabular Data Loading &amp; Preprocessing</div></div>
+        </div>
+        <div class="desc">Multi-format tabular loader with auto-detection, column profiling (6-layer heuristic), sensor column filtering, type coercion, timestamp normalization, temporal feature engineering.</div>
+        <div class="badges">
+          <span class="badge ml">pandas + numpy</span>
+          <span class="badge">6 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">load</span>
+          <span class="export-tag">profile</span>
+          <span class="export-tag">preprocess</span>
+          <span class="export-tag">engineer</span>
+          <span class="export-tag">filter_sensor_columns</span>
+          <span class="export-tag">train_test_split</span>
+          <span class="export-tag">TabularDataset</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">loader.py</span><span class="fdesc">Auto-detect CSV/JSON/Parquet</span></div>
+          <div class="file-entry"><span class="fname">profiler.py</span><span class="fdesc">Column profiling + roles</span></div>
+          <div class="file-entry"><span class="fname">preprocessing.py</span><span class="fdesc">Type coercion + cleaning</span></div>
+          <div class="file-entry"><span class="fname">features.py</span><span class="fdesc">Temporal feature eng.</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">TabularDataset, ColumnRole</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Tier 2: Intelligence -->
+  <div class="tier">
+    <div class="tier-label">Tier 2 — Intelligence &amp; Analysis</div>
+    <div class="tier-row">
+
+      <div class="pkg" data-pkg="omnianalytics" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">🔬</div>
+          <div><div class="name">omnianalytics</div><div class="tagline">Anomaly Detection &amp; Forecasting</div></div>
+        </div>
+        <div class="desc">4-model anomaly ensemble (IsolationForest + OneClassSVM + KNN + PCA) with SHAP explanations, time-series forecasting (ARIMA + linear + LightGBM), background job manager.</div>
+        <div class="badges">
+          <span class="badge server">:8100 server</span>
+          <span class="badge ml">scikit-learn + shap</span>
+          <span class="badge storage">depends: omnidata</span>
+          <span class="badge">6 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">AnomalyEnsemble</span>
+          <span class="export-tag">forecast</span>
+          <span class="export-tag">get_job_manager</span>
+          <span class="export-tag">AnomalyResult</span>
+          <span class="export-tag">ForecastResult</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">anomaly.py</span><span class="fdesc">4-model ensemble + SHAP</span></div>
+          <div class="file-entry"><span class="fname">forecast.py</span><span class="fdesc">ARIMA + Linear + LightGBM</span></div>
+          <div class="file-entry"><span class="fname">jobs.py</span><span class="fdesc">Background job manager</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">AnomalyResult, ForecastResult</span></div>
+          <div class="file-entry"><span class="fname">server.py</span><span class="fdesc">FastAPI endpoints</span></div>
+        </div>
+      </div>
+
+      <div class="pkg" data-pkg="omnirag" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">🧠</div>
+          <div><div class="name">omnirag</div><div class="tagline">Retrieval-Augmented Generation</div></div>
+        </div>
+        <div class="desc">Vector store (MongoDB Atlas + ChromaDB fallback), semantic retrieval with cliff detection &amp; query expansion, RAG Q&A chain with source citations, multi-LLM provider (Ollama→Groq→OpenAI→Anthropic), conversation memory.</div>
+        <div class="badges">
+          <span class="badge server">:8400 server</span>
+          <span class="badge ml">langchain + LLMs</span>
+          <span class="badge storage">depends: omnidoc</span>
+          <span class="badge">9 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">get_vectorstore</span>
+          <span class="export-tag">RAGRetriever</span>
+          <span class="export-tag">RAGChain</span>
+          <span class="export-tag">ConversationManager</span>
+          <span class="export-tag">get_llm</span>
+          <span class="export-tag">ingest_file</span>
+          <span class="export-tag">ingest_directory</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">vectorstore.py</span><span class="fdesc">Atlas + ChromaDB backends</span></div>
+          <div class="file-entry"><span class="fname">retriever.py</span><span class="fdesc">Semantic search + cliff detect</span></div>
+          <div class="file-entry"><span class="fname">qa_chain.py</span><span class="fdesc">RAG Q&A + citations</span></div>
+          <div class="file-entry"><span class="fname">conversation.py</span><span class="fdesc">Session memory + TTL</span></div>
+          <div class="file-entry"><span class="fname">llm.py</span><span class="fdesc">Multi-LLM auto-select</span></div>
+          <div class="file-entry"><span class="fname">ingest.py</span><span class="fdesc">Chunk + embed + upsert</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">RAGDocument, SearchResult</span></div>
+          <div class="file-entry"><span class="fname">server.py</span><span class="fdesc">FastAPI endpoints</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Tier 3: Training & Viz -->
+  <div class="tier">
+    <div class="tier-label">Tier 3 — Training &amp; Visualization</div>
+    <div class="tier-row">
+
+      <div class="pkg" data-pkg="omnidapt" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">⚡</div>
+          <div><div class="name">omnidapt</div><div class="tagline">Continuous Adaptation Engine</div></div>
+        </div>
+        <div class="desc">Fine-tuning pipelines for YOLO (CV) and AST (Audio), dataset management with YOLO/HuggingFace export, model versioning (draft→validated→production→archived), event-driven scheduler with drift detection.</div>
+        <div class="badges">
+          <span class="badge server">:8300 server</span>
+          <span class="badge ml">ultralytics + transformers</span>
+          <span class="badge storage">depends: omnivis</span>
+          <span class="badge">11 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">train_yolo</span>
+          <span class="export-tag">train_ast</span>
+          <span class="export-tag">get_dataset_manager</span>
+          <span class="export-tag">get_model_registry</span>
+          <span class="export-tag">get_scheduler</span>
+          <span class="export-tag">get_job_manager</span>
+          <span class="export-tag">TrainingConfig</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">yolo_trainer.py</span><span class="fdesc">YOLO fine-tuning pipeline</span></div>
+          <div class="file-entry"><span class="fname">ast_trainer.py</span><span class="fdesc">AST audio fine-tuning</span></div>
+          <div class="file-entry"><span class="fname">dataset_manager.py</span><span class="fdesc">Dataset CRUD + export</span></div>
+          <div class="file-entry"><span class="fname">model_registry.py</span><span class="fdesc">Model versioning lifecycle</span></div>
+          <div class="file-entry"><span class="fname">scheduler.py</span><span class="fdesc">Event-driven retraining</span></div>
+          <div class="file-entry"><span class="fname">jobs.py</span><span class="fdesc">Background job manager</span></div>
+          <div class="file-entry"><span class="fname">_storage.py</span><span class="fdesc">Local + MongoDB backends</span></div>
+          <div class="file-entry"><span class="fname">_config.py</span><span class="fdesc">OMNIDAPT_* env config</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">TrainingConfig, ModelVersion</span></div>
+          <div class="file-entry"><span class="fname">server.py</span><span class="fdesc">FastAPI endpoints</span></div>
+        </div>
+      </div>
+
+      <div class="pkg" data-pkg="omnibedding" onclick="togglePkg(this)">
+        <div class="pkg-header">
+          <div class="icon">✦</div>
+          <div><div class="name">omnibedding</div><div class="tagline">Embedding Visualization</div></div>
+        </div>
+        <div class="desc">Dimensionality reduction (UMAP→t-SNE→PCA cascade), KMeans/DBSCAN clustering, dual anomaly detection (distance + k-NN), 2D/3D scatter plots (matplotlib + plotly), JSON export for Three.js/D3.js, similarity network graphs.</div>
+        <div class="badges">
+          <span class="badge ml">scikit-learn + matplotlib</span>
+          <span class="badge">5 files</span>
+        </div>
+        <div class="exports">
+          <span class="export-tag">visualize</span>
+          <span class="export-tag">reduce</span>
+          <span class="export-tag">cluster_and_detect</span>
+          <span class="export-tag">plot_2d</span>
+          <span class="export-tag">plot_3d</span>
+          <span class="export-tag">plot_interactive_3d</span>
+          <span class="export-tag">to_json</span>
+          <span class="export-tag">plot_similarity_network</span>
+        </div>
+        <div class="files">
+          <div class="file-entry"><span class="fname">reducer.py</span><span class="fdesc">UMAP → t-SNE → PCA cascade</span></div>
+          <div class="file-entry"><span class="fname">cluster.py</span><span class="fdesc">KMeans/DBSCAN + anomaly</span></div>
+          <div class="file-entry"><span class="fname">plotter.py</span><span class="fdesc">2D/3D scatter + network</span></div>
+          <div class="file-entry"><span class="fname">_types.py</span><span class="fdesc">EmbeddingPoint, ClusterInfo</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Cross-Package Dependencies ────────────────────────────── -->
+<div class="dep-section">
+  <h2>Cross-Package Dependencies</h2>
+  <div class="dep-grid">
+    <div class="dep-card">
+      <span class="from-pkg omnidapt">omnidapt</span>
+      <span class="arrow">→</span>
+      <span class="to-pkg omnivis">omnivis</span>
+      <span class="reason">model_registry registers fine-tuned models with omnivis model_manager</span>
+    </div>
+    <div class="dep-card">
+      <span class="from-pkg omnianalytics">omnianalytics</span>
+      <span class="arrow">→</span>
+      <span class="to-pkg omnidata">omnidata</span>
+      <span class="reason">anomaly + forecast consume TabularDataset from omnidata</span>
+    </div>
+    <div class="dep-card">
+      <span class="from-pkg omnirag">omnirag</span>
+      <span class="arrow">→</span>
+      <span class="to-pkg omnidoc">omnidoc</span>
+      <span class="reason">ingest uses omnidoc loaders + embedder for document processing</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Pipeline Flows ────────────────────────────────────────── -->
+<div class="flows">
+  <h2>End-to-End Pipelines</h2>
+
+  <div class="flow">
+    <span class="flow-label">CV Pipeline</span>
+    <span class="flow-step" style="background:rgba(0,188,212,0.15);color:#00BCD4">omnivis.detect()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(255,152,0,0.15);color:#FF9800">omnidapt.add_frames()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(255,152,0,0.15);color:#FF9800">omnidapt.train_yolo()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(0,188,212,0.15);color:#00BCD4">omnivis.model_manager</span>
+  </div>
+
+  <div class="flow">
+    <span class="flow-label">RAG Pipeline</span>
+    <span class="flow-step" style="background:rgba(156,39,176,0.15);color:#9C27B0">omnidoc.process()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(63,81,181,0.15);color:#3F51B5">omnirag.ingest()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(63,81,181,0.15);color:#3F51B5">omnirag.RAGChain.ask()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(205,220,57,0.15);color:#CDDC39">omnibedding.visualize()</span>
+  </div>
+
+  <div class="flow">
+    <span class="flow-label">Analytics Pipeline</span>
+    <span class="flow-step" style="background:rgba(76,175,80,0.15);color:#4CAF50">omnidata.load()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(76,175,80,0.15);color:#4CAF50">omnidata.engineer()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(233,30,99,0.15);color:#E91E63">omnianalytics.AnomalyEnsemble()</span>
+    <span class="flow-arrow">→</span>
+    <span class="flow-step" style="background:rgba(233,30,99,0.15);color:#E91E63">omnianalytics.forecast()</span>
+  </div>
+
+</div>
+
+<!-- ── External Dependencies ─────────────────────────────────── -->
+<div class="ext-section">
+  <h2>External Dependencies</h2>
+  <div class="ext-grid">
+    <div class="ext-item"><span class="ext-name">torch</span><div class="ext-used">omnivis, omnidoc, omnidapt</div></div>
+    <div class="ext-item"><span class="ext-name">ultralytics</span><div class="ext-used">omnivis, omnidapt</div></div>
+    <div class="ext-item"><span class="ext-name">transformers</span><div class="ext-used">omnivis, omnidapt, omnidoc</div></div>
+    <div class="ext-item"><span class="ext-name">scikit-learn</span><div class="ext-used">omnibedding, omnianalytics</div></div>
+    <div class="ext-item"><span class="ext-name">sentence-transformers</span><div class="ext-used">omnidoc embedder</div></div>
+    <div class="ext-item"><span class="ext-name">open-clip-torch</span><div class="ext-used">omnivis, omnidoc</div></div>
+    <div class="ext-item"><span class="ext-name">langchain-*</span><div class="ext-used">omnidoc, omnirag</div></div>
+    <div class="ext-item"><span class="ext-name">pandas</span><div class="ext-used">omnidata, omnianalytics</div></div>
+    <div class="ext-item"><span class="ext-name">numpy</span><div class="ext-used">all packages</div></div>
+    <div class="ext-item"><span class="ext-name">matplotlib</span><div class="ext-used">omnibedding plotter</div></div>
+    <div class="ext-item"><span class="ext-name">fastapi</span><div class="ext-used">omnivis, omnidapt, omnianalytics, omnirag</div></div>
+    <div class="ext-item"><span class="ext-name">pymongo</span><div class="ext-used">omnidapt, omnirag</div></div>
+    <div class="ext-item"><span class="ext-name">PyMuPDF</span><div class="ext-used">omnidoc pdf_extractor</div></div>
+    <div class="ext-item"><span class="ext-name">pdfplumber</span><div class="ext-used">omnidoc table_extractor</div></div>
+    <div class="ext-item"><span class="ext-name">groq</span><div class="ext-used">omnidoc vision_client</div></div>
+    <div class="ext-item"><span class="ext-name">chromadb</span><div class="ext-used">omnirag vectorstore</div></div>
+    <div class="ext-item"><span class="ext-name">opencv-python</span><div class="ext-used">omnivis, omnidoc</div></div>
+    <div class="ext-item"><span class="ext-name">scipy</span><div class="ext-used">omnivis drone, omnibedding</div></div>
+  </div>
+</div>
+
+<script>
+function togglePkg(el) {
+  const wasActive = el.classList.contains('active');
+  document.querySelectorAll('.pkg').forEach(p => p.classList.remove('active'));
+  if (!wasActive) el.classList.add('active');
+}
+</script>
+
+</body>
+</html>

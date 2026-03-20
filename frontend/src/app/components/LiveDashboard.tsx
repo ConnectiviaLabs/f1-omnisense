@@ -67,6 +67,8 @@ export function LiveDashboard() {
   const [replaySpeed, setReplaySpeed] = useState(5);
   const [playing, setPlaying] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [selectedDriverNum, setSelectedDriverNum] = useState<number | null>(null);
+  const [anomalyVehicles, setAnomalyVehicles] = useState<VehicleData[]>([]);
   const lastFrameRef = useRef(0);
   const scrubRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
@@ -121,6 +123,14 @@ export function LiveDashboard() {
     setReplayActive(!isSessionLive && sessionDuration > 0);
   }, [sessionKey, isSessionLive, sessionDuration]);
 
+  // --- Anomaly data (one-time fetch) ---
+  useEffect(() => {
+    fetch('/api/pipeline/anomaly')
+      .then(r => r.json())
+      .then(data => setAnomalyVehicles(parseAnomalyDrivers(data)))
+      .catch(() => {});
+  }, []);
+
   // --- Data Fetching ---
   const { data: drivers } = usePolling({
     fetcher: () => sessionKey ? openf1.getDrivers(sessionKey) : Promise.resolve([]),
@@ -154,6 +164,14 @@ export function LiveDashboard() {
     fetcher: () => sessionKey ? openf1.getIntervals(sessionKey) : Promise.resolve([]),
     interval: 60000, enabled: !!sessionKey,
   });
+
+  // Auto-select first McLaren driver when drivers load
+  useEffect(() => {
+    if (drivers && drivers.length > 0 && selectedDriverNum === null) {
+      const mclaren = drivers.find(d => d.team_name?.toLowerCase().includes('mclaren'));
+      setSelectedDriverNum(mclaren?.driver_number ?? drivers[0].driver_number);
+    }
+  }, [drivers, selectedDriverNum]);
 
   // --- Replay Animation ---
   useEffect(() => {
@@ -533,6 +551,25 @@ export function LiveDashboard() {
     }
   }, [replayActive]);
 
+  // --- Selected driver anomaly data ---
+  const selectedDriver = useMemo(() => drivers?.find(d => d.driver_number === selectedDriverNum) ?? null, [drivers, selectedDriverNum]);
+  const selectedVehicle = useMemo(() => {
+    if (!selectedDriver || anomalyVehicles.length === 0) return null;
+    return anomalyVehicles.find(v => v.code === selectedDriver.name_acronym) ?? null;
+  }, [selectedDriver, anomalyVehicles]);
+
+  // Race-by-race trend for the selected driver's systems
+  const healthTrendData = useMemo(() => {
+    if (!selectedVehicle) return [];
+    return selectedVehicle.races.map(r => {
+      const row: Record<string, any> = { race: r.race };
+      for (const [sysName, sys] of Object.entries(r.systems)) {
+        row[sysName] = sys.health;
+      }
+      return row;
+    });
+  }, [selectedVehicle]);
+
   if (sessionsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -592,6 +629,20 @@ export function LiveDashboard() {
                 </option>
               ))}
             </select>
+            {drivers && drivers.length > 0 && (
+              <select
+                value={selectedDriverNum ?? ''}
+                onChange={(e) => setSelectedDriverNum(Number(e.target.value))}
+                aria-label="Select driver"
+                className="appearance-none bg-[#222838] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-1.5 text-sm text-foreground focus:outline-none cursor-pointer"
+              >
+                {drivers.map(d => (
+                  <option key={d.driver_number} value={d.driver_number}>
+                    {d.name_acronym} — {d.full_name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
         {latestWeather && (

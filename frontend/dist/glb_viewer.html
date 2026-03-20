@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Model Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background: #0a0a12;
+            color: #eee;
+            overflow: hidden;
+            cursor: default;
+        }
+        #container { width: 100vw; height: 100vh; position: relative; }
+
+        /* ─── Info panel (top-left) ─── */
+        #info {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(10,10,18,0.88);
+            -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+            padding: 8px 12px; border-radius: 8px;
+            border: 1px solid rgba(255,128,0,0.1);
+            z-index: 100; max-width: 220px;
+        }
+        #info h1 { font-size: 0.78em; font-weight: 600; color: #FF8000; }
+        #info p { font-size: 0.68em; line-height: 1.3; color: rgba(255,255,255,0.4); margin-top: 2px; }
+
+        /* ─── Controls (bottom-left) ─── */
+        #controls {
+            position: absolute; bottom: 10px; left: 10px;
+            background: rgba(10,10,18,0.88);
+            -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+            padding: 6px; border-radius: 8px;
+            border: 1px solid rgba(255,128,0,0.1);
+            z-index: 100; display: flex; gap: 4px;
+        }
+        #controls button {
+            background: rgba(255,128,0,0.08); color: rgba(255,255,255,0.6);
+            border: 1px solid rgba(255,128,0,0.12); padding: 5px 10px;
+            border-radius: 5px; cursor: pointer; font-size: 0.68em;
+            font-weight: 500; transition: all 0.15s;
+        }
+        #controls button:hover { background: rgba(255,128,0,0.18); color: #fff; }
+        #controls button.active { background: #FF8000; color: #000; border-color: #FF8000; }
+
+        /* ─── Detail panel (right side, shown on click) ─── */
+        #detail-panel {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(10,10,18,0.92);
+            -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+            padding: 14px 16px; border-radius: 10px;
+            border: 1px solid rgba(255,128,0,0.15);
+            z-index: 120; width: 220px;
+            transform: translateX(240px); opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            pointer-events: auto;
+        }
+        #detail-panel.visible { transform: translateX(0); opacity: 1; }
+        #detail-panel .dp-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px; padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,128,0,0.1);
+        }
+        #detail-panel .dp-name { font-size: 0.82em; font-weight: 600; }
+        #detail-panel .dp-health { font-size: 1.1em; font-weight: 700; font-family: monospace; }
+        #detail-panel .dp-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-bottom: 10px; overflow: hidden; }
+        #detail-panel .dp-bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+        #detail-panel .dp-status {
+            display: inline-block; font-size: 0.62em; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            padding: 2px 8px; border-radius: 10px; margin-bottom: 10px;
+        }
+        #detail-panel .dp-metrics { display: flex; flex-direction: column; gap: 6px; }
+        #detail-panel .dp-metric {
+            display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.68em;
+        }
+        #detail-panel .dp-metric-label { color: rgba(255,255,255,0.45); }
+        #detail-panel .dp-metric-value { color: rgba(255,255,255,0.85); font-family: monospace; font-weight: 600; }
+        #detail-panel .dp-close {
+            position: absolute; top: 8px; right: 10px;
+            background: none; border: none; color: rgba(255,255,255,0.3);
+            cursor: pointer; font-size: 1em; line-height: 1;
+            transition: color 0.15s;
+        }
+        #detail-panel .dp-close:hover { color: #fff; }
+
+        /* ─── Legend (bottom-right) ─── */
+        #stress-legend {
+            position: absolute; bottom: 10px; right: 10px;
+            background: rgba(10,10,18,0.88);
+            -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+            padding: 8px 10px; border-radius: 8px;
+            border: 1px solid rgba(255,128,0,0.1);
+            z-index: 100; display: none;
+        }
+        .legend-item {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 0.64em; padding: 3px 4px; border-radius: 4px;
+            cursor: pointer; transition: background 0.15s;
+        }
+        .legend-item:hover { background: rgba(255,128,0,0.08); }
+        .legend-item.active { background: rgba(255,128,0,0.12); }
+        .legend-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .legend-label { color: rgba(255,255,255,0.45); flex: 1; }
+        .legend-value { color: rgba(255,255,255,0.75); font-family: monospace; }
+
+        /* ─── Loading ─── */
+        #loading {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.82em; color: #FF8000; z-index: 200;
+        }
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid rgba(255,128,0,0.15); border-top-color: #FF8000;
+            border-radius: 50%; animation: spin 0.7s linear infinite;
+            vertical-align: middle; margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── Cursor hint ─── */
+        .clickable-cursor { cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loading"><span class="spinner"></span> Loading model...</div>
+        <div id="info">
+            <h1 id="viewer-title">3D Model Viewer</h1>
+            <p id="route-info">Loading...</p>
+        </div>
+        <div id="controls">
+            <button onclick="window._setMode('solid')" id="btn-solid" class="active">Solid</button>
+            <button onclick="window._setMode('wireframe')" id="btn-wireframe">Wireframe</button>
+            <button onclick="window._toggleRotate()" id="btn-rotate">Rotate</button>
+            <button onclick="window._toggleStress()" id="btn-stress" style="display:none">Stress</button>
+            <button onclick="window._reloadModel()" id="btn-reload" title="Reload model (bypass cache)">↻</button>
+        </div>
+        <div id="detail-panel">
+            <button class="dp-close" onclick="window._closeDetail()">&times;</button>
+            <div class="dp-header">
+                <span class="dp-name" id="dp-name"></span>
+                <span class="dp-health" id="dp-health"></span>
+            </div>
+            <div class="dp-bar"><div class="dp-bar-fill" id="dp-bar-fill"></div></div>
+            <span class="dp-status" id="dp-status"></span>
+            <div class="dp-metrics" id="dp-metrics"></div>
+        </div>
+        <div id="stress-legend">
+            <div id="legend-items"></div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    // Enable Three.js file cache — prevents re-downloading GLBs on each iframe load
+    THREE.Cache.enabled = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const DIRECT_URL = params.get('url') || null;
+    const STRESS_DATA = params.get('stress') ? JSON.parse(decodeURIComponent(params.get('stress'))) : null;
+
+    // ─── Three.js Setup ─────────────────────────────────────────────
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a12);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 1000);
+    camera.position.set(3, 2, 3);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    const labelRenderer = new CSS2DRenderer();
+    labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    labelRenderer.domElement.style.position = 'absolute';
+    labelRenderer.domElement.style.top = '0';
+    labelRenderer.domElement.style.pointerEvents = 'none';
+    document.getElementById('container').appendChild(labelRenderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 0.8;
+    controls.maxDistance = 12;
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x404060, 0.8));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    keyLight.position.set(5, 8, 5); scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xff8000, 0.3);
+    fillLight.position.set(-5, 3, -3); scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+    rimLight.position.set(0, 2, -8); scene.add(rimLight);
+
+    const grid = new THREE.GridHelper(12, 24, 0x1a1a2e, 0x12121e);
+    grid.material.opacity = 0.3; grid.material.transparent = true;
+    scene.add(grid);
+
+    // ─── State ──────────────────────────────────────────────────────
+    let currentModel = null;
+    let autoRotate = false;
+    let displayMode = 'solid';
+    let stressVisible = true;
+    let selectedSystem = null;
+    let hoveredSystem = null;
+    const stressGroup = new THREE.Group();
+    scene.add(stressGroup);
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    // Camera animation state
+    let cameraTarget = null;     // { pos: Vector3, lookAt: Vector3 }
+    let cameraLerp = 0;
+    let cameraStart = null;
+    const CAMERA_SPEED = 0.03;
+
+    // Store marker data for raycasting and interaction
+    const markerMap = new Map();  // mesh → { sys, worldPos, glow, core, label, labelDiv, line }
+
+    // ─── Stress hotspot positions (bounding box fractions) ──────────
+    const STRESS_POSITIONS = {
+        'Power Unit':   { fx: 0.50, fy: 0.35, fz: 0.20 },
+        'Brakes':       { fx: 0.50, fy: 0.20, fz: 0.82 },
+        'Drivetrain':   { fx: 0.50, fy: 0.30, fz: 0.40 },
+        'Suspension':   { fx: 0.15, fy: 0.22, fz: 0.55 },
+        'Thermal':      { fx: 0.85, fy: 0.22, fz: 0.55 },
+        'Electronics':  { fx: 0.50, fy: 0.42, fz: 0.62 },
+    };
+
+    function healthToColor(health) {
+        if (health >= 75) return new THREE.Color(0x22c55e);
+        if (health >= 50) return new THREE.Color(0xff8000);
+        return new THREE.Color(0xef4444);
+    }
+
+    function healthToLabel(health) {
+        if (health >= 75) return { text: 'NOMINAL', bg: 'rgba(34,197,94,0.15)', color: '#22c55e' };
+        if (health >= 50) return { text: 'WARNING', bg: 'rgba(255,128,0,0.15)', color: '#ff8000' };
+        return { text: 'CRITICAL', bg: 'rgba(239,68,68,0.15)', color: '#ef4444' };
+    }
+
+    // ─── Create stress markers ──────────────────────────────────────
+    function createStressMarkers(modelBox) {
+        stressGroup.clear();
+        markerMap.clear();
+        if (!STRESS_DATA || !STRESS_DATA.length) return;
+
+        const min = modelBox.min;
+        const size = modelBox.getSize(new THREE.Vector3());
+        const scale = Math.max(size.x, size.y, size.z);
+        const dotRadius = scale * 0.02;
+        const glowRadius = scale * 0.055;
+        const hitRadius = scale * 0.06;  // larger invisible hit target
+
+        STRESS_DATA.forEach(sys => {
+            const posConfig = STRESS_POSITIONS[sys.name];
+            if (!posConfig) return;
+
+            const color = healthToColor(sys.health);
+            const worldPos = new THREE.Vector3(
+                min.x + posConfig.fx * size.x,
+                min.y + posConfig.fy * size.y,
+                min.z + posConfig.fz * size.z
+            );
+
+            // Invisible hit sphere (for raycasting clicks)
+            const hitGeo = new THREE.SphereGeometry(hitRadius, 8, 8);
+            const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+            const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+            hitMesh.position.copy(worldPos);
+            hitMesh.userData.systemName = sys.name;
+            stressGroup.add(hitMesh);
+
+            // Outer glow (pulsing)
+            const glowGeo = new THREE.SphereGeometry(glowRadius, 16, 16);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color, transparent: true, opacity: 0.1, depthWrite: false,
+            });
+            const glow = new THREE.Mesh(glowGeo, glowMat);
+            glow.position.copy(worldPos);
+            glow.userData.pulseSpeed = 1.5 + Math.random() * 0.5;
+            glow.userData.baseOpacity = 0.1;
+            stressGroup.add(glow);
+
+            // Inner dot
+            const coreGeo = new THREE.SphereGeometry(dotRadius, 16, 16);
+            const coreMat = new THREE.MeshBasicMaterial({
+                color, transparent: true, opacity: 0.9,
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            core.position.copy(worldPos);
+            core.userData.baseScale = 1;
+            stressGroup.add(core);
+
+            // Connecting line
+            const lineH = scale * 0.09;
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                worldPos.clone(),
+                worldPos.clone().add(new THREE.Vector3(0, lineH, 0)),
+            ]);
+            const lineMat = new THREE.LineBasicMaterial({
+                color, transparent: true, opacity: 0.35,
+            });
+            const line = new THREE.Line(lineGeo, lineMat);
+            stressGroup.add(line);
+
+            // CSS2D compact label
+            const labelDiv = document.createElement('div');
+            labelDiv.style.cssText = `
+                background: rgba(10,10,18,0.88);
+                border: 1px solid ${color.getStyle()};
+                border-radius: 4px; padding: 2px 7px;
+                font-family: 'Inter', sans-serif;
+                white-space: nowrap; pointer-events: none;
+                line-height: 1.15; transition: all 0.2s ease;
+                box-shadow: 0 0 8px ${color.getStyle()}33;
+            `;
+            labelDiv.innerHTML = `
+                <div style="font-size:7.5px;color:${color.getStyle()};font-weight:600;letter-spacing:0.03em;">${sys.name}</div>
+                <div style="font-size:10px;color:#fff;font-weight:700;font-family:monospace;">${sys.health}%</div>
+            `;
+            const label = new CSS2DObject(labelDiv);
+            label.position.copy(worldPos);
+            label.position.y += lineH + scale * 0.012;
+            stressGroup.add(label);
+
+            // Register for interaction
+            markerMap.set(hitMesh, {
+                sys, worldPos, glow, core, label, labelDiv, line,
+                color, glowMat, coreMat, lineMat,
+            });
+        });
+
+        // Show buttons and legend
+        document.getElementById('btn-stress').style.display = '';
+        document.getElementById('btn-stress').classList.add('active');
+        buildLegend();
+    }
+
+    // ─── Legend ──────────────────────────────────────────────────────
+    function buildLegend() {
+        if (!STRESS_DATA) return;
+        const container = document.getElementById('legend-items');
+        container.innerHTML = '';
+        STRESS_DATA.forEach(sys => {
+            const color = healthToColor(sys.health);
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.dataset.system = sys.name;
+            item.innerHTML = `
+                <div class="legend-dot" style="background:${color.getStyle()};box-shadow:0 0 5px ${color.getStyle()};"></div>
+                <span class="legend-label">${sys.name}</span>
+                <span class="legend-value" style="color:${color.getStyle()}">${sys.health}%</span>
+            `;
+            item.addEventListener('click', () => selectSystem(sys.name));
+            item.addEventListener('mouseenter', () => highlightSystem(sys.name));
+            item.addEventListener('mouseleave', () => unhighlightSystem());
+            container.appendChild(item);
+        });
+        document.getElementById('stress-legend').style.display = 'block';
+    }
+
+    // ─── System interaction ─────────────────────────────────────────
+    function selectSystem(name) {
+        if (selectedSystem === name) {
+            closeDetail();
+            return;
+        }
+        selectedSystem = name;
+
+        // Find marker data
+        let markerData = null;
+        for (const [, data] of markerMap) {
+            if (data.sys.name === name) { markerData = data; break; }
+        }
+        if (!markerData) return;
+
+        // Animate camera toward the hotspot
+        const offset = new THREE.Vector3(0.8, 0.5, 0.8);
+        const targetPos = markerData.worldPos.clone().add(offset);
+        cameraStart = { pos: camera.position.clone(), lookAt: controls.target.clone() };
+        cameraTarget = { pos: targetPos, lookAt: markerData.worldPos.clone() };
+        cameraLerp = 0;
+
+        // Show detail panel
+        showDetailPanel(markerData.sys);
+
+        // Highlight in legend
+        document.querySelectorAll('.legend-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.system === name);
+        });
+
+        // Boost selected marker, dim others
+        for (const [, data] of markerMap) {
+            const isSelected = data.sys.name === name;
+            data.glowMat.opacity = isSelected ? 0.25 : 0.05;
+            data.coreMat.opacity = isSelected ? 1.0 : 0.4;
+            data.lineMat.opacity = isSelected ? 0.6 : 0.15;
+            data.labelDiv.style.opacity = isSelected ? '1' : '0.4';
+            data.labelDiv.style.transform = isSelected ? 'scale(1.15)' : 'scale(0.9)';
+            data.core.scale.setScalar(isSelected ? 1.4 : 0.8);
+        }
+    }
+
+    function highlightSystem(name) {
+        if (selectedSystem) return; // don't override selection
+        hoveredSystem = name;
+        document.body.style.cursor = 'pointer';
+        for (const [, data] of markerMap) {
+            const isHovered = data.sys.name === name;
+            data.glowMat.opacity = isHovered ? 0.2 : 0.08;
+            data.coreMat.opacity = isHovered ? 1.0 : 0.7;
+            data.labelDiv.style.opacity = isHovered ? '1' : '0.65';
+            data.labelDiv.style.transform = isHovered ? 'scale(1.08)' : 'scale(1)';
+        }
+    }
+
+    function unhighlightSystem() {
+        if (selectedSystem) return;
+        hoveredSystem = null;
+        document.body.style.cursor = 'default';
+        for (const [, data] of markerMap) {
+            data.glowMat.opacity = data.glow.userData.baseOpacity || 0.1;
+            data.coreMat.opacity = 0.9;
+            data.labelDiv.style.opacity = '1';
+            data.labelDiv.style.transform = 'scale(1)';
+        }
+    }
+
+    function showDetailPanel(sys) {
+        const panel = document.getElementById('detail-panel');
+        const color = healthToColor(sys.health);
+        const status = healthToLabel(sys.health);
+
+        document.getElementById('dp-name').textContent = sys.name;
+        document.getElementById('dp-name').style.color = color.getStyle();
+        document.getElementById('dp-health').textContent = sys.health + '%';
+        document.getElementById('dp-health').style.color = color.getStyle();
+
+        const barFill = document.getElementById('dp-bar-fill');
+        barFill.style.background = color.getStyle();
+        barFill.style.width = sys.health + '%';
+
+        const statusEl = document.getElementById('dp-status');
+        statusEl.textContent = status.text;
+        statusEl.style.background = status.bg;
+        statusEl.style.color = status.color;
+
+        const metricsEl = document.getElementById('dp-metrics');
+        metricsEl.innerHTML = '';
+        if (sys.metrics && sys.metrics.length) {
+            sys.metrics.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'dp-metric';
+                div.innerHTML = `
+                    <span class="dp-metric-label">${m.label}</span>
+                    <span class="dp-metric-value">${m.value}</span>
+                `;
+                metricsEl.appendChild(div);
+            });
+        }
+
+        panel.style.borderColor = color.getStyle() + '30';
+        panel.classList.add('visible');
+    }
+
+    function closeDetail() {
+        selectedSystem = null;
+        document.getElementById('detail-panel').classList.remove('visible');
+        document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('active'));
+
+        // Reset all markers
+        for (const [, data] of markerMap) {
+            data.glowMat.opacity = data.glow.userData.baseOpacity || 0.1;
+            data.coreMat.opacity = 0.9;
+            data.lineMat.opacity = 0.35;
+            data.labelDiv.style.opacity = '1';
+            data.labelDiv.style.transform = 'scale(1)';
+            data.core.scale.setScalar(1);
+        }
+
+        // Animate camera back to default
+        cameraStart = { pos: camera.position.clone(), lookAt: controls.target.clone() };
+        cameraTarget = { pos: new THREE.Vector3(3, 2, 3), lookAt: new THREE.Vector3(0, 0, 0) };
+        cameraLerp = 0;
+    }
+    window._closeDetail = closeDetail;
+
+    // ─── Click / hover raycasting ───────────────────────────────────
+    function onPointerMove(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        if (selectedSystem || !stressVisible) return;
+
+        raycaster.setFromCamera(mouse, camera);
+        const hitMeshes = [...markerMap.keys()];
+        const intersects = raycaster.intersectObjects(hitMeshes);
+
+        if (intersects.length > 0) {
+            const name = intersects[0].object.userData.systemName;
+            if (hoveredSystem !== name) highlightSystem(name);
+        } else if (hoveredSystem) {
+            unhighlightSystem();
+        }
+    }
+
+    function onPointerDown(event) {
+        if (!stressVisible) return;
+
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const hitMeshes = [...markerMap.keys()];
+        const intersects = raycaster.intersectObjects(hitMeshes);
+
+        if (intersects.length > 0) {
+            const name = intersects[0].object.userData.systemName;
+            selectSystem(name);
+        }
+    }
+
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+
+    // ─── Load GLB ───────────────────────────────────────────────────
+    function loadGLB() {
+        if (!DIRECT_URL) {
+            document.getElementById('loading').innerHTML =
+                '<span style="color:#ef4444;">No model URL provided.</span>';
+            return;
+        }
+        const loader = new GLTFLoader();
+        document.getElementById('loading').style.display = 'block';
+
+        loader.load(
+            DIRECT_URL,
+            (gltf) => {
+                if (currentModel) scene.remove(currentModel);
+                currentModel = gltf.scene;
+
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(...box.getSize(new THREE.Vector3()).toArray());
+                const scale = 2.5 / maxDim;
+
+                currentModel.scale.setScalar(scale);
+                currentModel.position.sub(center.multiplyScalar(scale));
+
+                scene.add(currentModel);
+                applyMode(displayMode);
+                document.getElementById('loading').style.display = 'none';
+
+                let verts = 0, faces = 0;
+                currentModel.traverse(c => {
+                    if (c.isMesh && c.geometry) {
+                        verts += c.geometry.attributes.position?.count || 0;
+                        const idx = c.geometry.index;
+                        faces += idx ? idx.count / 3 : (c.geometry.attributes.position?.count || 0) / 3;
+                    }
+                });
+                document.getElementById('route-info').innerHTML =
+                    `${verts.toLocaleString()} verts &middot; ${Math.round(faces).toLocaleString()} faces`;
+
+                const scaledBox = new THREE.Box3().setFromObject(currentModel);
+                if (STRESS_DATA) createStressMarkers(scaledBox);
+            },
+            (progress) => {
+                if (progress.total > 0) {
+                    const pct = Math.round(progress.loaded / progress.total * 100);
+                    document.getElementById('loading').innerHTML =
+                        `<span class="spinner"></span> Loading... ${pct}%`;
+                }
+            },
+            (error) => {
+                document.getElementById('loading').innerHTML =
+                    `<span style="color:#ef4444;">Failed to load model</span>`;
+            }
+        );
+    }
+
+    // ─── Display Modes ──────────────────────────────────────────────
+    function applyMode(mode) {
+        if (!currentModel) return;
+        currentModel.traverse(child => {
+            if (child.isMesh) {
+                if (mode === 'wireframe') {
+                    child.material = new THREE.MeshBasicMaterial({ color: 0xFF8000, wireframe: true });
+                } else {
+                    if (child.userData.originalMaterial) child.material = child.userData.originalMaterial;
+                    else child.userData.originalMaterial = child.material.clone();
+                }
+            }
+        });
+    }
+
+    window._setMode = function(mode) {
+        displayMode = mode;
+        applyMode(mode);
+        document.getElementById('btn-solid').classList.toggle('active', mode === 'solid');
+        document.getElementById('btn-wireframe').classList.toggle('active', mode === 'wireframe');
+    };
+
+    window._toggleRotate = function() {
+        autoRotate = !autoRotate;
+        document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+    };
+
+    window._reloadModel = function() {
+        THREE.Cache.clear();
+        if (currentModel) { scene.remove(currentModel); currentModel = null; }
+        stressGroup.clear();
+        markerMap.clear();
+        closeDetail();
+        loadGLB();
+    };
+
+    window._toggleStress = function() {
+        stressVisible = !stressVisible;
+        stressGroup.visible = stressVisible;
+        document.getElementById('btn-stress').classList.toggle('active', stressVisible);
+        document.getElementById('stress-legend').style.display = stressVisible ? 'block' : 'none';
+        if (!stressVisible) closeDetail();
+    };
+
+    // ─── Animation ──────────────────────────────────────────────────
+    const clock = new THREE.Clock();
+    function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+
+        // Smooth camera animation
+        if (cameraTarget && cameraLerp < 1) {
+            cameraLerp = Math.min(1, cameraLerp + CAMERA_SPEED);
+            const ease = cameraLerp * cameraLerp * (3 - 2 * cameraLerp); // smoothstep
+            camera.position.lerpVectors(cameraStart.pos, cameraTarget.pos, ease);
+            controls.target.lerpVectors(cameraStart.lookAt, cameraTarget.lookAt, ease);
+            if (cameraLerp >= 1) cameraTarget = null;
+        }
+
+        if (autoRotate && currentModel) {
+            currentModel.rotation.y += 0.003;
+            stressGroup.rotation.y = currentModel.rotation.y;
+        }
+
+        // Pulse glow spheres
+        for (const [, data] of markerMap) {
+            if (data.glow.userData.pulseSpeed) {
+                const ps = data.glow.userData.pulseSpeed;
+                const isActive = selectedSystem === data.sys.name;
+                const baseOp = isActive ? 0.25 : (data.glow.userData.baseOpacity || 0.1);
+                const s = 1 + (isActive ? 0.4 : 0.25) * Math.sin(t * ps);
+                data.glow.scale.setScalar(s);
+                if (!selectedSystem || isActive) {
+                    data.glowMat.opacity = baseOp + 0.08 * Math.sin(t * ps);
+                }
+            }
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
+    }
+
+    // ─── Resize ─────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ─── Init ───────────────────────────────────────────────────────
+    const title = params.get('title') || '3D Model Viewer';
+    document.getElementById('viewer-title').textContent = title;
+    animate();
+    loadGLB();
+    </script>
+</body>
+</html>
