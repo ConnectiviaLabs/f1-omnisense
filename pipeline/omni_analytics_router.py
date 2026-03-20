@@ -182,6 +182,87 @@ def team_anomaly_summary(team: str, year: int = Query(2024)):
     return _sanitize({"team": team, "year": year, "drivers": results, "count": len(results)})
 
 
+@router.post("/forecast/team/{team}")
+def forecast_team(
+    team: str,
+    column: str = Query(..., description="Telemetry column to forecast"),
+    horizon: int = Query(5, ge=1, le=50),
+    method: str = Query("auto"),
+    year: int = Query(2024),
+):
+    """Forecast a telemetry column averaged across all drivers in a team."""
+    grid = get_grid_drivers(year)
+    team_drivers = [d for d in grid if team.lower() in d["team"].lower()]
+    if not team_drivers:
+        raise HTTPException(404, f"No drivers found for team '{team}' in {year}")
+
+    driver_dfs = []
+    driver_codes_used = []
+    for d in team_drivers:
+        try:
+            df = load_driver_race_telemetry(d["code"])
+            if not df.empty and column in df.columns:
+                driver_dfs.append(df)
+                driver_codes_used.append(d["code"])
+        except Exception:
+            continue
+
+    if not driver_dfs:
+        raise HTTPException(404, f"No data for column '{column}' in team '{team}'")
+
+    # Average across drivers race-by-race (align by row index)
+    combined = pd.DataFrame()
+    for df in driver_dfs:
+        # Reindex to align race rows
+        vals = df[column].reset_index(drop=True)
+        combined = pd.concat([combined, vals.rename(len(combined.columns))], axis=1)
+
+    # Team average per race
+    team_series = combined.mean(axis=1).dropna()
+    if len(team_series) < 3:
+        raise HTTPException(400, f"Not enough data points for team forecast (got {len(team_series)})")
+
+    # Build a minimal dataset for the forecaster
+    team_df = pd.DataFrame({column: team_series.values})
+    numeric_cols = [column]
+    col_profiles = [
+        ColumnProfile(
+            name=column,
+            dtype=DType.FLOAT,
+            role=ColumnRole.METRIC,
+            null_count=0,
+            unique_count=int(team_series.nunique()),
+        )
+    ]
+    profile = DatasetProfile(
+        row_count=len(team_df),
+        column_count=1,
+        columns=col_profiles,
+        metric_cols=numeric_cols,
+        timestamp_col=None,
+    )
+    ds = TabularDataset(df=team_df, profile=profile)
+    result = forecast(ds, column=column, horizon=horizon, method=method)
+
+    return _sanitize({
+        "team": team,
+        "drivers": driver_codes_used,
+        "column": result.column,
+        "method": result.method,
+        "values": list(result.values),
+        "lower_bound": list(result.lower_bound) if result.lower_bound is not None else None,
+        "upper_bound": list(result.upper_bound) if result.upper_bound is not None else None,
+        "mae": result.mae,
+        "rmse": result.rmse,
+        "trend_direction": result.trend_direction,
+        "trend_pct": result.trend_pct,
+        "volatility": getattr(result, "volatility", None),
+        "risk_flag": getattr(result, "risk_flag", None),
+        "history": list(team_series.values),
+        "timestamps": list(result.timestamps) if hasattr(result, "timestamps") and result.timestamps is not None else None,
+    })
+
+
 @router.get("/rivals/{driver_code}")
 def rivals_comparison(driver_code: str, year: int = Query(2024)):
     """Compare a driver's anomaly profile against the rest of the field."""

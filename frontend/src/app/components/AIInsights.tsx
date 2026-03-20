@@ -120,7 +120,7 @@ export function AIInsights() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" />
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
         <span className="ml-3 text-muted-foreground text-sm">Loading pipeline intelligence...</span>
       </div>
     );
@@ -142,11 +142,11 @@ export function AIInsights() {
   return (
     <div className="space-y-4">
       {/* Pipeline Stats Bar */}
-      <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+      <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#FF8000]/10 flex items-center justify-center">
-              <Brain className="w-4 h-4 text-[#FF8000]" />
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Brain className="w-4 h-4 text-primary" />
             </div>
             <div>
               <h3 className="text-sm text-foreground">PDF Extraction Intelligence</h3>
@@ -163,13 +163,13 @@ export function AIInsights() {
         <div className="grid grid-cols-6 gap-3">
           {[
             { label: 'Pages Processed', value: s.total_pages.toLocaleString(), icon: <FileText className="w-3 h-3 text-cyan-400" /> },
-            { label: 'Rules Extracted', value: s.total_rules.toLocaleString(), icon: <Layers className="w-3 h-3 text-[#FF8000]" /> },
+            { label: 'Rules Extracted', value: s.total_rules.toLocaleString(), icon: <Layers className="w-3 h-3 text-primary" /> },
             { label: 'Equipment Items', value: s.total_equipment.toLocaleString(), icon: <Cog className="w-3 h-3 text-green-400" /> },
             { label: 'Dimensions', value: s.total_dimensions.toLocaleString(), icon: <Ruler className="w-3 h-3 text-amber-400" /> },
             { label: 'API Cost', value: `$${s.total_cost_usd.toFixed(2)}`, icon: <DollarSign className="w-3 h-3 text-purple-400" /> },
             { label: 'Tokens Used', value: `${((s.total_tokens_in + s.total_tokens_out) / 1_000_000).toFixed(1)}M`, icon: <Cpu className="w-3 h-3 text-red-400" /> },
           ].map((stat) => (
-            <div key={stat.label} className="bg-[#0D1117] rounded-lg p-2">
+            <div key={stat.label} className="bg-background rounded-lg p-2">
               <div className="flex items-center gap-1.5 mb-1">
                 {stat.icon}
                 <span className="text-[11px] text-muted-foreground tracking-wider">{stat.label}</span>
@@ -183,7 +183,7 @@ export function AIInsights() {
       {/* OmniKeX Insights Panel */}
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">KNOWLEDGE EXTRACTION (OmniKeX)</h3>
-        <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-purple-400" />
@@ -199,9 +199,9 @@ export function AIInsights() {
               { code: 'NOR', name: 'Lando Norris' },
               { code: 'PIA', name: 'Oscar Piastri' },
             ].map(({ code, name }) => (
-              <div key={code} className="bg-[#0D1117] rounded-lg p-3">
+              <div key={code} className="bg-background rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-mono text-[#FF8000]">{code}</span>
+                  <span className="text-[11px] font-mono text-primary">{code}</span>
                   <span className="text-[11px] text-muted-foreground">{name}</span>
                 </div>
                 {kexInsights[code] ? (
@@ -228,7 +228,7 @@ export function AIInsights() {
                     type="button"
                     onClick={() => fetchKexInsight(code)}
                     disabled={kexLoading !== null}
-                    className="w-full flex items-center justify-center gap-2 text-[11px] text-[#FF8000] hover:text-[#FF8000]/80 bg-[#FF8000]/5 rounded-lg py-2 transition-colors disabled:opacity-40"
+                    className="w-full flex items-center justify-center gap-2 text-[11px] text-primary hover:text-primary/80 bg-primary/5 rounded-lg py-2 transition-colors disabled:opacity-40"
                   >
                     {kexLoading === code ? (
                       <>
@@ -253,9 +253,9 @@ export function AIInsights() {
       <div>
         <h3 className="text-sm text-muted-foreground tracking-widest mb-2">UPLOAD DOCUMENTS</h3>
         <div
-          className={`bg-[#1A1F2E] border-2 border-dashed rounded-xl p-6 transition-colors ${
+          className={`bg-card border-2 border-dashed rounded-lg p-6 transition-colors ${
             dragging
-              ? 'border-[#FF8000] bg-[#FF8000]/5'
+              ? 'border-primary bg-primary/5'
               : 'border-[rgba(255,128,0,0.2)] hover:border-[rgba(255,128,0,0.4)]'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -267,13 +267,13 @@ export function AIInsights() {
           }}
         >
           <div className="flex flex-col items-center gap-3">
-            <CloudUpload className={`w-8 h-8 ${dragging ? 'text-[#FF8000]' : 'text-[rgba(255,128,0,0.4)]'}`} />
+            <CloudUpload className={`w-8 h-8 ${dragging ? 'text-primary' : 'text-[rgba(255,128,0,0.4)]'}`} />
             <div className="text-center">
               <p className="text-sm text-foreground">
                 Drop files here or{' '}
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-[#FF8000] hover:underline"
+                  className="text-primary hover:underline"
                 >
                   browse
                 </button>
@@ -305,9 +305,9 @@ export function AIInsights() {
             {uploads.map((u, i) => (
               <div
                 key={`${u.name}-${i}`}
-                className="flex items-center gap-3 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-lg px-4 py-2.5"
+                className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2.5"
               >
-                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-[#FF8000] animate-spin shrink-0" />}
+                {u.status === 'uploading' && <Loader2 className="w-3.5 h-3.5 text-primary animate-spin shrink-0" />}
                 {u.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
                 {u.status === 'error' && <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                 <div className="flex-1 min-w-0">
@@ -368,16 +368,16 @@ export function AIInsights() {
           {/* Regulation Categories */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">REGULATION CATEGORIES</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
               <div className="space-y-2">
                 {categoryBreakdown.map(([cat, count]) => {
                   const pct = Math.round((count / s.total_rules) * 100);
                   return (
                     <div key={cat} className="flex items-center gap-3">
                       <span className="text-[11px] text-foreground w-48 truncate">{cat}</span>
-                      <div className="flex-1 h-1.5 bg-[#0D1117] rounded-full overflow-hidden">
+                      <div className="flex-1 h-1.5 bg-background rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-[#FF8000] rounded-full"
+                          className="h-full bg-primary rounded-full"
                           style={{ width: `${pct}%` }}
                         />
                       </div>
@@ -395,7 +395,7 @@ export function AIInsights() {
           {/* Equipment Types */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">EQUIPMENT TYPES</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-1.5">
               {equipmentTypes.map(([type, count]) => (
                 <div key={type} className="flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-2">
@@ -414,11 +414,11 @@ export function AIInsights() {
           {/* Dimensional Data Sample */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">DIMENSIONAL SPECS (sample)</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.dimensional_data.slice(0, 8).map((dim, i) => (
                 <div key={i} className="flex items-center justify-between text-[11px]">
                   <span className="text-foreground truncate max-w-[200px]">{dim.component}</span>
-                  <span className="font-mono text-[#FF8000]">
+                  <span className="font-mono text-primary">
                     {dim.value != null ? `${dim.value} ${dim.unit || ''}` : '—'}
                   </span>
                 </div>
@@ -437,7 +437,7 @@ export function AIInsights() {
           {/* Material Specs */}
           <div>
             <h3 className="text-sm text-muted-foreground tracking-widest mb-2">MATERIAL SPECS</h3>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
+            <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4 space-y-2">
               {data.material_specs.slice(0, 6).map((mat, i) => (
                 <div key={i} className="text-[11px]">
                   <div className="flex items-center gap-2">
@@ -455,37 +455,6 @@ export function AIInsights() {
             </div>
           </div>
 
-          {/* Pipeline Architecture */}
-          <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-4">
-            <h4 className="text-[12px] text-muted-foreground tracking-widest mb-3">EXTRACTION PIPELINE</h4>
-            <div className="space-y-2 text-[12px]">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-cyan-400" />
-                <span className="text-muted-foreground">Model:</span>
-                <span className="text-foreground">Groq Llama 4 Maverick</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF8000]" />
-                <span className="text-muted-foreground">Pass 1:</span>
-                <span className="text-foreground">Document Overview</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-400" />
-                <span className="text-muted-foreground">Pass 2:</span>
-                <span className="text-foreground">Equipment & Tags</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-amber-400" />
-                <span className="text-muted-foreground">Pass 3:</span>
-                <span className="text-foreground">Specifications & Rules</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-400" />
-                <span className="text-muted-foreground">Storage:</span>
-                <span className="text-foreground">MongoDB Atlas Vector DB</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -502,13 +471,13 @@ function DocumentCard({ doc, expanded, onToggle }: {
   const totalCost = doc.passes.reduce((s, p) => s + p.cost_usd, 0);
 
   return (
-    <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
+    <div className="bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 p-4 text-left hover:bg-[#222838] transition-colors"
+        className="w-full flex items-center gap-3 p-4 text-left hover:bg-secondary transition-colors"
       >
         {expanded
-          ? <ChevronDown className="w-4 h-4 text-[#FF8000] shrink-0" />
+          ? <ChevronDown className="w-4 h-4 text-primary shrink-0" />
           : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
         }
         <div className="flex-1 min-w-0">
@@ -519,20 +488,20 @@ function DocumentCard({ doc, expanded, onToggle }: {
         </div>
         <div className="flex items-center gap-4 text-[12px] shrink-0">
           <span className="font-mono text-muted-foreground">{doc.total_pages} pages</span>
-          <span className="font-mono text-[#FF8000]">{totalItems} items</span>
+          <span className="font-mono text-primary">{totalItems} items</span>
           <span className="font-mono text-muted-foreground">${totalCost.toFixed(2)}</span>
         </div>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-[rgba(255,128,0,0.12)]">
+        <div className="px-4 pb-4 space-y-3 border-t border-border">
           {/* Passes */}
           <div className="pt-3">
             <div className="text-[11px] text-muted-foreground tracking-widest mb-2">EXTRACTION PASSES</div>
             <div className="space-y-1.5">
               {doc.passes.map((p) => (
                 <div key={p.number} className="flex items-center gap-3 text-[11px]">
-                  <span className="text-[#FF8000] font-mono w-5">P{p.number}</span>
+                  <span className="text-primary font-mono w-5">P{p.number}</span>
                   <span className="text-foreground w-28">{p.name}</span>
                   <span className="text-muted-foreground font-mono">{p.items_found} items</span>
                   <span className="text-muted-foreground font-mono">{p.latency_s.toFixed(0)}s</span>
@@ -549,7 +518,7 @@ function DocumentCard({ doc, expanded, onToggle }: {
               <div className="grid grid-cols-2 gap-1">
                 {doc.sections.slice(0, 20).map((s, i) => (
                   <div key={i} className="text-[12px] flex items-center gap-1.5">
-                    <span className="text-[#FF8000] font-mono">{s.number}</span>
+                    <span className="text-primary font-mono">{s.number}</span>
                     <span className="text-foreground truncate">{s.title}</span>
                   </div>
                 ))}

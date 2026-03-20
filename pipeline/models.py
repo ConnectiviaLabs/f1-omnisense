@@ -371,17 +371,17 @@ class GroqVisionClient:
 # ── Pre-configured model classes ─────────────────────────────────────────
 
 class GemmaClient(OllamaClient):
-    """Google Gemma 3 — fast general-purpose vision model."""
+    """Alias for backward compat — now uses Qwen 3.5."""
     def __init__(self):
-        tag = os.environ.get("GEMMA_MODEL_TAG", "gemma3:4b")
-        super().__init__(tag, "gemma")
+        tag = os.environ.get("OLLAMA_MODEL_TAG", "qwen3.5:9b")
+        super().__init__(tag, "qwen3.5")
 
 
 class QwenVLClient(OllamaClient):
-    """Qwen VL — strong on document/table understanding, 32-lang OCR."""
+    """Qwen 3.5 — unified vision + reasoning model."""
     def __init__(self):
-        tag = os.environ.get("QWEN_MODEL_TAG", "qwen3-vl:8b")
-        super().__init__(tag, "qwen")
+        tag = os.environ.get("OLLAMA_MODEL_TAG", "qwen3.5:9b")
+        super().__init__(tag, "qwen3.5")
 
 
 # ── Multi-model analyzer ────────────────────────────────────────────────
@@ -407,8 +407,7 @@ class MultiModelAnalyzer:
         if not self.clients:
             raise ValueError(
                 "No Ollama models available. Ensure ollama is running and models are pulled:\n"
-                "  ollama pull gemma3:4b\n"
-                "  ollama pull qwen3-vl:8b"
+                "  ollama pull qwen3.5:9b"
             )
 
     def analyze(

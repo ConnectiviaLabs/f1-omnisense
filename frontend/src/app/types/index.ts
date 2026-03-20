@@ -404,5 +404,73 @@ export interface JolpicaSprintResult {
   positions_gained: number;
 }
 
+// AiM RaceStudio 3 Types
+export interface AiMSessionSummary {
+  session_id: string;
+  driver: string;
+  track: string;
+  date: string;
+  time: string;
+  vehicle: string;
+  lap_count: number;
+  duration_s: number;
+  uploaded_at: string;
+  summary?: { best_lap_time_s?: number };
+}
+
+export interface AiMLap {
+  lap_number: number;
+  lap_time_s: number;
+}
+
+export interface AiMSession {
+  session_id: string;
+  driver: string;
+  track: string;
+  date: string;
+  time: string;
+  vehicle: string;
+  ecu: string;
+  firmware: string;
+  session_file: string;
+  lap_count: number;
+  duration_s: number;
+  uploaded_at: string;
+  summary: Record<string, number>;
+  laps: AiMLap[];
+}
+
+export interface AiMSystemHealth {
+  system: string;
+  health_pct: number;
+  severity: string;
+  action: string;
+}
+
+export interface AiMHealthResult {
+  session_id: string;
+  driver: string;
+  track: string;
+  overall_health: number;
+  severity: string;
+  systems: AiMSystemHealth[];
+}
+
+export interface AiMAnomalyScore {
+  lap: number;
+  score: number;
+  severity: string;
+  top_features: { feature: string; importance: number }[];
+}
+
+export interface AiMSystemAnomaly {
+  system: string;
+  health_pct: number;
+  severity: string;
+  action: string;
+  features_used: string[];
+  anomaly_scores: AiMAnomalyScore[];
+}
+
 // View types
-export type ViewType = 'dashboard' | 'mclaren-analytics' | 'car' | 'driver' | 'ai-insights' | 'regulations' | 'media' | 'chat' | 'fleet-overview' | 'driver-intel' | 'circuit-intel' | 'race-strategy';
+export type ViewType = 'home' | 'dashboard' | 'car' | 'driver' | 'schedule' | 'prime-driver' | 'prime-car' | 'prime-team' | 'prime-strategy' | 'advantage-trident' | 'advantage-crossover' | 'ai-insights' | 'regulations' | 'media' | 'radio' | 'chat' | 'real-racing';

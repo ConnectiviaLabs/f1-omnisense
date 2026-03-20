@@ -11,7 +11,7 @@ import time
 from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, Query, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,13 @@ class TextIngestRequest(BaseModel):
     texts: List[str]
     source: str = "api"
     category: str = "text"
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    k: int = 5
+    category: Optional[str] = None
 
 
 # ── Lazy Singletons ──────────────────────────────────────────────────
@@ -87,6 +94,44 @@ def _get_conversations():
         from omnirag.conversation import ConversationManager
         _conversations = ConversationManager()
     return _conversations
+
+
+_context_pipeline = None
+_tool_registry = None
+_agent = None
+
+
+def _get_context_pipeline():
+    global _context_pipeline
+    if _context_pipeline is None:
+        from omnirag.context_pipeline import ContextPipeline, retriever_as_source
+        _context_pipeline = ContextPipeline()
+        _context_pipeline.register(
+            "vector_search",
+            retriever_as_source(_get_retriever()),
+            priority=0,
+        )
+    return _context_pipeline
+
+
+def _get_tool_registry():
+    global _tool_registry
+    if _tool_registry is None:
+        from omnirag.agent import ToolRegistry
+        _tool_registry = ToolRegistry()
+    return _tool_registry
+
+
+def _get_agent():
+    global _agent
+    if _agent is None:
+        from omnirag.agent import RAGAgent
+        _agent = RAGAgent(
+            chain=_get_chain(),
+            tool_registry=_get_tool_registry(),
+            conversation_manager=_get_conversations(),
+        )
+    return _agent
 
 
 # ── Health ───────────────────────────────────────────────────────────
@@ -257,3 +302,50 @@ async def list_categories():
         return {"categories": categories}
     except Exception as e:
         return {"categories": [], "error": str(e)}
+
+
+# ── Agent (Tool-Calling) ────────────────────────────────────────────
+
+@app.post("/agent/chat")
+async def agent_chat(req: AgentChatRequest):
+    """Agent chat with tool calling and RAG fallback."""
+    agent = _get_agent()
+    response = agent.process_message(
+        req.message,
+        session_id=req.session_id,
+        k=req.k,
+        category=req.category,
+    )
+    return response.to_dict()
+
+
+@app.post("/agent/chat/stream")
+async def agent_chat_stream(req: AgentChatRequest):
+    """SSE streaming agent chat with tool events."""
+    from omnirag.streaming import stream_agent_response
+    agent = _get_agent()
+    return StreamingResponse(
+        stream_agent_response(
+            agent, req.message,
+            session_id=req.session_id,
+            k=req.k,
+            category=req.category,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@app.get("/agent/tools")
+async def agent_tools():
+    """List registered agent tools."""
+    registry = _get_tool_registry()
+    return {"tools": registry.list_tools()}
+
+
+# ── Context Pipeline ────────────────────────────────────────────────
+
+@app.get("/context/sources")
+async def context_sources():
+    """List registered context pipeline sources."""
+    pipeline = _get_context_pipeline()
+    return {"sources": pipeline.list_sources()}

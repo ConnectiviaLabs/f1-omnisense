@@ -16,20 +16,27 @@ from pipeline.anomaly.mongo_loader import (
     load_driver_race_telemetry,
     get_grid_drivers,
 )
-from omnihealth import assess
+
+try:
+    from omnihealth import assess
+except ImportError:
+    assess = None
+    logging.getLogger(__name__).warning("omnihealth not installed — /api/omni/health endpoints disabled")
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/omni/health", tags=["OmniHealth"])
 
-# Component map using fastf1_laps aggregated column names
+# Component map — aligned with SYSTEM_FEATURES in run_f1_anomaly.py
 COMPONENT_MAP = {
-    "Speed": ["SpeedI1_mean", "SpeedI2_mean", "SpeedFL_mean", "SpeedST_mean",
-              "SpeedI1_max", "SpeedST_max"],
-    "Lap Pace": ["LapTime_mean", "LapTime_std",
-                 "Sector1Time_mean", "Sector2Time_mean", "Sector3Time_mean"],
-    "Tyre Management": ["TyreLife_mean", "TyreLife_max", "TyreLife_std",
-                        "stint_count", "compound_variety"],
+    "Power Unit":       ["avg_rpm", "max_rpm", "avg_throttle"],
+    "Brakes":           ["brake_pct", "Sector1Time_mean", "Sector2Time_mean"],
+    "Drivetrain":       ["SpeedI1_mean", "SpeedI2_mean", "SpeedI1_max", "SpeedI2_max"],
+    "Suspension":       ["SpeedFL_mean", "SpeedFL_max", "Sector3Time_mean"],
+    "Thermal":          ["LapTime_mean", "LapTime_std", "avg_speed", "top_speed"],
+    "Electronics":      ["drs_pct", "SpeedST_mean", "SpeedST_max"],
+    "Tyre Management":  ["TyreLife_mean", "TyreLife_max", "TyreLife_std",
+                         "stint_count", "compound_variety"],
 }
 
 

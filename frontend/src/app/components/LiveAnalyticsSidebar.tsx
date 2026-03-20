@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ChevronUp, ChevronDown, Radio } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 import type { OpenF1Driver, OpenF1Stint, OpenF1Position } from '../types';
+import { COMPOUND_COLORS } from '../constants/teams';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface SectorTimeRow {
@@ -34,10 +35,6 @@ interface GapDataPoint {
   lap: number;
   [driverKey: string]: number | null;
 }
-
-const COMPOUND_COLORS: Record<string, string> = {
-  SOFT: '#ef4444', MEDIUM: '#f59e0b', HARD: '#e8e8f0', INTERMEDIATE: '#22c55e', WET: '#3b82f6',
-};
 
 interface LiveAnalyticsSidebarProps {
   positions: OpenF1Position[] | null;
@@ -114,15 +111,15 @@ export function LiveAnalyticsSidebar({
 
   return (
     <div
-      className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.20)] rounded-xl shadow-[0_4px_12px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col"
+      className="bg-card border border-[rgba(255,128,0,0.20)] rounded-lg shadow-[0_4px_12px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col"
       style={{ height }}
     >
       {/* Header */}
-      <div className="px-3 py-2 border-b border-[rgba(255,128,0,0.12)] flex items-center gap-2 shrink-0">
-        <Radio className="w-3 h-3 text-[#FF8000]" />
+      <div className="px-3 py-2 border-b border-border flex items-center gap-2 shrink-0">
+        <Radio className="w-3 h-3 text-primary" />
         <span className="text-[12px] tracking-widest text-muted-foreground font-bold">LIVE ANALYTICS</span>
         {currentMaxLap > 0 && (
-          <span className="text-[12px] text-[#FF8000] font-mono ml-auto">LAP {currentMaxLap}</span>
+          <span className="text-[12px] text-primary font-mono ml-auto">LAP {currentMaxLap}</span>
         )}
       </div>
 
@@ -146,7 +143,7 @@ export function LiveAnalyticsSidebar({
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ layout: { duration: 0.3 } }}
-                      className="flex items-center gap-1.5 px-1 py-[3px] rounded hover:bg-[#222838] transition-colors"
+                      className="flex items-center gap-1.5 px-1 py-[3px] rounded hover:bg-secondary transition-colors"
                     >
                       <span className="text-[12px] font-mono text-foreground w-5 text-right">P{pos.position}</span>
                       <div className="w-0.5 h-3.5 rounded-full" style={{ backgroundColor: driver ? `#${driver.team_colour}` : '#555' }} />
@@ -158,7 +155,7 @@ export function LiveAnalyticsSidebar({
                       </span>
                       {/* Fastest lap badge */}
                       {hasFastestLap && (
-                        <span className="text-[9px] font-bold text-purple-400 bg-purple-400/10 px-1 rounded">FL</span>
+                        <span className="text-[10px] font-bold text-purple-400 bg-purple-400/10 px-1 rounded">FL</span>
                       )}
                       {/* Tire compound dot */}
                       {compound && (
@@ -181,7 +178,7 @@ export function LiveAnalyticsSidebar({
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-[rgba(255,128,0,0.12)]" />
+          <div className="border-t border-border" />
 
           {/* ── SECTOR TIMES ── */}
           <div className="mb-2">
@@ -192,7 +189,7 @@ export function LiveAnalyticsSidebar({
             {sectorTimesData.length > 0 ? (
               <div className="space-y-0">
                 {/* Header */}
-                <div className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[9px] text-muted-foreground px-1 pb-0.5 border-b border-[rgba(255,128,0,0.04)]">
+                <div className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[10px] text-muted-foreground px-1 pb-0.5 border-b border-[rgba(255,128,0,0.04)]">
                   <span>DRV</span>
                   <span className="text-right">S1</span>
                   <span className="text-right">S2</span>
@@ -201,7 +198,7 @@ export function LiveAnalyticsSidebar({
                 {sectorTimesData.slice(0, 10).map((row) => {
                   const pb = sectorBests.personal.get(row.driver_number) ?? { s1: Infinity, s2: Infinity, s3: Infinity };
                   return (
-                    <div key={row.driver_number} className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[11px] font-mono px-1 py-[2px] hover:bg-[#222838] rounded transition-colors">
+                    <div key={row.driver_number} className="grid grid-cols-[40px_1fr_1fr_1fr] gap-0.5 text-[11px] font-mono px-1 py-[2px] hover:bg-secondary rounded transition-colors">
                       <span className="flex items-center gap-1">
                         <span className="w-0.5 h-2.5 rounded-full" style={{ backgroundColor: `#${row.team_colour}` }} />
                         <span className="text-foreground">{row.acronym}</span>
@@ -219,7 +216,7 @@ export function LiveAnalyticsSidebar({
                   );
                 })}
                 {/* Legend */}
-                <div className="flex items-center gap-3 px-1 pt-1 text-[9px]">
+                <div className="flex items-center gap-3 px-1 pt-1 text-[10px]">
                   <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> Best</span>
                   <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-green-400" /> PB</span>
                 </div>
@@ -230,7 +227,7 @@ export function LiveAnalyticsSidebar({
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-[rgba(255,128,0,0.12)]" />
+          <div className="border-t border-border" />
 
           {/* ── GAP TO LEADER ── */}
           <div className="mb-2">
@@ -240,7 +237,7 @@ export function LiveAnalyticsSidebar({
                 {latestGaps.slice(0, 8).map((g) => (
                   <div key={g.code} className="flex items-center gap-1.5">
                     <span className="text-[11px] font-mono text-foreground w-7">{g.code}</span>
-                    <div className="flex-1 h-2 bg-[#222838] rounded-full overflow-hidden">
+                    <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
@@ -262,7 +259,7 @@ export function LiveAnalyticsSidebar({
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-[rgba(255,128,0,0.12)]" />
+          <div className="border-t border-border" />
 
           {/* ── TIRE COMPOUNDS ── */}
           <div className="mb-2">
@@ -291,7 +288,7 @@ export function LiveAnalyticsSidebar({
           </div>
 
           {/* ── Divider ── */}
-          <div className="border-t border-[rgba(255,128,0,0.12)]" />
+          <div className="border-t border-border" />
 
           {/* ── RACE CONTROL ── */}
           <div>
@@ -307,7 +304,7 @@ export function LiveAnalyticsSidebar({
                     <div className="min-w-0 flex-1">
                       <span className="text-[10px] text-foreground leading-tight line-clamp-1">{evt.message}</span>
                       {evt.lap_number && (
-                        <span className="text-[9px] text-muted-foreground ml-1">L{evt.lap_number}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">L{evt.lap_number}</span>
                       )}
                     </div>
                   </div>

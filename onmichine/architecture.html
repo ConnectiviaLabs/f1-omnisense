@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentML — Architecture</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;color:#e0e0e0;font-family:'SF Mono','Fira Code','Consolas',monospace;line-height:1.6;overflow-x:hidden}
+::selection{background:#FF980040;color:#fff}
+
+/* ── Header ──────────────────────────────────────────────── */
+.header{text-align:center;padding:60px 30px 40px}
+.header h1{font-size:3rem;font-weight:700;letter-spacing:4px;
+  background:linear-gradient(135deg,#FF9800,#E91E63,#9C27B0);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .subtitle{font-size:.85rem;color:#666;margin:8px 0 30px;letter-spacing:2px}
+.stats{display:flex;justify-content:center;gap:50px;flex-wrap:wrap}
+.stat .num{font-size:2rem;font-weight:700;color:#FF9800}
+.stat .label{font-size:.65rem;text-transform:uppercase;letter-spacing:2px;color:#555}
+
+/* ── Section ─────────────────────────────────────────────── */
+section{max-width:1300px;margin:0 auto;padding:30px}
+.section-title{font-size:.7rem;text-transform:uppercase;letter-spacing:3px;
+  color:#555;border-left:2px solid #FF9800;padding:2px 0 2px 12px;margin-bottom:24px}
+
+/* ── Overview cards ──────────────────────────────────────── */
+.overview{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:40px}
+.overview-card{background:#111122;border:1px solid #222;border-radius:12px;padding:24px}
+.overview-card h3{font-size:.85rem;color:#FF9800;margin-bottom:12px}
+.overview-card p{font-size:.75rem;color:#888;line-height:1.7}
+.overview-card code{background:#1a1a2e;padding:2px 6px;border-radius:4px;font-size:.7rem;color:#e0e0e0}
+
+/* ── Pipeline flow ───────────────────────────────────────── */
+.pipeline{display:flex;align-items:stretch;gap:0;margin:30px 0;flex-wrap:wrap;justify-content:center}
+.pipe-step{background:#111122;border:1px solid #222;border-radius:10px;padding:16px 14px;
+  width:170px;text-align:center;transition:all .3s;cursor:pointer;position:relative}
+.pipe-step:hover{border-color:var(--ac);box-shadow:0 0 25px var(--gw);transform:translateY(-3px)}
+.pipe-step .step-num{font-size:.6rem;text-transform:uppercase;letter-spacing:2px;color:#555;margin-bottom:6px}
+.pipe-step .step-name{font-size:.8rem;font-weight:700;color:var(--ac)}
+.pipe-step .step-desc{font-size:.65rem;color:#666;margin-top:6px;line-height:1.5}
+.pipe-step .step-file{font-size:.58rem;color:#444;margin-top:8px;font-style:italic}
+.pipe-arrow{display:flex;align-items:center;font-size:1.4rem;color:#333;padding:0 4px}
+
+.pipe-step[data-s="1"]{--ac:#4CAF50;--gw:rgba(76,175,80,.15)}
+.pipe-step[data-s="2"]{--ac:#00BCD4;--gw:rgba(0,188,212,.15)}
+.pipe-step[data-s="3"]{--ac:#9C27B0;--gw:rgba(156,39,176,.15)}
+.pipe-step[data-s="4"]{--ac:#FF9800;--gw:rgba(255,152,0,.15)}
+.pipe-step[data-s="5"]{--ac:#E91E63;--gw:rgba(233,30,99,.15)}
+.pipe-step[data-s="6"]{--ac:#3F51B5;--gw:rgba(63,81,181,.15)}
+
+/* ── Agent loop diagram ──────────────────────────────────── */
+.agent-loop{background:#111122;border:1px solid #222;border-radius:12px;padding:30px;
+  margin:30px 0;position:relative;overflow:hidden}
+.agent-loop::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,#FF9800,#E91E63,#9C27B0,#3F51B5)}
+.agent-loop h3{font-size:.85rem;color:#FF9800;margin-bottom:20px}
+.loop-flow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;margin:20px 0}
+.loop-node{background:#0d0d20;border:1px solid #2a2a3a;border-radius:8px;padding:10px 16px;
+  font-size:.72rem;font-weight:700;text-align:center}
+.loop-node.llm{color:#FF9800;border-color:#FF980040}
+.loop-node.tool{color:#4CAF50;border-color:#4CAF5040}
+.loop-node.state{color:#9C27B0;border-color:#9C27B040}
+.loop-node.done{color:#00BCD4;border-color:#00BCD440}
+.loop-arrow{font-size:1.2rem;color:#444}
+.loop-label{font-size:.6rem;color:#555;text-align:center;display:block;margin-top:4px}
+
+/* ── File map ────────────────────────────────────────────── */
+.file-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.file-card{background:#111122;border:1px solid #222;border-radius:10px;padding:18px;
+  transition:all .3s}
+.file-card:hover{border-color:var(--ac);box-shadow:0 0 20px var(--gw)}
+.file-card .fname{font-size:.8rem;font-weight:700;color:var(--ac)}
+.file-card .fdesc{font-size:.7rem;color:#666;margin:6px 0 10px}
+.file-card .fexports{display:flex;flex-wrap:wrap;gap:4px}
+.file-card .tag{background:rgba(255,255,255,.04);border:1px solid #2a2a3a;
+  border-radius:4px;padding:2px 7px;font-size:.58rem;color:#777}
+.file-card[data-f="types"]{--ac:#9C27B0;--gw:rgba(156,39,176,.12)}
+.file-card[data-f="tools"]{--ac:#FF9800;--gw:rgba(255,152,0,.12)}
+.file-card[data-f="agent"]{--ac:#E91E63;--gw:rgba(233,30,99,.12)}
+.file-card[data-f="init"]{--ac:#00BCD4;--gw:rgba(0,188,212,.12)}
+
+/* ── Model search stages ─────────────────────────────────── */
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0}
+.stage{background:#0d0d20;border:1px solid #1a1a2e;border-radius:10px;padding:18px;
+  border-top:3px solid var(--ac)}
+.stage .stage-label{font-size:.6rem;text-transform:uppercase;letter-spacing:2px;
+  color:var(--ac);margin-bottom:8px}
+.stage .stage-title{font-size:.8rem;font-weight:700;color:#e0e0e0;margin-bottom:8px}
+.stage .stage-models{font-size:.68rem;color:#666;line-height:1.7}
+.stage[data-st="0"]{--ac:#4CAF50}
+.stage[data-st="1"]{--ac:#FF9800}
+.stage[data-st="2"]{--ac:#E91E63}
+.stage[data-st="3"]{--ac:#9C27B0}
+
+/* ── Artifacts ───────────────────────────────────────────── */
+.artifact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.artifact{background:#0d0d20;border:1px solid #1a1a2e;border-radius:8px;padding:12px 14px;
+  display:flex;align-items:center;gap:10px}
+.artifact .af-icon{font-size:1.2rem}
+.artifact .af-name{font-size:.72rem;font-weight:700;color:#e0e0e0}
+.artifact .af-desc{font-size:.6rem;color:#555}
+
+/* ── Code snippet ────────────────────────────────────────── */
+.code-block{background:#0d0d20;border:1px solid #1a1a2e;border-radius:10px;
+  padding:20px 24px;margin:16px 0;overflow-x:auto}
+.code-block pre{font-size:.72rem;line-height:1.8;color:#ccc}
+.code-block .kw{color:#9C27B0}
+.code-block .fn{color:#FF9800}
+.code-block .str{color:#4CAF50}
+.code-block .cm{color:#555}
+.code-block .var{color:#00BCD4}
+
+/* ── Config table ────────────────────────────────────────── */
+.config-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.72rem}
+.config-table th{text-align:left;color:#FF9800;font-size:.6rem;text-transform:uppercase;
+  letter-spacing:2px;padding:8px 12px;border-bottom:1px solid #222}
+.config-table td{padding:8px 12px;border-bottom:1px solid #1a1a2e;color:#aaa}
+.config-table td:first-child{color:#e0e0e0;font-weight:700}
+.config-table td:last-child{color:#666}
+
+/* ── Dependency badges ───────────────────────────────────── */
+.dep-row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.dep{background:#111122;border:1px solid #222;border-radius:6px;padding:6px 12px;
+  font-size:.68rem;display:flex;align-items:center;gap:6px}
+.dep .dep-name{font-weight:700;color:#e0e0e0}
+.dep .dep-note{color:#555;font-size:.6rem}
+.dep.required .dep-name{color:#4CAF50}
+.dep.optional .dep-name{color:#FF9800}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.footer{text-align:center;padding:40px 30px;color:#333;font-size:.6rem;letter-spacing:2px}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media(max-width:900px){
+  .overview{grid-template-columns:1fr}
+  .stages{grid-template-columns:1fr 1fr}
+  .pipeline{flex-direction:column;align-items:center}
+  .pipe-arrow{transform:rotate(90deg)}
+}
+@media(max-width:600px){
+  .stages{grid-template-columns:1fr}
+  .header h1{font-size:2rem}
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- HEADER                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="header">
+  <h1>agentML</h1>
+  <div class="subtitle">Groq-Powered Agentic Tabular AutoML</div>
+  <div class="stats">
+    <div class="stat"><div class="num">6</div><div class="label">Tools</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">Files</div></div>
+    <div class="stat"><div class="num">4</div><div class="label">Search Stages</div></div>
+    <div class="stat"><div class="num">9</div><div class="label">Artifacts</div></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- OVERVIEW                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Overview</div>
+  <div class="overview">
+    <div class="overview-card">
+      <h3>What It Is</h3>
+      <p>
+        A <strong>ReAct-style agentic loop</strong> where a Groq-hosted LLM
+        (<code>openai/gpt-oss-120b</code>) autonomously orchestrates a tabular ML
+        pipeline. The agent decides which tools to call and in what order, inspects
+        intermediate results, and adapts strategy &mdash; like an AI data scientist.
+      </p>
+    </div>
+    <div class="overview-card">
+      <h3>What It Produces</h3>
+      <p>
+        A fully reproducible <strong>model bundle</strong>: fitted model + preprocessor +
+        schema + leaderboard + model card + reproducibility lock. Supports
+        <strong>regression</strong>, <strong>binary classification</strong>, and
+        <strong>multiclass classification</strong> with automatic task inference.
+      </p>
+    </div>
+    <div class="overview-card">
+      <h3>Design Principles</h3>
+      <p>
+        <strong>Deterministic ML</strong> &mdash; the LLM reasons about strategy, never
+        touches math. <strong>Strict artifact contracts</strong> &mdash; every run produces
+        auditable outputs. <strong>Graceful fallback</strong> &mdash; if Groq is down,
+        runs a sequential deterministic pipeline automatically.
+      </p>
+    </div>
+    <div class="overview-card">
+      <h3>Quick Start</h3>
+      <div class="code-block" style="margin:0">
+        <pre><span class="kw">from</span> <span class="var">agentml</span> <span class="kw">import</span> <span class="fn">run</span>, <span class="fn">RunConfig</span>
+
+<span class="var">result</span> = <span class="fn">run</span>(<span class="fn">RunConfig</span>(
+    <span class="var">data_path</span>=<span class="str">"data.csv"</span>,
+    <span class="var">target_column</span>=<span class="str">"Speed"</span>,
+))
+<span class="fn">print</span>(<span class="var">result</span>.best_trial.model_name)
+<span class="fn">print</span>(<span class="var">result</span>.holdout_metrics)</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- AGENT LOOP                                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Agent Loop Architecture</div>
+
+  <div class="agent-loop">
+    <h3>ReAct Multi-Turn Loop</h3>
+    <p style="font-size:.72rem;color:#888;margin-bottom:16px">
+      The Groq LLM receives tool results after each call and decides the next action.
+      Up to 15 turns. Falls back to sequential if no Groq API key or on failure.
+    </p>
+
+    <div class="loop-flow">
+      <div class="loop-node llm">
+        Groq LLM<br>
+        <span class="loop-label">openai/gpt-oss-120b</span>
+      </div>
+      <div class="loop-arrow">&rarr;</div>
+      <div class="loop-node tool">
+        Tool Call<br>
+        <span class="loop-label">function calling API</span>
+      </div>
+      <div class="loop-arrow">&rarr;</div>
+      <div class="loop-node state">
+        PipelineState<br>
+        <span class="loop-label">shared memory</span>
+      </div>
+      <div class="loop-arrow">&rarr;</div>
+      <div class="loop-node tool">
+        Result JSON<br>
+        <span class="loop-label">fed back to LLM</span>
+      </div>
+      <div class="loop-arrow">&rarr;</div>
+      <div class="loop-node llm">
+        Reason &amp; Decide<br>
+        <span class="loop-label">next tool or finish</span>
+      </div>
+      <div class="loop-arrow">&rarr;</div>
+      <div class="loop-node done">
+        Done<br>
+        <span class="loop-label">summary + artifacts</span>
+      </div>
+    </div>
+
+    <p style="font-size:.65rem;color:#555;margin-top:16px;text-align:center">
+      System prompt &rarr; User config &rarr; [Tool call &harr; Result]&times;N &rarr; Final summary
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PIPELINE                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Pipeline Tools</div>
+
+  <div class="pipeline">
+    <div class="pipe-step" data-s="1">
+      <div class="step-num">Tool 1</div>
+      <div class="step-name">load_and_profile</div>
+      <div class="step-desc">Load CSV/Parquet, profile columns, detect issues, build schema</div>
+      <div class="step-file">reuses omnidata.load</div>
+    </div>
+    <div class="pipe-arrow">&rarr;</div>
+
+    <div class="pipe-step" data-s="2">
+      <div class="step-num">Tool 2</div>
+      <div class="step-name">infer_task</div>
+      <div class="step-desc">Regression vs binary vs multiclass from target dtype &amp; cardinality</div>
+      <div class="step-file">deterministic rules</div>
+    </div>
+    <div class="pipe-arrow">&rarr;</div>
+
+    <div class="pipe-step" data-s="3">
+      <div class="step-num">Tool 3</div>
+      <div class="step-name">build_features</div>
+      <div class="step-desc">ColumnTransformer: impute, scale, encode. Train/test split</div>
+      <div class="step-file">sklearn pipeline</div>
+    </div>
+    <div class="pipe-arrow">&rarr;</div>
+
+    <div class="pipe-step" data-s="4">
+      <div class="step-num">Tool 4</div>
+      <div class="step-name">train_models</div>
+      <div class="step-desc">4-stage search: baselines &rarr; boosting &rarr; HPO &rarr; ensemble</div>
+      <div class="step-file">time-budget aware</div>
+    </div>
+    <div class="pipe-arrow">&rarr;</div>
+
+    <div class="pipe-step" data-s="5">
+      <div class="step-num">Tool 5</div>
+      <div class="step-name">evaluate_model</div>
+      <div class="step-desc">Holdout metrics, confusion matrix, feature importance, model card</div>
+      <div class="step-file">sklearn.metrics</div>
+    </div>
+    <div class="pipe-arrow">&rarr;</div>
+
+    <div class="pipe-step" data-s="6">
+      <div class="step-num">Tool 6</div>
+      <div class="step-name">package_model</div>
+      <div class="step-desc">Serialize model, preprocessor, schema, leaderboard, lock</div>
+      <div class="step-file">pickle + json</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- MODEL SEARCH STAGES                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Model Search Stages</div>
+
+  <div class="stages">
+    <div class="stage" data-st="0">
+      <div class="stage-label">Stage 0</div>
+      <div class="stage-title">Baselines</div>
+      <div class="stage-models">
+        Regression &rarr; <strong>Ridge</strong><br>
+        Classification &rarr; <strong>LogisticRegression</strong><br><br>
+        Always runs. Fast. Sets performance floor.
+      </div>
+    </div>
+    <div class="stage" data-st="1">
+      <div class="stage-label">Stage 1</div>
+      <div class="stage-title">Boosting</div>
+      <div class="stage-models">
+        <strong>LightGBM</strong> (if installed)<br>
+        <strong>XGBoost</strong> (if installed)<br>
+        <strong>CatBoost</strong> (if installed)<br>
+        <strong>HistGradientBoosting</strong> (always)<br><br>
+        Graceful ImportError fallback.
+      </div>
+    </div>
+    <div class="stage" data-st="2">
+      <div class="stage-label">Stage 2</div>
+      <div class="stage-title">HPO</div>
+      <div class="stage-models">
+        <strong>Optuna</strong> TPE sampler<br>
+        Top-2 models from prior stages<br>
+        Timeout-aware per model<br><br>
+        Skipped if optuna not installed.
+      </div>
+    </div>
+    <div class="stage" data-st="3">
+      <div class="stage-label">Stage 3</div>
+      <div class="stage-title">Ensemble</div>
+      <div class="stage-models">
+        <strong>VotingRegressor</strong> or<br>
+        <strong>VotingClassifier</strong> (soft)<br>
+        Top-3 fitted models<br><br>
+        Only if &ge;500 train rows &amp; enabled.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- FILE MAP                                                    -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">File Map</div>
+
+  <div class="file-grid">
+    <div class="file-card" data-f="types">
+      <div class="fname">_types.py</div>
+      <div class="fdesc">Enums, dataclasses, constants. Zero ML dependencies.</div>
+      <div class="fexports">
+        <span class="tag">TaskType</span>
+        <span class="tag">ModelStage</span>
+        <span class="tag">MetricName</span>
+        <span class="tag">RunConfig</span>
+        <span class="tag">PipelineState</span>
+        <span class="tag">ColumnSchema</span>
+        <span class="tag">TrialResult</span>
+      </div>
+    </div>
+    <div class="file-card" data-f="tools">
+      <div class="fname">tools.py</div>
+      <div class="fdesc">6 ML tool implementations. All real computation happens here.</div>
+      <div class="fexports">
+        <span class="tag">load_and_profile</span>
+        <span class="tag">infer_task</span>
+        <span class="tag">build_features</span>
+        <span class="tag">train_models</span>
+        <span class="tag">evaluate_model</span>
+        <span class="tag">package_model</span>
+      </div>
+    </div>
+    <div class="file-card" data-f="agent">
+      <div class="fname">agent.py</div>
+      <div class="fdesc">Groq ReAct loop + deterministic sequential fallback.</div>
+      <div class="fexports">
+        <span class="tag">run()</span>
+        <span class="tag">SYSTEM_PROMPT</span>
+        <span class="tag">TOOL_HANDLERS</span>
+        <span class="tag">_run_agentic</span>
+        <span class="tag">_run_sequential</span>
+      </div>
+    </div>
+    <div class="file-card" data-f="init">
+      <div class="fname">__init__.py</div>
+      <div class="fdesc">Public API surface. Single entrypoint.</div>
+      <div class="fexports">
+        <span class="tag">run</span>
+        <span class="tag">RunConfig</span>
+        <span class="tag">PipelineState</span>
+        <span class="tag">TaskType</span>
+        <span class="tag">TrialResult</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- CONFIGURATION                                               -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">RunConfig Parameters</div>
+
+  <table class="config-table">
+    <thead>
+      <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>data_path</td><td>str</td><td>&mdash;</td><td>Path to CSV/Parquet file</td></tr>
+      <tr><td>target_column</td><td>str</td><td>&mdash;</td><td>Column to predict</td></tr>
+      <tr><td>output_dir</td><td>str</td><td>agentml_output</td><td>Where to write artifacts</td></tr>
+      <tr><td>task_type</td><td>TaskType?</td><td>None (auto)</td><td>Override: regression, binary, multiclass</td></tr>
+      <tr><td>test_ratio</td><td>float</td><td>0.2</td><td>Holdout test split ratio</td></tr>
+      <tr><td>random_state</td><td>int</td><td>42</td><td>Seed for reproducibility</td></tr>
+      <tr><td>time_budget_s</td><td>float</td><td>300</td><td>Max seconds for model search</td></tr>
+      <tr><td>max_hpo_trials</td><td>int</td><td>50</td><td>Optuna trial budget per model</td></tr>
+      <tr><td>enable_ensemble</td><td>bool</td><td>True</td><td>Allow Stage 3 voting ensemble</td></tr>
+      <tr><td>sample_rows</td><td>int?</td><td>None (auto)</td><td>Row limit for large datasets</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- ARTIFACTS                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Output Artifacts</div>
+
+  <div class="artifact-grid">
+    <div class="artifact">
+      <div class="af-icon">&#x1F4E6;</div>
+      <div><div class="af-name">model.pkl</div><div class="af-desc">Best fitted estimator</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x2699;</div>
+      <div><div class="af-name">preprocessor.pkl</div><div class="af-desc">Fitted ColumnTransformer</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F4CB;</div>
+      <div><div class="af-name">schema.json</div><div class="af-desc">Column types &amp; roles</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F3AF;</div>
+      <div><div class="af-name">task_inference.json</div><div class="af-desc">Task type &amp; metrics</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F4CA;</div>
+      <div><div class="af-name">eval_report.json</div><div class="af-desc">Holdout metrics &amp; analysis</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F4DD;</div>
+      <div><div class="af-name">model_card.md</div><div class="af-desc">Human-readable summary</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F3C6;</div>
+      <div><div class="af-name">leaderboard.csv</div><div class="af-desc">All models ranked</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F4D3;</div>
+      <div><div class="af-name">trial_log.jsonl</div><div class="af-desc">Every trial with params</div></div>
+    </div>
+    <div class="artifact">
+      <div class="af-icon">&#x1F512;</div>
+      <div><div class="af-name">reproducibility.lock</div><div class="af-desc">Versions &amp; seeds</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TASK INFERENCE                                              -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Task Inference Rules</div>
+
+  <div class="code-block">
+    <pre><span class="cm">## Deterministic inference from target column properties</span>
+
+<span class="kw">if</span> dtype == <span class="str">bool</span>                          <span class="cm">&rarr; binary_classification</span>
+<span class="kw">if</span> dtype == <span class="str">string</span> and unique == <span class="var">2</span>        <span class="cm">&rarr; binary_classification</span>
+<span class="kw">if</span> dtype == <span class="str">string</span> and unique &gt; <span class="var">2</span>         <span class="cm">&rarr; multiclass_classification</span>
+<span class="kw">if</span> dtype == <span class="str">numeric</span> and unique == <span class="var">2</span>       <span class="cm">&rarr; binary_classification</span>
+<span class="kw">if</span> dtype == <span class="str">numeric</span> and unique &le; <span class="var">20</span>      <span class="cm">&rarr; multiclass_classification</span>
+<span class="kw">else</span>                                       <span class="cm">&rarr; regression</span>
+
+<span class="cm">## Metrics</span>
+<span class="var">regression</span>       &rarr; primary: <span class="fn">RMSE</span>      secondary: MAE, R&sup2;
+<span class="var">binary</span>           &rarr; primary: <span class="fn">AUC-ROC</span>   secondary: F1, Accuracy, LogLoss
+<span class="var">multiclass</span>       &rarr; primary: <span class="fn">F1-weighted</span> secondary: Accuracy, LogLoss</pre>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- DATA-AWARE STRATEGY                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Data-Aware Model Strategy</div>
+  <div class="overview" style="grid-template-columns:repeat(3,1fr)">
+    <div class="overview-card">
+      <h3>Small Dataset (&lt;500 rows)</h3>
+      <p>Skip deep ensembles. Baselines + HistGB only. Short HPO budget. No voting ensemble.</p>
+    </div>
+    <div class="overview-card">
+      <h3>Many Categoricals</h3>
+      <p>Low-cardinality (&le;15) &rarr; OneHotEncoder. High-cardinality &rarr; OrdinalEncoder. CatBoost preferred when available.</p>
+    </div>
+    <div class="overview-card">
+      <h3>Imbalanced Classes</h3>
+      <p>Stratified train/test split. Falls back to non-stratified if rare classes cause errors. AUC-ROC as primary metric.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- DEPENDENCIES                                                -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Dependencies</div>
+
+  <div class="dep-row">
+    <div class="dep required"><span class="dep-name">scikit-learn</span><span class="dep-note">core ML</span></div>
+    <div class="dep required"><span class="dep-name">pandas</span><span class="dep-note">data frames</span></div>
+    <div class="dep required"><span class="dep-name">numpy</span><span class="dep-note">arrays</span></div>
+    <div class="dep required"><span class="dep-name">groq</span><span class="dep-note">agent LLM</span></div>
+    <div class="dep required"><span class="dep-name">omnidata</span><span class="dep-note">loader &amp; profiler</span></div>
+  </div>
+  <div class="dep-row">
+    <div class="dep optional"><span class="dep-name">lightgbm</span><span class="dep-note">optional booster</span></div>
+    <div class="dep optional"><span class="dep-name">xgboost</span><span class="dep-note">optional booster</span></div>
+    <div class="dep optional"><span class="dep-name">catboost</span><span class="dep-note">optional booster</span></div>
+    <div class="dep optional"><span class="dep-name">optuna</span><span class="dep-note">optional HPO</span></div>
+  </div>
+  <p style="font-size:.65rem;color:#444;margin-top:8px">
+    Green = required &nbsp;&bull;&nbsp; Orange = optional (graceful fallback if missing)
+  </p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- ENV                                                         -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="section-title">Environment Variables</div>
+  <table class="config-table">
+    <thead>
+      <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>GROQ_API_KEY</td><td>&mdash;</td><td>Required for agentic mode. Falls back to sequential without it.</td></tr>
+      <tr><td>AGENTML_MODEL</td><td>openai/gpt-oss-120b</td><td>Groq model for the agent loop.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- FOOTER                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="footer">
+  AGENTML &bull; OMNISUITE &bull; GROQ-POWERED TABULAR AUTOML
+</div>
+
+</body>
+</html>

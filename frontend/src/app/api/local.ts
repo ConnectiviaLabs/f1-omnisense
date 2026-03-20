@@ -37,15 +37,7 @@ export const jolpica = {
   seasons: () => fetchLocal<any>('jolpica/seasons'),
 };
 
-// Pipeline results
-export const pipeline = {
-  gdino: () => fetchLocal<any>('pipeline/gdino'),
-  fused: () => fetchLocal<any>('pipeline/fused'),
-  minicpm: () => fetchLocal<any>('pipeline/minicpm'),
-  videomae: () => fetchLocal<any>('pipeline/videomae'),
-  timesformer: () => fetchLocal<any>('pipeline/timesformer'),
-  videos: () => fetchLocal<any>('pipeline/videos'),
-};
+// Pipeline media results removed — now served by /api/omni/vis/* backend
 
 // Strategy & model data
 export const strategy = {
@@ -69,9 +61,84 @@ export const strategy = {
     return fetchLocal<any>(`local/strategy/elt${qs ? '?' + qs : ''}`);
   },
   scProbability: () => fetchLocal<any>('local/strategy/sc-probability'),
+  xgboost: () => fetchLocal<any>('local/strategy/xgboost'),
+  bilstm: () => fetchLocal<any>('local/strategy/bilstm'),
+  predictLap: (params: {
+    circuit: string; driver_code: string; compound: string;
+    lap_start?: number; lap_end?: number; tyre_life_start?: number;
+    position?: number; stint?: number; baseline_pace_s?: number | null;
+  }) => fetch(`/api/local/strategy/predict-lap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`predict-lap: ${r.status}`); return r.json(); }),
+  predictLapBilstm: (params: {
+    circuit: string; driver_code: string; compound: string;
+    lap_start?: number; lap_end?: number; tyre_life_start?: number;
+    position?: number; stint?: number; baseline_pace_s?: number | null;
+    rainfall?: number | null;
+  }) => fetch(`/api/local/strategy/predict-lap-bilstm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`predict-lap-bilstm: ${r.status}`); return r.json(); }),
   battleIntel: (sessionKey?: number) => {
     const p = sessionKey ? `?session_key=${sessionKey}` : '';
     return fetchLocal<any>(`local/strategy/battle-intel${p}`);
+  },
+};
+
+// AutoML (onmichine) API
+export const automl = {
+  run: (params: {
+    target_column: string; collection?: string; query?: Record<string, any>;
+    sample_rows?: number; time_budget_s?: number; max_hpo_trials?: number;
+    task_type?: string; model?: string;
+  }) => fetch('/api/local/automl/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  }).then(r => { if (!r.ok) throw new Error(`automl/run: ${r.status}`); return r.json(); }),
+  status: (jobId: string) => fetchLocal<any>(`local/automl/status/${jobId}`),
+  jobs: () => fetchLocal<any>('local/automl/jobs'),
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return fetch('/api/local/automl/upload', { method: 'POST', body: form })
+      .then(r => { if (!r.ok) throw new Error(`automl/upload: ${r.status}`); return r.json(); });
+  },
+};
+
+// AiM RaceStudio 3 data
+export const aim = {
+  sessions: (driver?: string, track?: string) => {
+    const params = new URLSearchParams();
+    if (driver) params.set('driver', driver);
+    if (track) params.set('track', track);
+    const qs = params.toString();
+    return fetchLocal<any[]>(`aim/sessions${qs ? '?' + qs : ''}`);
+  },
+  session: (id: string) => fetchLocal<any>(`aim/session/${id}`),
+  telemetry: (id: string, lap?: number, channels?: string[]) => {
+    const params = new URLSearchParams();
+    if (lap != null) params.set('lap', String(lap));
+    if (channels?.length) params.set('channels', channels.join(','));
+    const qs = params.toString();
+    return fetchLocal<any>(`aim/telemetry/${id}${qs ? '?' + qs : ''}`);
+  },
+  track: (id: string, lap?: number) => {
+    const qs = lap != null ? `?lap=${lap}` : '';
+    return fetchLocal<any>(`aim/track/${id}${qs}`);
+  },
+  laps: (id: string) => fetchLocal<any>(`aim/laps/${id}`),
+  health: (id: string) => fetchLocal<any>(`aim/health/${id}`),
+  anomaly: (id: string) => fetchLocal<any>(`aim/anomaly/${id}`),
+  compare: (ids: string[]) => fetchLocal<any>(`aim/compare?sessions=${ids.join(',')}`),
+  upload: (file: File) => {
+    const form = new FormData();
+    form.append('xrk', file);
+    return fetch('/api/aim/upload', { method: 'POST', body: form })
+      .then(r => { if (!r.ok) throw new Error(`aim/upload: ${r.status}`); return r.json(); });
   },
 };
 

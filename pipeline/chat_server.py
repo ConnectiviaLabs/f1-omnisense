@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -31,10 +31,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "omnisuitef1"))
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 from groq import Groq
-from pipeline.vectorstore import AtlasVectorStore
+from pipeline.vectorstore import get_vector_store
 from pipeline.embeddings import NomicEmbedder
 from pipeline.model_3d_server import router as model_3d_router, mount_3d_static
 from pipeline.omni_health_router import router as omni_health_router
@@ -48,6 +48,10 @@ from pipeline.omni_vis_router import router as omni_vis_router
 from pipeline.omni_dapt_router import router as omni_dapt_router
 from pipeline.opponents.server import router as opponents_router, init_profiler_with_db
 from pipeline.updater.server import router as updater_router
+from pipeline.advantage_router import router as advantage_router
+from pipeline.omni_agents_router import router as omni_agents_router
+from pipeline.radio_router import router as radio_router
+from pipeline.aim_router import router as aim_router
 
 # ── Config ───────────────────────────────────────────────────────────────
 
@@ -56,9 +60,10 @@ PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8300")))
 USE_OMNIRAG = os.getenv("USE_OMNIRAG", "").lower() in ("1", "true", "yes")
 
 app = FastAPI(title="F1 OmniSense API")
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -71,7 +76,11 @@ class _RewriteMiddleware(BaseHTTPMiddleware):
     _PREFIXES = (
         "/api/openf1/", "/api/jolpica/", "/api/driver_intel/",
         "/api/circuit_intel/", "/api/pipeline/", "/api/constructor_profiles",
-        "/api/mclaren/",
+        "/api/mclaren/", "/api/victory/", "/api/anomaly/", "/api/forecast/",
+        "/api/mccar-telemetry/", "/api/mccar-race-telemetry/",
+        "/api/mccar-summary", "/api/mcdriver-summary",
+        "/api/f1data/", "/api/mccar/", "/api/mcdriver/", "/api/mcracecontext/",
+        "/api/strategy/", "/api/team_intel/",
     )
     async def dispatch(self, request: _Request, call_next):
         path = request.scope["path"]
@@ -99,10 +108,14 @@ app.include_router(omni_vis_router)
 app.include_router(omni_dapt_router)
 app.include_router(opponents_router)
 app.include_router(updater_router)
+app.include_router(advantage_router)
+app.include_router(omni_agents_router)
+app.include_router(radio_router)
+app.include_router(aim_router)
 
 # Lazy-init singletons
 _groq: Groq | None = None
-_vs: AtlasVectorStore | None = None
+_vs = None
 _embedder: NomicEmbedder | None = None
 _clip_index: dict | None = None
 _clip_embedder = None
@@ -117,10 +130,10 @@ def get_groq() -> Groq:
     return _groq
 
 
-def get_vs() -> AtlasVectorStore:
+def get_vs():
     global _vs
     if _vs is None:
-        _vs = AtlasVectorStore()
+        _vs = get_vector_store()
     return _vs
 
 
@@ -247,7 +260,7 @@ def retrieve_context(query: str, k: int = 8, data_types: list[str] | None = None
     if _embedder is not None:
         try:
             vs = get_vs()
-            query_vec = _embedder.embed([query])[0]
+            query_vec = _embedder.embed_query(query)
             docs = vs.similarity_search(query, k=k, query_embedding=query_vec, filter=vs_filter)
             sources = []
             for doc in docs:
@@ -296,6 +309,45 @@ Answer based on the context above. Cite regulation IDs and page numbers where ap
 
 # ── Endpoints ────────────────────────────────────────────────────────────
 
+@app.post("/api/fleet/diagnose")
+@app.post("/fleet/diagnose")
+async def fleet_diagnose_proxy(request: Request):
+    """Proxy Gen UI requests to Vite dev server if running, else fallback to plain chat."""
+    import httpx
+    body = await request.body()
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"http://127.0.0.1:{os.getenv('VITE_PORT', '8889')}/api/fleet/diagnose",
+                content=body,
+                headers={"content-type": "application/json"},
+            )
+        from starlette.responses import Response as _Resp
+        return _Resp(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
+    except Exception:
+        # Vite not running — extract message and fallback to plain chat
+        import json as _json
+        text = ""
+        try:
+            data = _json.loads(body)
+            msgs = data.get("messages", [])
+            last_user = next((m for m in reversed(msgs) if m.get("role") == "user"), None)
+            if last_user:
+                parts = last_user.get("parts", [])
+                text = next((p.get("text", "") for p in parts if p.get("type") == "text"), "")
+            if not text:
+                text = data.get("message", "")
+        except Exception:
+            pass
+        if not text:
+            raise HTTPException(400, "No message found in request")
+        return chat(ChatRequest(message=text))
+
+
 @app.post("/chat", response_model=ChatResponse)
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
@@ -327,11 +379,17 @@ def chat(req: ChatRequest):
 
 @app.get("/health")
 def health():
-    vs = get_vs()
+    # Lightweight health check — no model loading, just DB connectivity
+    try:
+        db = get_data_db()
+        db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
     return {
-        "status": "ok",
+        "status": "ok" if db_ok else "degraded",
         "model": GROQ_MODEL,
-        "documents": vs.count(),
+        "db": "connected" if db_ok else "error",
         "services": ["knowledge_agent", "3d_model_gen"],
     }
 
@@ -458,7 +516,7 @@ async def upload_document(file: UploadFile = File(...)):
         from pipeline.omni_doc_router import upload_and_ingest
         # Reset file position and delegate
         await file.seek(0)
-        return await upload_and_ingest(file=file)
+        return await upload_and_ingest(file=file, deep_extract=False, chunk_size=1000, chunk_overlap=200)
     except ImportError:
         pass
     except Exception as e:
@@ -547,19 +605,69 @@ def get_data_db():
         _data_db = _data_client[os.getenv("MONGODB_DB", "marip_f1")]
         # Share this connection with the opponents profiler
         init_profiler_with_db(_data_db)
+        # Ensure feature_store index for cross-model caching
+        try:
+            from omnianalytics.feature_store import ensure_indexes
+            ensure_indexes(_data_db)
+        except Exception:
+            pass
     return _data_db
 
 import base64 as _b64
-from fastapi.responses import Response as _Response
+from fastapi.responses import Response as _Response, FileResponse as _FileResponse
+from pathlib import Path as _Path
 
-@app.get("/media/{folder}/{filename}")
-async def serve_media_frame(folder: str, filename: str):
-    """Serve detection frame images from MongoDB media_frames collection."""
-    path = f"{folder}/{filename}"
+_MEDIA_DIR = _Path(__file__).resolve().parent.parent / "f1data" / "McMedia"
+
+@app.get("/media/{filename:path}")
+async def serve_media(filename: str, request: Request):
+    """Serve media files: videos from disk, images from MongoDB."""
+    # If path has a slash, it's a subfolder image (e.g., gdino_results/img.jpg)
+    if "/" in filename:
+        db = get_data_db()
+        doc = db["media_frames"].find_one({"path": filename}, {"data_b64": 1, "content_type": 1})
+        if doc:
+            return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
+        return _Response(status_code=404, content=b"Not found")
+    # Single filename — try disk first, then GridFS
+    fpath = _MEDIA_DIR / filename
+    if fpath.is_file():
+        suffix = fpath.suffix.lower()
+        mime = {".mp4": "video/mp4", ".webm": "video/webm", ".avi": "video/x-msvideo",
+                ".mov": "video/quicktime", ".mkv": "video/x-matroska"}.get(suffix, "application/octet-stream")
+        return _FileResponse(fpath, media_type=mime)
+    # Fallback: serve from MongoDB GridFS with Range support for video playback
+    import gridfs as _gridfs
     db = get_data_db()
-    doc = db["media_frames"].find_one({"path": path}, {"data_b64": 1, "content_type": 1})
-    if doc:
-        return _Response(content=_b64.b64decode(doc["data_b64"]), media_type=doc.get("content_type", "image/jpeg"))
+    fs = _gridfs.GridFS(db, collection="media_files")
+    gf = fs.find_one({"filename": filename})
+    if gf:
+        total = gf.length
+        mime = gf.content_type or "video/mp4"
+        range_header = request.headers.get("range")
+        if range_header:
+            # Parse Range: bytes=start-end
+            import re as _re
+            m = _re.match(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1)) if m else 0
+            end = int(m.group(2)) if m and m.group(2) else total - 1
+            end = min(end, total - 1)
+            length = end - start + 1
+            gf.seek(start)
+            data = gf.read(length)
+            return _Response(
+                content=data, status_code=206, media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                },
+            )
+        # No range — serve full file
+        return _Response(
+            content=gf.read(), media_type=mime,
+            headers={"Accept-Ranges": "bytes", "Content-Length": str(total)},
+        )
     return _Response(status_code=404, content=b"Not found")
 
 @app.get("/api/local/jolpica/race_results")
@@ -690,6 +798,1452 @@ async def driver_intel_telemetry_profiles(driver: str | None = None):
         filt["driver_code"] = driver.upper()
     return list(db["driver_telemetry_profiles"].find(filt, {"_id": 0}))
 
+@app.get("/api/local/driver_intel/similar/{driver_code}")
+async def driver_intel_similar(driver_code: str, k: int = 5, season: int | None = None):
+    """Find k most similar drivers using VectorProfiles embeddings."""
+    from pipeline.build_vector_profiles import find_similar
+    db = get_data_db()
+    try:
+        results = find_similar(driver_code, k=k, db=db, season=season)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return results
+
+
+@app.get("/api/local/driver_intel/vector_profile/{driver_code}")
+async def driver_intel_vector_profile(driver_code: str, season: int | None = None):
+    """Get the full VectorProfile for a driver (without embedding)."""
+    db = get_data_db()
+    query = {"driver_code": driver_code.upper()}
+    if season is not None and season >= 2025:
+        query["season"] = season
+    else:
+        query["season"] = None
+    doc = db["VectorProfiles"].find_one(query, {"_id": 0, "embedding": 0})
+    if not doc:
+        raise HTTPException(404, f"No VectorProfile for {driver_code}")
+    return doc
+
+
+@app.get("/api/local/team_intel/similar/{team_name}")
+async def team_intel_similar(team_name: str, k: int = 5, season: int | None = None):
+    """Find k most similar teams using averaged VectorProfiles embeddings."""
+    from pipeline.build_vector_profiles import find_similar_teams
+    db = get_data_db()
+    try:
+        results = find_similar_teams(team_name, k=k, db=db, season=season)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return results
+
+
+@app.get("/api/local/team_intel/intra/{team_name}")
+async def team_intel_intra(team_name: str, season: int | None = None):
+    """Get pairwise driver similarity within a team."""
+    from pipeline.build_vector_profiles import get_intra_team_similarity
+    db = get_data_db()
+    return get_intra_team_similarity(team_name, db=db, season=season)
+
+
+# ── VictoryProfiles endpoints ────────────────────────────────────────────
+
+
+@app.get("/api/local/victory/team/{team}/{season}")
+async def victory_team_kb(team: str, season: int):
+    """Full team KB with driver + car profiles."""
+    db = get_data_db()
+    kb = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    )
+    if not kb:
+        raise HTTPException(404, f"No VictoryProfile for {team} {season}")
+
+    drivers = list(db["victory_driver_profiles"].find(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    ))
+    kb["driver_profiles"] = drivers
+
+    car = db["victory_car_profiles"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    )
+    kb["car_profile"] = car
+
+    strategies = list(db["victory_strategy_profiles"].find(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+        {"_id": 0, "embedding": 0},
+    ))
+    kb["strategy_profiles"] = strategies
+    return kb
+
+
+@app.post("/api/local/victory/compare")
+async def victory_compare(body: dict):
+    """Compare 2+ teams by cosine similarity + structured diff.
+
+    Body: {"teams": ["McLaren", "Red Bull Racing"], "season": 2024}
+    """
+    teams = body.get("teams", [])
+    season = body.get("season")
+    if len(teams) < 2:
+        raise HTTPException(400, "Provide at least 2 teams to compare")
+
+    db = get_data_db()
+    team_data = {}
+    for team in teams:
+        doc = db["victory_team_kb"].find_one(
+            {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season},
+            {"_id": 0},
+        )
+        if doc:
+            team_data[doc["team"]] = doc
+
+    if len(team_data) < 2:
+        raise HTTPException(404, f"Need 2+ teams with profiles. Found: {list(team_data.keys())}")
+
+    team_names = list(team_data.keys())
+    similarities = []
+    for i in range(len(team_names)):
+        for j in range(i + 1, len(team_names)):
+            v1 = np.array(team_data[team_names[i]]["embedding"])
+            v2 = np.array(team_data[team_names[j]]["embedding"])
+            score = float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-10))
+            similarities.append({
+                "team_a": team_names[i], "team_b": team_names[j],
+                "similarity": round(score, 4),
+            })
+
+    diffs = []
+    for i in range(len(team_names)):
+        for j in range(i + 1, len(team_names)):
+            meta_a = team_data[team_names[i]].get("metadata", {})
+            meta_b = team_data[team_names[j]].get("metadata", {})
+            diffs.append(_compute_victory_diff(team_names[i], meta_a, team_names[j], meta_b))
+
+    return {"teams": team_names, "season": season, "similarities": similarities, "diffs": diffs}
+
+
+@app.post("/api/local/victory/search")
+async def victory_search(body: dict):
+    """Semantic search across team KBs.
+
+    Body: {"query": "teams with strong brakes", "season": 2024, "k": 5}
+    """
+    query = body.get("query", "")
+    season = body.get("season")
+    k = body.get("k", 5)
+    if not query:
+        raise HTTPException(400, "Provide a query string")
+
+    db = get_data_db()
+    from pipeline.embeddings import NomicEmbedder
+    embedder = NomicEmbedder()
+    query_vec = np.array(embedder.embed_query(query))
+
+    s_filter = {"season": season} if season is not None else {}
+    results = []
+    for doc in db["victory_team_kb"].find(s_filter, {"_id": 0}):
+        if "embedding" not in doc:
+            continue
+        vec = np.array(doc["embedding"])
+        score = float(np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec) + 1e-10))
+        results.append({
+            "team": doc["team"], "season": doc.get("season"),
+            "score": round(score, 4),
+            "narrative": doc.get("narrative", "")[:300],
+            "metadata": doc.get("metadata"),
+        })
+
+    results.sort(key=lambda x: x["score"], reverse=True)
+    return {"query": query, "results": results[:k]}
+
+
+@app.post("/api/local/victory/build")
+async def victory_build(body: dict = {}):
+    """Trigger VictoryProfiles + VectorProfiles rebuild from the frontend."""
+    import asyncio
+    season = body.get("season")
+    rebuild = body.get("rebuild", False)
+
+    results = {}
+
+    # Build VictoryProfiles (4-layer KB)
+    try:
+        from pipeline.build_victory_profiles import main as build_victory
+        await asyncio.to_thread(build_victory, season=season, rebuild=rebuild)
+        db = get_data_db()
+        results["victory"] = {
+            "driver_profiles": db["victory_driver_profiles"].count_documents({}),
+            "car_profiles": db["victory_car_profiles"].count_documents({}),
+            "strategy_profiles": db["victory_strategy_profiles"].count_documents({}),
+            "team_kb": db["victory_team_kb"].count_documents({}),
+        }
+    except Exception as e:
+        logger.exception("VictoryProfiles build failed")
+        results["victory"] = {"error": str(e)}
+
+    # Build VectorProfiles (merged + embeddings)
+    try:
+        from pipeline.build_vector_profiles import main as build_vectors
+        await asyncio.to_thread(build_vectors, rebuild=rebuild)
+        db = get_data_db()
+        results["vector"] = {
+            "count": db["VectorProfiles"].count_documents({}),
+            "with_embeddings": db["VectorProfiles"].count_documents({"embedding": {"$exists": True}}),
+        }
+    except Exception as e:
+        logger.exception("VectorProfiles build failed")
+        results["vector"] = {"error": str(e)}
+
+    return {"status": "complete", **results}
+
+
+@app.get("/api/local/victory/regression/{team}")
+async def victory_regression(team: str, season_a: int = 2023, season_b: int = 2024):
+    """Season-over-season diff for internal improvement analysis."""
+    db = get_data_db()
+
+    kb_a = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season_a},
+        {"_id": 0, "embedding": 0},
+    )
+    kb_b = db["victory_team_kb"].find_one(
+        {"team": {"$regex": f"^{team}$", "$options": "i"}, "season": season_b},
+        {"_id": 0, "embedding": 0},
+    )
+
+    if not kb_a or not kb_b:
+        missing = []
+        if not kb_a:
+            missing.append(str(season_a))
+        if not kb_b:
+            missing.append(str(season_b))
+        raise HTTPException(404, f"Missing {team} profile for season(s): {', '.join(missing)}")
+
+    diff = _compute_victory_diff(
+        f"{team} {season_a}", kb_a.get("metadata", {}),
+        f"{team} {season_b}", kb_b.get("metadata", {}),
+    )
+    return {
+        "team": team, "season_a": season_a, "season_b": season_b,
+        "diff": diff,
+        "narrative_a": kb_a.get("narrative", ""),
+        "narrative_b": kb_b.get("narrative", ""),
+    }
+
+
+def _compute_victory_diff(name_a: str, meta_a: dict, name_b: str, meta_b: dict) -> dict:
+    """Compute structured diff between two team metadata blobs."""
+    diff = {"teams": [name_a, name_b], "car": {}, "drivers": {}}
+
+    car_a = meta_a.get("car", {})
+    car_b = meta_b.get("car", {})
+
+    # Health systems diff
+    sys_a = (car_a.get("health") or {}).get("systems", {})
+    sys_b = (car_b.get("health") or {}).get("systems", {})
+    all_systems = sorted(set(list(sys_a.keys()) + list(sys_b.keys())))
+    system_diffs = []
+    for sys_name in all_systems:
+        va, vb = sys_a.get(sys_name), sys_b.get(sys_name)
+        if va is not None and vb is not None:
+            system_diffs.append({"system": sys_name, name_a: va, name_b: vb, "delta": round(vb - va, 1)})
+    diff["car"]["systems"] = system_diffs
+
+    # Constructor stats diff
+    con_a = car_a.get("constructor") or {}
+    con_b = car_b.get("constructor") or {}
+    con_diffs = []
+    for field in ("total_wins", "total_podiums", "dnf_rate", "avg_finish_position",
+                  "avg_pit_duration_s", "q3_rate"):
+        va, vb = con_a.get(field), con_b.get(field)
+        if va is not None and vb is not None:
+            delta = round(vb - va, 3) if isinstance(vb, float) else vb - va
+            con_diffs.append({"metric": field, name_a: va, name_b: vb, "delta": delta})
+    diff["car"]["constructor"] = con_diffs
+
+    # Strategy diff
+    strat_a = meta_a.get("strategy", {})
+    strat_b = meta_b.get("strategy", {})
+    strat_diffs = []
+    for field in ("team_undercut_aggression", "team_avg_tyre_life", "team_one_stop_freq"):
+        va, vb = strat_a.get(field), strat_b.get(field)
+        if va is not None and vb is not None:
+            strat_diffs.append({"metric": field, name_a: va, name_b: vb, "delta": round(vb - va, 3)})
+    diff["strategy"] = strat_diffs
+
+    return diff
+
+
+def _extract_summary(text: str, max_chars: int = 300) -> str:
+    """Extract first meaningful paragraph as summary from WISE output."""
+    import re
+    # Strip markdown headers and numbered sections
+    cleaned = re.sub(r'^#{1,4}\s+\d*\.?\s*.*$', '', text, flags=re.MULTILINE).strip()
+    # Split into paragraphs
+    paragraphs = [p.strip() for p in cleaned.split('\n\n') if p.strip() and len(p.strip()) > 30]
+    if not paragraphs:
+        return text[:max_chars].rsplit(' ', 1)[0] + '...' if len(text) > max_chars else text
+    summary = paragraphs[0]
+    if len(summary) > max_chars:
+        summary = summary[:max_chars].rsplit(' ', 1)[0] + '...'
+    return summary
+
+
+def _scores_from_fingerprint(insight) -> dict:
+    """Build radar scores from WISE fingerprint numeric_stats (100% grounded).
+
+    Picks up to 7 columns with the highest coefficient of variation (most
+    interesting spread), normalizes each mean to 0-10 within its own min-max range.
+    """
+    fp = getattr(insight, "fingerprint", None)
+    if not fp:
+        return {}
+    stats = getattr(fp, "numeric_stats", None) or (fp.get("numeric_stats") if isinstance(fp, dict) else None)
+    if not stats:
+        return {}
+
+    # Skip identifier / non-metric columns
+    skip = {"_id", "updated_at", "driver_code", "Driver", "season", "year",
+            "Year", "Race", "round", "samples", "laps"}
+
+    # Friendly display names for known columns
+    labels = {
+        # telemetry_race_summary columns
+        "avg_speed": "Avg Speed",
+        "top_speed": "Top Speed",
+        "avg_rpm": "Engine RPM",
+        "max_rpm": "Peak RPM",
+        "avg_throttle": "Throttle %",
+        "brake_pct": "Braking",
+        "drs_pct": "DRS Usage",
+        # jolpica_race_results columns
+        "grid": "Grid Position",
+        "position": "Race Finish",
+        "points": "Points",
+        "positions_gained": "Overtaking",
+        # aggregate profile columns (legacy)
+        "avg_race_speed_kmh": "Race Speed",
+        "lap_time_consistency_std": "Consistency",
+        "degradation_slope_s_per_lap": "Tyre Deg",
+        "overtake_ratio": "Overtake Rate",
+        "late_race_delta_s": "Late Race Pace",
+        "avg_braking_g": "Braking Force",
+        "full_throttle_pct": "Throttle %",
+        "drs_gain_kmh": "DRS Gain",
+        "braking_consistency_std": "Brake Consistency",
+        "avg_stint_laps": "Stint Length",
+        "brake_overlap_throttle_pct": "Brake Overlap",
+        # anomaly columns
+        "overallHealth": "Overall Health",
+        # circuit columns
+        "estimated_corners": "Corner Count",
+        "drs_zones": "DRS Zones",
+        "elevation_gain_m": "Elevation",
+        "est_pit_lane_loss_s": "Pit Loss",
+        "avg_temp_c": "Temperature",
+        "air_density_kg_m3": "Air Density",
+        "downforce_loss_pct": "DF Loss",
+        "pole_win_rate": "Pole-Win %",
+        "avg_positions_gained": "Overtaking",
+        "dnf_rate": "DNF Rate",
+        "pole_converted": "Pole Conv.",
+        "dnf_count": "DNF Count",
+        "entries": "Race Entries",
+    }
+
+    # Score each column by coefficient of variation (interestingness)
+    candidates = []
+    for col, s in stats.items():
+        if col in skip:
+            continue
+        mean = s.get("mean", 0)
+        std = s.get("std", 0)
+        mn = s.get("min", 0)
+        mx = s.get("max", 0)
+        rng = mx - mn
+        if rng == 0:
+            continue
+        cv = abs(std / mean) if mean != 0 else std
+        # Normalize mean to 0-10 within column range
+        norm = round((mean - mn) / rng * 10, 1)
+        label = labels.get(col, col.replace("_", " ").title()[:18])
+        candidates.append((cv, label, max(0, min(10, norm))))
+
+    # Pick top 7 by interestingness, sort alphabetically for display
+    candidates.sort(key=lambda x: -x[0])
+    top = sorted(candidates[:7], key=lambda x: x[1])
+    return {label: val for _, label, val in top}
+
+
+@app.post("/api/local/driver_intel/kex/compare")
+async def driver_compare_kex(body: dict):
+    """KeX-powered driver comparison — Gen UI with WISE fingerprint scores."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    drivers = body.get("drivers", [])
+    if len(drivers) < 2 or len(drivers) > 4:
+        raise HTTPException(400, "Provide 2-4 driver codes")
+
+    codes = [d.upper() for d in drivers]
+    db = get_data_db()
+    coll = db["kex_comparison_briefings"]
+
+    # ── Fetch opponent profiles ───────────────────────────────────────
+    cache_key = "+".join(sorted(codes))
+    rows = []
+    for code in codes:
+        doc = db["opponent_profiles"].find_one({"driver_code": code}, {"_id": 0})
+        if doc:
+            rows.append(doc)
+    if len(rows) < 2:
+        raise HTTPException(404, f"Need opponent_profiles for at least 2 drivers, found {len(rows)}")
+
+    # ── Check cache (hash includes actual data content) ────────────────
+    hash_payload = "v2:" + _json.dumps(
+        {d.get("driver_code", ""): d.get("updated_at", "") for d in rows},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(rows)
+    # Keep driver_code for reference, drop non-numeric metadata
+    meta_cols = ["driver_id", "forename", "surname", "nationality", "dob",
+                 "seasons", "updated_at", "career_stats_updated_at",
+                 "jolpica_enriched_at", "driver_number", "age", "preferred_compound"]
+    df = df.drop(columns=[c for c in meta_cols if c in df.columns], errors="ignore")
+
+    # ── WISE extraction ────────────────────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    driver_list = ", ".join(codes)
+    persona = (
+        f"You are an F1 strategist comparing {len(codes)} drivers head-to-head. "
+        "Focus on what differentiates them — where their strengths and weaknesses diverge. "
+        "Highlight strategic matchup implications: who has the edge in qualifying, race pace, "
+        "tyre management, late-race performance, and overtaking. "
+        "IMPORTANT: Write a concise flowing comparison in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Compare these F1 drivers head-to-head: {driver_list}. Analyze their relative strengths, weaknesses, and strategic matchup implications."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Compare KeX Groq failed, falling back to edge: %s", e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Compare KeX edge fallback also failed")
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "cache_key": cache_key,
+        "drivers": codes,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/driver_intel/kex/{driver_code}")
+async def driver_intel_kex(driver_code: str, force: bool = False):
+    """Generate WISE knowledge extraction briefing for a driver.
+
+    Uses on-screen data (performance markers, overtake profile, telemetry style,
+    system health) to create a natural language intelligence briefing.
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_driver_briefings"]
+
+    # ── Gather full historical race data (pre-2025) ──────────────────
+    import pandas as pd
+
+    telem_docs = list(db["telemetry_race_summary"].find(
+        {"Driver": code}, {"_id": 0, "compounds": 0}
+    ))
+    results_docs = list(db["jolpica_race_results"].find(
+        {"driver_code": code}, {"_id": 0}
+    ))
+
+    if not telem_docs and not results_docs:
+        raise HTTPException(404, f"No historical data for driver {code}")
+
+    # ── Compute data hash to detect changes (includes content sample) ─
+    sample_telem = telem_docs[-1] if telem_docs else {}
+    sample_results = results_docs[-1] if results_docs else {}
+    hash_payload = "v5:" + _json.dumps(
+        {"telem_n": len(telem_docs), "results_n": len(results_docs),
+         "last_telem": {k: v for k, v in sample_telem.items() if k not in ("_id", "compounds")},
+         "last_result": {k: v for k, v in sample_results.items() if k != "_id"}},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches (data unchanged)
+    if not force:
+        existing = coll.find_one({"driver_code": code})
+        if existing and existing.get("data_hash") == data_hash:
+            existing.pop("_id", None)
+            return existing
+
+    # ── Build rich DataFrame for WISE ─────────────────────────────────
+    telem_df = pd.DataFrame(telem_docs) if telem_docs else pd.DataFrame()
+    results_df = pd.DataFrame(results_docs) if results_docs else pd.DataFrame()
+
+    # Merge on (Year/season, Race/round) if both exist
+    if not telem_df.empty and not results_df.empty:
+        # Standardize join keys
+        if "Year" in telem_df.columns and "season" in results_df.columns:
+            results_df["Year"] = results_df["season"].astype(int)
+            results_df = results_df.drop(columns=["season"])
+        if "Race" in telem_df.columns and "round" in results_df.columns:
+            # Race is str in telemetry, round is int in results — coerce both to int
+            telem_df["Race"] = pd.to_numeric(telem_df["Race"], errors="coerce")
+            results_df["Race"] = results_df["round"].astype(int)
+            results_df = results_df.drop(columns=["round"])
+        merge_on = [c for c in ["Year", "Race"] if c in telem_df.columns and c in results_df.columns]
+        if merge_on:
+            df = telem_df.merge(results_df, on=merge_on, how="outer", suffixes=("", "_res"))
+        else:
+            df = pd.concat([telem_df, results_df], ignore_index=True)
+    elif not telem_df.empty:
+        df = telem_df
+    else:
+        df = results_df
+
+    # Drop non-numeric clutter columns that confuse fingerprinting
+    drop_cols = [c for c in ["driver_code", "Driver", "race_name", "circuit_id",
+                              "date", "status", "fastest_lap_time", "driver_code_res"] if c in df.columns]
+    df = df.drop(columns=drop_cols, errors="ignore")
+
+    # ── WISE extraction via OmniKeX ──────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    persona = (
+        "You are an F1 performance analyst preparing a driver intelligence briefing. "
+        "Focus on driving style, strengths, weaknesses, race strategy implications, "
+        "and competitor context. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze driver {code}'s complete performance profile — driving style, strengths, weaknesses, and strategic implications."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Driver KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Driver KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+# ── Team-level KeX Briefings (declared before driver-level for route priority) ──
+
+@app.post("/api/local/mccar-telemetry/kex/team/{constructor_id}")
+async def car_telemetry_kex_team(constructor_id: str, body: dict = {}):
+    """Generate a single team-level car telemetry KeX briefing aggregating all drivers."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    year = body.get("year")
+    if not year:
+        raise HTTPException(400, "year is required in request body")
+
+    db = get_data_db()
+    coll = db["kex_car_telemetry_briefings"]
+
+    profile = db["constructor_profiles"].find_one(
+        {"constructor_id": constructor_id, "season": int(year)}, {"_id": 0}
+    )
+    if not profile:
+        profile = db["constructor_profiles"].find_one(
+            {"constructor_id": constructor_id}, {"_id": 0}
+        )
+    if not profile or not profile.get("drivers"):
+        raise HTTPException(404, f"No profile for {constructor_id} in {year}")
+
+    team_name = profile.get("constructor_name", constructor_id)
+    driver_codes = [d["driver_code"] for d in profile["drivers"] if d.get("driver_code")]
+    if not driver_codes:
+        raise HTTPException(404, f"No drivers found for {constructor_id}")
+
+    all_rows = []
+    for code in driver_codes:
+        docs = list(db["telemetry_race_summary"].find(
+            {"Driver": code, "Year": int(year)}, {"_id": 0, "compounds": 0},
+        ))
+        for doc in docs:
+            doc["_driver"] = code
+        all_rows.extend(docs)
+
+    if not all_rows:
+        raise HTTPException(404, f"No telemetry for {constructor_id} drivers in {year}")
+
+    cache_key = f"team:{constructor_id}:{year}:season"
+    hash_payload = f"v1:{cache_key}:{len(all_rows)}"
+    last = {k: v for k, v in all_rows[-1].items() if k not in ("_id",)}
+    hash_payload += ":" + _json.dumps(last, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(all_rows)
+    drop_cols = [c for c in ["Driver", "driver_acronym", "meeting_name",
+                              "session_name", "session_type", "compound",
+                              "_id", "_driver"] if c in df.columns]
+    df_clean = df.drop(columns=drop_cols, errors="ignore")
+
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    drivers_str = ", ".join(driver_codes)
+    persona = (
+        f"You are an F1 telemetry engineer analyzing {team_name}'s {year} season car performance "
+        f"across their full driver lineup ({drivers_str}). "
+        "Compare how each driver extracts performance from the car — speed characteristics, "
+        "braking behavior, DRS usage, tyre management differences. "
+        "Identify team-wide strengths and weaknesses, plus driver-specific divergences. "
+        "IMPORTANT: Write a concise flowing team analysis in 4-5 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = (
+        f"Analyze {team_name}'s car telemetry across {year} — team-wide performance patterns, "
+        f"driver comparison ({drivers_str}), and areas of strength and concern."
+    )
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(provider=LLMProvider.GROQ, model="llama-3.3-70b-versatile",
+                                task_type="realtime", temperature=0.15)
+        insight = extract_realtime(df_clean, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Team telemetry KeX Groq failed for %s: %s", constructor_id, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="qwen3.5:9b",
+                                    task_type="realtime", temperature=0.15)
+            insight = extract_realtime(df_clean, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Team telemetry KeX edge fallback failed for %s", constructor_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+    now = _time.time()
+    result = {
+        "cache_key": cache_key, "constructor_id": constructor_id, "team_name": team_name,
+        "drivers": driver_codes, "year": int(year), "type": "team_season",
+        "text": text, "model_used": model_used, "provider_used": provider_used,
+        "scores": scores, "summary": _extract_summary(text),
+        "grounding_score": grounding_score, "generated_at": now, "data_hash": data_hash,
+    }
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/anomaly/kex/team/{constructor_id}")
+async def anomaly_kex_team(constructor_id: str, body: dict = {}):
+    """Generate a single team-level anomaly/health KeX briefing aggregating all drivers."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    db = get_data_db()
+    coll = db["kex_anomaly_briefings"]
+    year = body.get("year")
+
+    filt: dict = {"constructor_id": constructor_id}
+    if year:
+        filt["season"] = int(year)
+    profile = db["constructor_profiles"].find_one(filt, {"_id": 0})
+    if not profile:
+        profile = db["constructor_profiles"].find_one({"constructor_id": constructor_id}, {"_id": 0})
+    if not profile or not profile.get("drivers"):
+        raise HTTPException(404, f"No profile for {constructor_id}")
+
+    team_name = profile.get("constructor_name", constructor_id)
+    driver_codes = [d["driver_code"] for d in profile["drivers"] if d.get("driver_code")]
+    if not driver_codes:
+        raise HTTPException(404, f"No drivers for {constructor_id}")
+
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_entries = []
+    for d in snapshot.get("drivers", []):
+        if d.get("code") in driver_codes or d.get("name_acronym") in driver_codes:
+            driver_entries.append(d)
+
+    if not driver_entries:
+        raise HTTPException(404, f"No anomaly data for {constructor_id} drivers")
+
+    cache_key = f"team:{constructor_id}:anomaly"
+    hash_payload = "v1:" + _json.dumps(driver_entries, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    trend_rows = []
+    for entry in driver_entries:
+        code = entry.get("code", "?")
+        for r in entry.get("races", [])[-10:]:
+            row = {"driver": code, "race": r.get("race", "")}
+            for sname, sinfo in r.get("systems", {}).items():
+                row[f"{sname}_health"] = sinfo.get("health")
+            trend_rows.append(row)
+
+    if not trend_rows:
+        for entry in driver_entries:
+            code = entry.get("code", "?")
+            row = {"driver": code, "overallHealth": entry.get("overallHealth")}
+            for s in entry.get("systems", []):
+                row[f"{s.get('name','?')}_health"] = s.get("health")
+            trend_rows.append(row)
+
+    df = pd.DataFrame(trend_rows)
+
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    drivers_str = ", ".join(driver_codes)
+    persona = (
+        f"You are an F1 reliability engineer analyzing {team_name}'s fleet health "
+        f"across their driver lineup ({drivers_str}). "
+        "Compare system health between drivers — identify shared weaknesses (team-wide car issues) "
+        "vs driver-specific anomalies. Assess fleet reliability trends and maintenance priorities. "
+        "IMPORTANT: Write a concise flowing team briefing in 4-5 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = (
+        f"Analyze {team_name}'s fleet health — team-wide system reliability, "
+        f"driver comparison ({drivers_str}), shared weaknesses, and maintenance priorities."
+    )
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(provider=LLMProvider.GROQ, model="llama-3.3-70b-versatile",
+                                task_type="anomaly", temperature=0.15)
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Team anomaly KeX Groq failed for %s: %s", constructor_id, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(provider=LLMProvider.OLLAMA, model="qwen3.5:9b",
+                                    task_type="anomaly", temperature=0.15)
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text, model_used, provider_used = insight.text, insight.model_used, insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Team anomaly KeX edge fallback failed for %s", constructor_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+    now = _time.time()
+    result = {
+        "cache_key": cache_key, "constructor_id": constructor_id, "team_name": team_name,
+        "drivers": driver_codes, "type": "team_anomaly",
+        "text": text, "model_used": model_used, "provider_used": provider_used,
+        "scores": scores, "summary": _extract_summary(text),
+        "grounding_score": grounding_score, "generated_at": now, "data_hash": data_hash,
+    }
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+# ── Driver-level KeX Briefings ─────────────────────────────────────────
+
+@app.post("/api/local/mccar-telemetry/kex/{driver_code}")
+async def car_telemetry_kex(driver_code: str, body: dict = {}):
+    """Generate WISE knowledge extraction briefing for car telemetry data.
+
+    If body contains 'race', generates a race-level briefing.
+    Otherwise generates a season-level briefing for the given year.
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    code = driver_code.upper()
+    year = body.get("year")
+    race = body.get("race")
+    db = get_data_db()
+    coll = db["kex_car_telemetry_briefings"]
+
+    if not year:
+        raise HTTPException(400, "year is required in request body")
+
+    # ── Gather telemetry data ─────────────────────────────────────────
+    if race:
+        # Race-level: summary + per-lap data
+        summary_doc = db["telemetry_race_summary"].find_one(
+            {"Driver": code, "Year": int(year), "Race": race},
+            {"_id": 0, "compounds": 0},
+        )
+        lap_docs = list(db["telemetry_lap_summary"].find(
+            {"driver_acronym": code, "year": int(year), "meeting_name": {"$regex": race}},
+            {"_id": 0},
+        ))
+        if not summary_doc and not lap_docs:
+            raise HTTPException(404, f"No telemetry for {code} at {race} {year}")
+
+        # Build DataFrame: one row from summary, plus per-lap progression
+        rows = []
+        if summary_doc:
+            rows.append(summary_doc)
+        if lap_docs:
+            # Add per-lap stats as additional rows for richer fingerprinting
+            for ld in lap_docs:
+                rows.append(ld)
+
+        cache_key = f"{code}:{year}:{race}"
+        briefing_type = "race"
+    else:
+        # Season-level: all race summaries for this driver+year
+        telem_docs = list(db["telemetry_race_summary"].find(
+            {"Driver": code, "Year": int(year)},
+            {"_id": 0, "compounds": 0},
+        ))
+        if not telem_docs:
+            raise HTTPException(404, f"No telemetry for {code} in {year}")
+        rows = telem_docs
+        cache_key = f"{code}:{year}:season"
+        briefing_type = "season"
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = f"v1:{cache_key}:{len(rows)}"
+    if rows:
+        last = {k: v for k, v in rows[-1].items() if k not in ("_id",)}
+        hash_payload += ":" + _json.dumps(last, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    df = pd.DataFrame(rows)
+    # Drop non-numeric metadata
+    drop_cols = [c for c in ["Driver", "driver_acronym", "meeting_name",
+                              "session_name", "session_type", "compound",
+                              "_id"] if c in df.columns]
+    df = df.drop(columns=drop_cols, errors="ignore")
+
+    # ── WISE extraction via OmniKeX ───────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    if briefing_type == "race":
+        persona = (
+            f"You are an F1 telemetry engineer analyzing {code}'s car performance at {race} {year}. "
+            "Focus on speed characteristics, braking behavior, DRS usage patterns, "
+            "tyre degradation across stints, and lap time consistency. "
+            "Identify standout metrics and areas for improvement. "
+            "IMPORTANT: Write a concise flowing analysis in 3-4 paragraphs. "
+            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+            "Do NOT include markdown tables. Just write clear engineering prose."
+        )
+        query = f"Analyze {code}'s car telemetry at {race} {year} — speed, braking, DRS, tyre life, and lap consistency."
+    else:
+        persona = (
+            f"You are an F1 telemetry engineer analyzing {code}'s {year} season car performance. "
+            "Focus on performance trends across races, consistency of speed and braking, "
+            "circuits where the car excelled or struggled, and overall progression through the season. "
+            "IMPORTANT: Write a concise flowing analysis in 3-4 paragraphs. "
+            "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+            "Do NOT include markdown tables. Just write clear engineering prose."
+        )
+        query = f"Analyze {code}'s car telemetry across the {year} season — performance trends, consistency, and notable outliers."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Car telemetry KeX Groq failed for %s, falling back to edge: %s", code, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Car telemetry KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "cache_key": cache_key,
+        "driver_code": code,
+        "year": int(year),
+        "race": race,
+        "type": briefing_type,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/anomaly/kex/{driver_code}")
+async def anomaly_kex(driver_code: str):
+    """Generate WISE knowledge extraction briefing for a driver's anomaly/health data.
+
+    Auto-regenerates when source data changes (via data hash).
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_anomaly_briefings"]
+
+    # ── Gather anomaly data ───────────────────────────────────────────
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_data = None
+    if "drivers" in snapshot:
+        for d in snapshot.get("drivers", []):
+            if d.get("code") == code or d.get("name_acronym") == code:
+                driver_data = d
+                break
+
+    if not driver_data:
+        raise HTTPException(404, f"No anomaly data for driver {code}")
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = "v3:" + _json.dumps(driver_data, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    # Return cached if hash matches
+    existing = coll.find_one({"driver_code": code})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    # ── Build WISE prompt ─────────────────────────────────────────────
+    systems = driver_data.get("systems", [])
+    overall = driver_data.get("overallHealth", "N/A")
+    level = driver_data.get("level", "N/A")
+    last_race = driver_data.get("lastRace", "N/A")
+
+    system_lines = []
+    for s in systems:
+        line = f"- {s.get('name','?')}: {s.get('health','?')}/100 ({s.get('level','?')})"
+        if s.get("maintenanceAction") and s["maintenanceAction"] != "none":
+            line += f" — action: {s['maintenanceAction']}"
+        if s.get("details"):
+            line += f" | {s['details']}"
+        top_feats = s.get("metrics", [])
+        if top_feats:
+            feat_str = ", ".join(f"{m.get('label','')}: {m.get('value','')}" for m in top_feats[:5])
+            line += f" | top features: {feat_str}"
+        system_lines.append(line)
+
+    # Race-by-race trend
+    races = driver_data.get("races", [])
+    trend_lines = []
+    for r in races[-5:]:
+        rsys = r.get("systems", {})
+        parts = [f"{name}: {info.get('health','?')}%" for name, info in rsys.items()]
+        trend_lines.append(f"- {r.get('race','?')}: {', '.join(parts)}")
+
+    # ── Build DataFrame for WISE ─────────────────────────────────────
+    import pandas as pd
+
+    flat = {"overallHealth": overall, "level": level, "lastRace": last_race}
+    for s in systems:
+        name = s.get("name", "unknown")
+        flat[f"{name}_health"] = s.get("health")
+        flat[f"{name}_level"] = s.get("level")
+        if s.get("maintenanceAction") and s["maintenanceAction"] != "none":
+            flat[f"{name}_action"] = s["maintenanceAction"]
+
+    # Add race trend data
+    races = driver_data.get("races", [])
+    trend_rows = []
+    for r in races[-10:]:
+        row = {"race": r.get("race", "")}
+        for sname, sinfo in r.get("systems", {}).items():
+            row[f"{sname}_health"] = sinfo.get("health")
+        trend_rows.append(row)
+
+    df = pd.DataFrame(trend_rows) if trend_rows else pd.DataFrame([flat])
+
+    # ── WISE extraction via OmniKeX ──────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    persona = (
+        "You are an F1 reliability engineer preparing an anomaly detection briefing. "
+        "Focus on system health status, degradation trends, risk factors, and recommended actions. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze driver {code}'s car health and reliability — system-by-system assessment, trends, and maintenance priorities."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="anomaly",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Anomaly KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="anomaly",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Anomaly KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/forecast/kex/team/{constructor_id}")
+async def forecast_kex_team(constructor_id: str, body: dict = {}):
+    """Generate a single team-level forecast KeX briefing aggregating all drivers."""
+    import time as _time
+    import hashlib, json as _json
+    import pandas as pd
+
+    db = get_data_db()
+    coll = db["kex_forecast_briefings"]
+    year = body.get("year")
+
+    filt: dict = {"constructor_id": constructor_id}
+    if year:
+        filt["season"] = int(year)
+    profile = db["constructor_profiles"].find_one(filt, {"_id": 0})
+    if not profile:
+        profile = db["constructor_profiles"].find_one({"constructor_id": constructor_id}, {"_id": 0})
+    if not profile or not profile.get("drivers"):
+        raise HTTPException(404, f"No profile for {constructor_id}")
+
+    team_name = profile.get("constructor_name", constructor_id)
+    driver_codes = [d["driver_code"] for d in profile["drivers"] if d.get("driver_code")]
+    if not driver_codes:
+        raise HTTPException(404, f"No drivers for {constructor_id}")
+
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_entries = []
+    for d in snapshot.get("drivers", []):
+        if d.get("code") in driver_codes or d.get("name_acronym") in driver_codes:
+            driver_entries.append(d)
+
+    if not driver_entries:
+        raise HTTPException(404, f"No anomaly data for {constructor_id} drivers")
+
+    cache_key = f"team:{constructor_id}:{year or 'all'}:forecast"
+    hash_payload = "v1:forecast:" + _json.dumps(driver_entries, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"cache_key": cache_key})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    trend_rows = []
+    for entry in driver_entries:
+        code = entry.get("code", "?")
+        for r in entry.get("races", []):
+            row = {"driver": code, "race": r.get("race", "")}
+            for sname, sinfo in r.get("systems", {}).items():
+                row[f"{sname}_health"] = sinfo.get("health")
+                if sinfo.get("maintenance_action") and sinfo["maintenance_action"] != "none":
+                    row[f"{sname}_action"] = sinfo["maintenance_action"]
+            trend_rows.append(row)
+
+    if not trend_rows:
+        raise HTTPException(404, f"No race trend data for {constructor_id} drivers")
+
+    df = pd.DataFrame(trend_rows)
+
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    drivers_str = ", ".join(driver_codes)
+    persona = (
+        f"You are an F1 predictive maintenance engineer analyzing {team_name}'s "
+        f"race-by-race reliability trends across their full driver lineup ({drivers_str}). "
+        "Compare deterioration patterns between drivers — identify team-wide system weaknesses "
+        "vs driver-specific degradation. Focus on: which systems are trending toward failure across the fleet, "
+        "risk projections for upcoming races, cumulative wear patterns, and maintenance scheduling priorities. "
+        "IMPORTANT: Write a concise flowing team forecast in 4-5 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = (
+        f"Forecast {team_name}'s fleet reliability — team-wide system deterioration trends, "
+        f"driver comparison ({drivers_str}), risk projections, and maintenance scheduling priorities."
+    )
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="forecast",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Forecast KeX team Groq failed for %s, falling back to edge model: %s", constructor_id, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="forecast",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Forecast KeX team edge fallback also failed for %s", constructor_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "cache_key": cache_key,
+        "constructor_id": constructor_id,
+        "team_name": team_name,
+        "drivers": driver_codes,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"cache_key": cache_key}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+@app.post("/api/local/forecast/kex/{driver_code}")
+async def forecast_kex(driver_code: str):
+    """Generate WISE predictive maintenance forecast for a driver.
+
+    Uses race-by-race anomaly trends to forecast reliability risks
+    and maintenance priorities.  Auto-regenerates when source data changes.
+    """
+    import time as _time
+    import hashlib, json as _json
+
+    code = driver_code.upper()
+    db = get_data_db()
+    coll = db["kex_forecast_briefings"]
+
+    # ── Gather anomaly data ───────────────────────────────────────────
+    snapshot = db["anomaly_scores_snapshot"].find_one({}, {"_id": 0}) or {}
+    driver_data = None
+    if "drivers" in snapshot:
+        for d in snapshot.get("drivers", []):
+            if d.get("code") == code or d.get("name_acronym") == code:
+                driver_data = d
+                break
+
+    if not driver_data:
+        raise HTTPException(404, f"No anomaly data for driver {code}")
+
+    # ── Compute data hash ─────────────────────────────────────────────
+    hash_payload = "v1:forecast:" + _json.dumps(driver_data, sort_keys=True, default=str)
+    data_hash = hashlib.sha256(hash_payload.encode()).hexdigest()[:16]
+
+    existing = coll.find_one({"driver_code": code})
+    if existing and existing.get("data_hash") == data_hash:
+        existing.pop("_id", None)
+        return existing
+
+    # ── Build DataFrame from ALL race trends ──────────────────────────
+    import pandas as pd
+
+    races = driver_data.get("races", [])
+    trend_rows = []
+    for r in races:                       # ALL races, not just last 10
+        row = {"race": r.get("race", "")}
+        for sname, sinfo in r.get("systems", {}).items():
+            row[f"{sname}_health"] = sinfo.get("health")
+            if sinfo.get("maintenance_action") and sinfo["maintenance_action"] != "none":
+                row[f"{sname}_action"] = sinfo["maintenance_action"]
+        trend_rows.append(row)
+
+    if not trend_rows:
+        raise HTTPException(404, f"No race trend data for {code}")
+
+    df = pd.DataFrame(trend_rows)
+
+    # ── WISE extraction ───────────────────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    persona = (
+        f"You are an F1 predictive maintenance engineer analyzing race-by-race reliability trends for driver {code}. "
+        "Focus on: deterioration patterns across systems, which systems are trending toward failure, "
+        "risk projections for upcoming races, and maintenance scheduling recommendations. "
+        "Consider rate of degradation, seasonality effects, and cumulative wear patterns. "
+        "IMPORTANT: Write a concise flowing forecast in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Forecast reliability trends for {code} — which systems are deteriorating, risk projections, and maintenance scheduling priorities."
+
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="forecast",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Forecast KeX Groq failed for %s, falling back to edge model: %s", code, e)
+
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="forecast",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Forecast KeX edge fallback also failed for %s", code)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "driver_code": code,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"driver_code": code}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
 # ── Circuit Intelligence endpoints ────────────────────────────────────
 
 @app.get("/api/local/circuit_intel/circuits")
@@ -722,6 +2276,331 @@ async def circuit_intel_air_density(circuit: str | None = None, year: int | None
     if year:
         filt["year"] = year
     return list(db["race_air_density"].find(filt, {"_id": 0}))
+
+@app.get("/api/local/circuit_intel/history/{circuit_id}")
+async def circuit_intel_history(circuit_id: str):
+    """Historical race performance at a given circuit from jolpica_race_results."""
+    from collections import defaultdict
+    db = get_data_db()
+    results = list(db["jolpica_race_results"].find(
+        {"circuit_id": circuit_id},
+        {"_id": 0, "season": 1, "round": 1, "race_name": 1,
+         "driver_code": 1, "driver_id": 1,
+         "constructor_id": 1, "constructor_name": 1,
+         "grid": 1, "position": 1, "points": 1,
+         "status": 1, "laps": 1}
+    ).sort([("season", 1), ("position", 1)]))
+
+    if not results:
+        return {"circuit_id": circuit_id, "seasons": [], "winners": [],
+                "pole_stats": {}, "positions_gained": {},
+                "top_constructors": [], "top_podiums": []}
+
+    race_name = results[0].get("race_name", circuit_id)
+    seasons = sorted(set(r["season"] for r in results))
+
+    # ── Winners per season ────────────────────────────────────────────
+    winners = []
+    for s in seasons:
+        w = next((r for r in results if r["season"] == s and r.get("position") == 1), None)
+        if w:
+            winners.append({"season": s, "driver_code": w.get("driver_code", ""),
+                            "constructor": w.get("constructor_name", ""),
+                            "grid": w.get("grid")})
+
+    # ── Pole → win conversion ────────────────────────────────────────
+    pole_races = [r for r in results if r.get("grid") == 1]
+    pole_wins = sum(1 for r in pole_races if r.get("position") == 1)
+
+    # ── Avg positions gained / lost ──────────────────────────────────
+    valid = [r for r in results
+             if r.get("grid") and r.get("position")
+             and r["grid"] > 0 and r["position"] > 0]
+    gains = [r["grid"] - r["position"] for r in valid]
+
+    # ── Constructor dominance ────────────────────────────────────────
+    cpt: dict[str, dict] = defaultdict(lambda: {"points": 0.0, "name": ""})
+    cseas: dict[str, set] = defaultdict(set)
+    for r in results:
+        cid = r.get("constructor_id", "")
+        cpt[cid]["points"] += r.get("points", 0)
+        cpt[cid]["name"] = r.get("constructor_name", cid)
+        cseas[cid].add(r.get("season"))
+    top_constructors = sorted(
+        [{"id": k, "name": v["name"], "points": v["points"],
+          "seasons": len(cseas[k])} for k, v in cpt.items()],
+        key=lambda x: -x["points"],
+    )[:10]
+
+    # ── Podium kings ─────────────────────────────────────────────────
+    pod: dict[str, int] = defaultdict(int)
+    for r in results:
+        if r.get("position") and r["position"] <= 3:
+            pod[r.get("driver_code", "")] += 1
+    top_podiums = sorted(
+        [{"driver": k, "count": v} for k, v in pod.items()],
+        key=lambda x: -x["count"],
+    )[:10]
+
+    # ── DNF rate ─────────────────────────────────────────────────────
+    total_entries = len(results)
+    dnfs = sum(1 for r in results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+    dnf_rate = round(dnfs / total_entries, 3) if total_entries else 0
+
+    return {
+        "circuit_id": circuit_id,
+        "race_name": race_name,
+        "seasons": seasons,
+        "winners": winners,
+        "pole_stats": {
+            "total": len(pole_races),
+            "wins": pole_wins,
+            "rate": round(pole_wins / len(pole_races), 3) if pole_races else 0,
+        },
+        "positions_gained": {
+            "avg": round(sum(gains) / len(gains), 2) if gains else 0,
+            "median": sorted(gains)[len(gains) // 2] if gains else 0,
+        },
+        "top_constructors": top_constructors,
+        "top_podiums": top_podiums,
+        "dnf_rate": dnf_rate,
+        "total_races": len(seasons),
+    }
+
+@app.post("/api/local/circuit_intel/kex/{circuit_id}")
+async def circuit_intel_kex(circuit_id: str, force: bool = False):
+    """Generate WISE knowledge extraction briefing for a circuit.
+
+    Uses on-screen data (metadata, pit loss, air density, historical performance)
+    to create a natural language intelligence briefing via OmniKeX LLM routing.
+    Results are cached in MongoDB per circuit.
+    """
+    import time as _time
+    import hashlib, json as _json
+    from collections import defaultdict
+
+    db = get_data_db()
+    coll = db["kex_circuit_briefings"]
+
+    # ── Gather all on-screen data ─────────────────────────────────────
+    circuit_meta = db["circuit_intelligence"].find_one(
+        {"circuit_slug": circuit_id},
+        {"_id": 0, "coordinates": 0, "bbox": 0},
+    )
+    pit_loss = db["circuit_pit_loss_times"].find_one(
+        {"circuit": circuit_id}, {"_id": 0},
+    )
+    air_data = list(db["race_air_density"].find(
+        {"circuit_slug": circuit_id}, {"_id": 0},
+    ).sort("year", 1))
+
+    # Historical performance (reuse same logic as history endpoint)
+    results = list(db["jolpica_race_results"].find(
+        {"circuit_id": circuit_id},
+        {"_id": 0, "season": 1, "race_name": 1,
+         "driver_code": 1, "constructor_id": 1, "constructor_name": 1,
+         "grid": 1, "position": 1, "points": 1, "status": 1},
+    ).sort([("season", 1), ("position", 1)]))
+
+    if not circuit_meta and not results:
+        raise HTTPException(404, f"No data for circuit {circuit_id}")
+
+    # ── Compute data hash to detect changes ───────────────────────────
+    hash_payload = _json.dumps(
+        {"meta": circuit_meta, "pit": pit_loss, "air": air_data, "results_count": len(results),
+         "latest_season": results[-1].get("season") if results else None},
+        sort_keys=True, default=str,
+    )
+    data_hash = hashlib.sha256(("v3:" + hash_payload).encode()).hexdigest()[:16]
+
+    # Return cached if hash matches (data unchanged)
+    if not force:
+        existing = coll.find_one({"circuit_id": circuit_id})
+        if existing and existing.get("data_hash") == data_hash:
+            existing.pop("_id", None)
+            return existing
+
+    # Aggregate history
+    seasons = sorted(set(r["season"] for r in results)) if results else []
+    winners = []
+    for s in seasons:
+        w = next((r for r in results if r["season"] == s and r.get("position") == 1), None)
+        if w:
+            winners.append(f"{s}: {w.get('driver_code','')} ({w.get('constructor_name','')}), started P{w.get('grid','?')}")
+
+    pole_races = [r for r in results if r.get("grid") == 1]
+    pole_wins = sum(1 for r in pole_races if r.get("position") == 1)
+    pole_rate = round(pole_wins / len(pole_races) * 100, 1) if pole_races else 0
+
+    valid = [r for r in results if r.get("grid") and r.get("position") and r["grid"] > 0 and r["position"] > 0]
+    gains = [r["grid"] - r["position"] for r in valid]
+    avg_gain = round(sum(gains) / len(gains), 2) if gains else 0
+
+    cpt: dict[str, float] = defaultdict(float)
+    for r in results:
+        cpt[r.get("constructor_name", r.get("constructor_id", ""))] += r.get("points", 0)
+    top_teams = sorted(cpt.items(), key=lambda x: -x[1])[:5]
+
+    dnfs = sum(1 for r in results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+    dnf_rate = round(dnfs / len(results) * 100, 1) if results else 0
+
+    # ── Build WISE prompt from on-screen data ─────────────────────────
+    circuit_name = circuit_meta.get("circuit_name", circuit_id) if circuit_meta else circuit_id
+    race_name = results[0].get("race_name", circuit_name) if results else circuit_name
+
+    data_profile = f"""## Circuit: {circuit_name} ({race_name})
+
+### Physical Characteristics
+- Length: {circuit_meta.get('computed_length_m', 0) / 1000:.2f} km
+- Estimated corners: {circuit_meta.get('estimated_corners', '?')}
+- DRS zones: {circuit_meta.get('drs_zones', '?')}
+- Elevation gain: {circuit_meta.get('elevation_gain_m', 'N/A')}m
+- Sectors: {circuit_meta.get('sectors', 3)}
+""" if circuit_meta else ""
+
+    if pit_loss:
+        data_profile += f"""
+### Pit Stop Data
+- Estimated pit lane loss: {pit_loss.get('est_pit_lane_loss_s', '?')}s
+- Average total pit duration: {pit_loss.get('avg_total_pit_s', '?')}s
+- Median total pit duration: {pit_loss.get('median_total_pit_s', '?')}s
+- Sample count: {pit_loss.get('sample_count', '?')}
+"""
+
+    if air_data:
+        latest = air_data[-1]
+        data_profile += f"""
+### Environmental Conditions (latest: {latest.get('year', '?')})
+- Air density: {latest.get('air_density_kg_m3', '?')} kg/m³
+- Avg temperature: {latest.get('avg_temp_c', '?')}°C
+- Avg humidity: {latest.get('avg_humidity_pct', '?')}%
+- Elevation: {latest.get('elevation_m', '?')}m
+- Downforce loss: {latest.get('downforce_loss_pct', '?')}%
+- Historical temp range: {min(a.get('avg_temp_c', 99) for a in air_data):.1f}–{max(a.get('avg_temp_c', 0) for a in air_data):.1f}°C across {len(air_data)} seasons
+"""
+
+    if seasons:
+        data_profile += f"""
+### Historical Race Performance ({len(seasons)} seasons: {seasons[0]}–{seasons[-1]})
+- Pole → win conversion: {pole_rate}% ({pole_wins}/{len(pole_races)})
+- Avg positions gained per driver: {avg_gain}
+- DNF rate: {dnf_rate}%
+- Top constructors by points: {', '.join(f'{name} ({pts:.0f}pts)' for name, pts in top_teams)}
+
+### Race Winners
+{chr(10).join(winners) if winners else 'No winner data'}
+"""
+
+    # ── Build DataFrame for WISE (per-season rows) ─────────────────
+    import pandas as pd
+
+    season_rows = []
+    for s in seasons:
+        s_results = [r for r in results if r["season"] == s]
+        s_valid = [r for r in s_results if r.get("grid") and r.get("position") and r["grid"] > 0 and r["position"] > 0]
+        s_gains = [r["grid"] - r["position"] for r in s_valid]
+        s_poles = [r for r in s_results if r.get("grid") == 1]
+        s_dnfs = sum(1 for r in s_results if r.get("status") and r["status"] not in ("Finished", "+1 Lap", "+2 Laps", "+3 Laps"))
+        row = {
+            "season": s,
+            "entries": len(s_results),
+            "avg_positions_gained": round(sum(s_gains) / len(s_gains), 2) if s_gains else 0,
+            "pole_converted": 1 if (s_poles and s_poles[0].get("position") == 1) else 0,
+            "dnf_count": s_dnfs,
+            "dnf_rate": round(s_dnfs / len(s_results) * 100, 1) if s_results else 0,
+        }
+        # Add air density data for that season if available
+        s_air = next((a for a in air_data if a.get("year") == s), None)
+        if s_air:
+            row["avg_temp_c"] = s_air.get("avg_temp_c")
+            row["air_density_kg_m3"] = s_air.get("air_density_kg_m3")
+            row["downforce_loss_pct"] = s_air.get("downforce_loss_pct")
+        season_rows.append(row)
+
+    if season_rows:
+        df = pd.DataFrame(season_rows)
+    else:
+        # Fallback: single row from metadata
+        flat = {}
+        if circuit_meta:
+            flat.update({k: v for k, v in circuit_meta.items()
+                         if k not in ("coordinates", "bbox", "sectors_geojson")})
+        if pit_loss:
+            flat.update({f"pit_{k}": v for k, v in pit_loss.items()})
+        flat["pole_win_rate"] = pole_rate
+        flat["avg_positions_gained"] = avg_gain
+        flat["dnf_rate"] = dnf_rate
+        df = pd.DataFrame([flat])
+
+    # ── WISE extraction via OmniKeX ──────────────────────────────────
+    from omnikex.pillars import extract_realtime
+    from omnikex._types import KexLLMConfig, LLMProvider
+
+    persona = (
+        "You are an F1 strategy analyst preparing a circuit intelligence briefing. "
+        "Focus on circuit character, strategic implications, overtaking potential, "
+        "historical patterns, and environmental factors. "
+        "IMPORTANT: Write a concise flowing briefing in 3-4 paragraphs. "
+        "Do NOT use numbered sections, headers, or the WISE framework structure in your output. "
+        "Do NOT include markdown tables. Just write clear engineering prose."
+    )
+    query = f"Analyze circuit {circuit_name} — character, strategy, overtaking, historical trends, and environmental impact."
+
+    # Primary: Groq cloud
+    text = model_used = provider_used = None
+    grounding_score = None
+    try:
+        llm_cfg = KexLLMConfig(
+            provider=LLMProvider.GROQ,
+            model="llama-3.3-70b-versatile",
+            task_type="realtime",
+            temperature=0.15,
+        )
+        insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=True)
+        text = insight.text
+        model_used = insight.model_used
+        provider_used = insight.provider_used
+        grounding_score = insight.grounding.grounding_score if insight.grounding else None
+    except Exception as e:
+        logger.warning("Circuit KeX Groq failed for %s, falling back to edge model: %s", circuit_id, e)
+
+    # Fallback: Ollama edge model
+    if not text:
+        try:
+            llm_cfg = KexLLMConfig(
+                provider=LLMProvider.OLLAMA,
+                model="qwen3.5:9b",
+                task_type="realtime",
+                temperature=0.15,
+            )
+            insight = extract_realtime(df, query, llm_config=llm_cfg, persona_context=persona, response_length="medium", verify=False)
+            text = insight.text
+            model_used = insight.model_used
+            provider_used = insight.provider_used
+            grounding_score = None
+        except Exception as e2:
+            logger.exception("Circuit KeX edge fallback also failed for %s", circuit_id)
+            raise HTTPException(500, f"WISE extraction failed: {e2}")
+
+    scores = _scores_from_fingerprint(insight)
+
+    now = _time.time()
+    result = {
+        "circuit_id": circuit_id,
+        "circuit_name": circuit_name,
+        "text": text,
+        "model_used": model_used,
+        "provider_used": provider_used,
+        "scores": scores,
+        "summary": _extract_summary(text),
+        "grounding_score": grounding_score,
+        "generated_at": now,
+        "data_hash": data_hash,
+    }
+
+    coll.replace_one({"circuit_id": circuit_id}, result, upsert=True)
+    result.pop("_id", None)
+    return result
 
 @app.get("/api/local/pipeline/anomaly")
 async def pipeline_anomaly():
@@ -875,6 +2754,183 @@ async def pipeline_videos():
     db = get_data_db()
     docs = list(db["media_videos"].find({}, {"_id": 0}).sort("added", -1))
     return {"videos": docs, "count": len(docs)}
+
+
+# ── AutoML (onmichine) ──────────────────────────────────────────────
+
+_automl_jobs: dict = {}  # in-memory job store; also persisted to MongoDB
+
+
+class AutoMLRequest(BaseModel):
+    target_column: str
+    data_source: str = "upload"  # "upload" or "collection"
+    collection: str | None = None  # MongoDB collection name
+    query: dict | None = None  # MongoDB query filter
+    sample_rows: int | None = None
+    time_budget_s: float = 300.0
+    max_hpo_trials: int = 50
+    task_type: str | None = None  # regression, binary_classification, multiclass_classification
+    model: str | None = None  # Groq model override
+
+
+@app.post("/api/local/automl/run")
+async def automl_run(background_tasks: BackgroundTasks, body: AutoMLRequest):
+    """Start an AutoML pipeline run via the onmichine agent.
+
+    Supports two data sources:
+    - Upload CSV via POST /api/local/automl/upload first, then reference the temp path
+    - Or specify a MongoDB collection + query to export as CSV automatically
+    """
+    import asyncio
+    import tempfile
+    import uuid
+    from datetime import datetime, timezone
+
+    job_id = str(uuid.uuid4())[:8]
+    db = get_data_db()
+
+    # Resolve data path
+    if body.collection:
+        # Export MongoDB collection to temp CSV
+        q = body.query or {}
+        docs = list(db[body.collection].find(q, {"_id": 0}).limit(body.sample_rows or 50000))
+        if not docs:
+            raise HTTPException(400, f"No documents in {body.collection} matching query")
+        import pandas as pd
+        df = pd.DataFrame(docs)
+        if body.target_column not in df.columns:
+            raise HTTPException(400, f"Column '{body.target_column}' not in {list(df.columns)[:10]}...")
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", prefix=f"automl_{job_id}_")
+        df.to_csv(tmp.name, index=False)
+        data_path = tmp.name
+        row_count = len(df)
+    else:
+        # Check for uploaded file
+        upload_path = f"/tmp/automl_upload_{job_id}.csv"
+        if not os.path.exists(upload_path):
+            raise HTTPException(400, "No data source. Set 'collection' or upload a CSV first via /api/local/automl/upload")
+        data_path = upload_path
+        row_count = sum(1 for _ in open(data_path)) - 1
+
+    _automl_jobs[job_id] = {
+        "status": "running",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "target_column": body.target_column,
+        "row_count": row_count,
+        "collection": body.collection,
+    }
+
+    async def _worker():
+        from onmichine import RunConfig, run as automl_run_fn
+        try:
+            config = RunConfig(
+                data_path=data_path,
+                target_column=body.target_column,
+                output_dir=f"/tmp/automl_output_{job_id}",
+                time_budget_s=body.time_budget_s,
+                max_hpo_trials=body.max_hpo_trials,
+                sample_rows=body.sample_rows,
+                model=body.model,
+            )
+            if body.task_type:
+                from onmichine._types import TaskType
+                config.task_type = TaskType(body.task_type)
+
+            state = await asyncio.to_thread(automl_run_fn, config)
+
+            import math
+
+            def _clean(obj):
+                """Replace NaN/Inf with None for JSON serialization."""
+                if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                    return None
+                if isinstance(obj, dict):
+                    return {k: _clean(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_clean(v) for v in obj]
+                return obj
+
+            result = _clean({
+                "status": "complete",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "best_model": state.best_trial.model_name if state.best_trial else None,
+                "best_score": state.best_trial.primary_score if state.best_trial else None,
+                "holdout_metrics": state.holdout_metrics or {},
+                "leaderboard": state.leaderboard[:10] if state.leaderboard else [],
+                "feature_importance": dict(list((state.feature_importance or {}).items())[:20]),
+                "model_card": state.model_card_md[:2000] if state.model_card_md else "",
+                "trials_count": len(state.trials),
+                "errors": state.errors,
+                "output_files": state.output_files,
+                "task_type": state.task_type.value if state.task_type else None,
+            })
+            _automl_jobs[job_id].update(result)
+            db["automl_jobs"].replace_one({"job_id": job_id}, {**_automl_jobs[job_id], "job_id": job_id}, upsert=True)
+            logger.info("AutoML job %s complete: %s (score=%.4f)", job_id, result["best_model"], result.get("best_score", 0))
+
+        except Exception as e:
+            logger.error("AutoML job %s failed: %s", job_id, e)
+            _automl_jobs[job_id].update({"status": "error", "error": str(e)})
+            db["automl_jobs"].replace_one({"job_id": job_id}, {**_automl_jobs[job_id], "job_id": job_id}, upsert=True)
+
+    background_tasks.add_task(_worker)
+    return {"job_id": job_id, "status": "running", "message": f"AutoML pipeline started ({row_count} rows, target={body.target_column})"}
+
+
+@app.get("/api/local/automl/status/{job_id}")
+async def automl_status(job_id: str):
+    """Poll AutoML job status. Returns full results when complete."""
+    import math
+
+    def _clean(obj):
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return obj
+
+    if job_id in _automl_jobs:
+        return _clean({**_automl_jobs[job_id], "job_id": job_id})
+    # Check MongoDB for persisted jobs
+    db = get_data_db()
+    doc = db["automl_jobs"].find_one({"job_id": job_id}, {"_id": 0})
+    if doc:
+        return _clean(doc)
+    raise HTTPException(404, f"Job {job_id} not found")
+
+
+@app.get("/api/local/automl/jobs")
+async def automl_jobs():
+    """List all AutoML jobs."""
+    import math
+
+    def _clean(obj):
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _clean(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_clean(v) for v in obj]
+        return obj
+
+    db = get_data_db()
+    docs = list(db["automl_jobs"].find({}, {"_id": 0}).sort("started_at", -1).limit(20))
+    return _clean({"jobs": docs, "count": len(docs)})
+
+
+@app.post("/api/local/automl/upload")
+async def automl_upload(file: UploadFile = File(...)):
+    """Upload a CSV file for AutoML processing."""
+    import uuid
+    job_id = str(uuid.uuid4())[:8]
+    upload_path = f"/tmp/automl_upload_{job_id}.csv"
+    content = await file.read()
+    with open(upload_path, "wb") as f:
+        f.write(content)
+    row_count = content.decode("utf-8", errors="ignore").count("\n") - 1
+    return {"upload_id": job_id, "path": upload_path, "rows": row_count, "filename": file.filename}
 
 
 # ── Strategy Tracker ──
@@ -1149,8 +3205,17 @@ async def strategy_elt(year: int = None, circuit: str = None):
 
     baselines = list(db["elt_parameters"].find(baseline_q, {"_id": 0}).sort("baseline_lap_time", 1))
 
-    driver_q = {"type": "driver_delta"}
-    drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+    # Prefer per-year deltas when year is specified, fall back to all-time deltas
+    if year:
+        driver_q = {"type": "driver_year_delta", "year": year}
+        drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+        if not drivers:
+            # Fall back to all-time deltas if no per-year data
+            driver_q = {"type": "driver_delta"}
+            drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
+    else:
+        driver_q = {"type": "driver_delta"}
+        drivers = list(db["elt_parameters"].find(driver_q, {"_id": 0}).sort("avg_delta", 1))
 
     return {
         "baselines": baselines,
@@ -1171,6 +3236,592 @@ async def strategy_sc_probability():
         "metadata": metadata,
         "feature_importances": feat_imp.get("features", {}) if feat_imp else {},
         "circuit_sc_rates": metadata.get("circuit_sc_rates", {}) if metadata else {},
+    }
+
+
+@app.get("/api/local/strategy/xgboost")
+async def strategy_xgboost():
+    """XGBoost lap time prediction model metadata, feature importances & circuit accuracy."""
+    db = get_data_db()
+    metadata = db["xgboost_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+    feat_imp = db["xgboost_lap_predictions"].find_one({"type": "feature_importance"}, {"_id": 0})
+    circuit_acc = db["xgboost_lap_predictions"].find_one({"type": "circuit_accuracy"}, {"_id": 0})
+
+    return {
+        "metadata": metadata,
+        "feature_importances": feat_imp.get("features", {}) if feat_imp else {},
+        "circuit_accuracy": circuit_acc.get("circuits", {}) if circuit_acc else {},
+    }
+
+
+@app.get("/api/local/strategy/bilstm")
+async def strategy_bilstm():
+    """BiLSTM lap time prediction model metadata."""
+    db = get_data_db()
+    metadata = db["bilstm_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+
+    return {
+        "metadata": metadata,
+    }
+
+
+# ── BiLSTM Lap Time Inference ──────────────────────────────────────
+
+_bilstm_model = None
+_bilstm_scalers = None
+_bilstm_meta = None
+
+
+def _load_bilstm():
+    """Lazy-load BiLSTM model, scalers, and metadata."""
+    global _bilstm_model, _bilstm_scalers, _bilstm_meta
+    if _bilstm_model is not None:
+        return _bilstm_model, _bilstm_scalers, _bilstm_meta
+
+    import torch
+    import torch.nn as nn
+
+    base = Path(__file__).resolve().parent.parent / "colabModels" / "bilstm_temporal" / "output"
+    pt_path = base / "bilstm_best.pt"
+    scaler_path = base / "bilstm_scalers.pkl"
+    meta_path = base / "bilstm_metadata.json"
+
+    if not pt_path.exists():
+        raise HTTPException(500, f"BiLSTM model not found at {pt_path}")
+
+    # Load metadata
+    with open(meta_path) as f:
+        _bilstm_meta = json.load(f)
+
+    # Load scalers (feature_scaler + target_scaler)
+    with open(scaler_path, "rb") as f:
+        _bilstm_scalers = pickle.load(f)
+
+    # Rebuild model architecture
+    arch = _bilstm_meta["architecture"]
+
+    class BiLSTMLapPredictor(nn.Module):
+        def __init__(self, input_size, hidden_size=128, num_layers=2, dropout=0.3):
+            super().__init__()
+            self.lstm = nn.LSTM(
+                input_size=input_size, hidden_size=hidden_size,
+                num_layers=num_layers, batch_first=True,
+                bidirectional=True, dropout=dropout if num_layers > 1 else 0,
+            )
+            self.head = nn.Sequential(
+                nn.Linear(hidden_size * 2, 64), nn.ReLU(),
+                nn.Dropout(dropout), nn.Linear(64, 1),
+            )
+
+        def forward(self, x):
+            lstm_out, _ = self.lstm(x)
+            return self.head(lstm_out[:, -1, :]).squeeze(-1)
+
+    _bilstm_model = BiLSTMLapPredictor(
+        input_size=arch["input_size"],
+        hidden_size=arch["hidden_size"],
+        num_layers=arch["num_layers"],
+        dropout=arch["dropout"],
+    )
+    _bilstm_model.load_state_dict(torch.load(pt_path, map_location="cpu", weights_only=True))
+    _bilstm_model.eval()
+    logger.info("BiLSTM model loaded from %s", pt_path)
+
+    return _bilstm_model, _bilstm_scalers, _bilstm_meta
+
+
+class BiLSTMPredictionRequest(BaseModel):
+    circuit: str
+    driver_code: str
+    compound: str
+    lap_start: int = 1
+    lap_end: int = 20
+    tyre_life_start: int = 1
+    position: int = 10
+    stint: int = 1
+    baseline_pace_s: float | None = None
+    rainfall: float | None = None
+
+
+@app.post("/api/local/strategy/predict-lap-bilstm")
+async def strategy_predict_lap_bilstm(req: BiLSTMPredictionRequest):
+    """Predict lap times using BiLSTM temporal model with 10-lap rolling window."""
+    import torch
+
+    model, scalers, meta = _load_bilstm()
+    db = get_data_db()
+
+    features = meta["features"]  # 30 features
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+    window_size = meta["architecture"]["window_size"]
+
+    # Validate inputs
+    compound_code = compound_map.get(req.compound.upper())
+    if compound_code is None:
+        raise HTTPException(400, f"Unknown compound: {req.compound}")
+    circuit_code = circuit_rank.get(req.circuit)
+    if circuit_code is None:
+        raise HTTPException(400, f"Unknown circuit: {req.circuit}. Known: {list(circuit_rank.keys())[:5]}...")
+    driver_code_enc = driver_rank.get(req.driver_code.upper())
+    if driver_code_enc is None:
+        raise HTTPException(400, f"Unknown driver: {req.driver_code}")
+
+    # Look up team
+    standing = db["jolpica_driver_standings"].find_one(
+        {"driver_code": req.driver_code.upper()}, {"_id": 0, "constructor_name": 1},
+        sort=[("season", -1)],
+    )
+    team_name = standing["constructor_name"] if standing else "McLaren"
+    team_code = team_rank.get(team_name, team_rank.get("McLaren", 3))
+
+    # Total laps
+    race_doc = db["jolpica_race_results"].find_one(
+        {"race_name": req.circuit, "position": 1}, {"_id": 0, "laps": 1}, sort=[("season", -1)],
+    )
+    total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
+
+    # Weather
+    weather_doc = db["fastf1_weather"].find_one(
+        {"Race": req.circuit, "SessionType": "R"}, {"_id": 0}, sort=[("Year", -1)],
+    )
+    air_doc = db["race_air_density"].find_one({"race": req.circuit}, {"_id": 0}, sort=[("year", -1)])
+    air_temp = (weather_doc or {}).get("AirTemp") or (air_doc or {}).get("avg_temp_c") or 28.0
+    track_temp = (weather_doc or {}).get("TrackTemp") or air_temp + 15
+    humidity = (weather_doc or {}).get("Humidity") or 40.0
+    rainfall = req.rainfall if req.rainfall is not None else ((weather_doc or {}).get("Rainfall") or 0.0)
+    air_density = (air_doc or {}).get("air_density_kg_m3") or 1.18
+
+    # Sector speeds + times from MongoDB
+    ss_agg = list(db["fastf1_laps"].aggregate([
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "SpeedI1": {"$gt": 0}, "SessionType": "R"}},
+        {"$group": {"_id": None, "SpeedI1": {"$avg": "$SpeedI1"}, "SpeedI2": {"$avg": "$SpeedI2"},
+                    "SpeedFL": {"$avg": "$SpeedFL"}, "SpeedST": {"$avg": "$SpeedST"},
+                    "s1": {"$avg": "$Sector1Time"}, "s2": {"$avg": "$Sector2Time"},
+                    "s3": {"$avg": "$Sector3Time"}}},
+    ]))
+    telem_doc = db["telemetry_race_summary"].find_one(
+        {"Driver": req.driver_code.upper(), "Race": req.circuit}, {"_id": 0, "avg_speed": 1, "top_speed": 1},
+        sort=[("Year", -1)],
+    ) or db["telemetry_race_summary"].find_one(
+        {"Race": req.circuit}, {"_id": 0, "avg_speed": 1, "top_speed": 1}, sort=[("Year", -1)],
+    )
+    avg_speed = telem_doc["avg_speed"] if telem_doc else 200.0
+    top_speed = telem_doc["top_speed"] if telem_doc else 310.0
+
+    ss = ss_agg[0] if ss_agg else {}
+    speed_i1 = ss.get("SpeedI1") or avg_speed * 0.95
+    speed_i2 = ss.get("SpeedI2") or avg_speed
+    speed_fl = ss.get("SpeedFL") or avg_speed * 1.05
+    speed_st = ss.get("SpeedST") or top_speed * 0.95
+
+    # Degradation
+    deg_doc = db["tyre_degradation_curves"].find_one(
+        {"circuit": req.circuit, "compound": req.compound.upper()}, {"_id": 0, "coefficients": 1, "intercept": 1},
+    )
+
+    def calc_deg(tl):
+        if not deg_doc or not deg_doc.get("coefficients"):
+            return 0.0
+        v = deg_doc.get("intercept", 0)
+        for i, c in enumerate(deg_doc["coefficients"]):
+            v += c * (tl ** (i + 1))
+        return v
+
+    # Baseline
+    if req.baseline_pace_s:
+        baseline = req.baseline_pace_s
+    else:
+        agg = list(db["fastf1_laps"].aggregate([
+            {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit, "LapTime": {"$gt": 50, "$lt": 200}}},
+            {"$group": {"_id": None, "avg": {"$avg": "$LapTime"}}},
+        ]))
+        baseline = agg[0]["avg"] if agg and agg[0].get("avg") else 90.0
+
+    s1_avg = ss.get("s1") or baseline / 3
+    s2_avg = ss.get("s2") or baseline / 3
+    s3_avg = ss.get("s3") or baseline / 3
+
+    # Build the rolling window: initialize with baseline values
+    # BiLSTM needs 10-lap context; we fill with steady-state approximations
+    def build_feature_row(lap_num, tyre_life, lap_time):
+        race_progress = lap_num / total_laps
+        row = {
+            "LapTime": lap_time, "TyreLife": tyre_life, "CompoundCode": compound_code,
+            "LapNumber": lap_num, "Position": req.position, "Stint": req.stint,
+            "FreshTyre": 1 if tyre_life == 1 else 0,
+            "RaceProgress": race_progress, "FuelLoad": 1.0 - race_progress,
+            "SpeedI1": speed_i1, "SpeedI2": speed_i2, "SpeedFL": speed_fl, "SpeedST": speed_st,
+            "Sector1Time": s1_avg, "Sector2Time": s2_avg, "Sector3Time": s3_avg,
+            "ExpectedDegDelta": calc_deg(tyre_life),
+            "TrackTemp": track_temp, "AirTemp": air_temp, "Humidity": humidity,
+            "Rainfall": rainfall, "AirDensity": air_density,
+            "avg_speed": avg_speed, "top_speed": top_speed,
+            "CircuitCode": circuit_code, "DriverCode": driver_code_enc, "TeamCode": team_code,
+            "TyreAgeAtStart": 0 if req.stint == 1 else tyre_life,
+            "StintNumber_of1": req.stint, "IsUsedTyre": 0 if req.stint == 1 else 1,
+        }
+        return [row.get(f, 0) for f in features]
+
+    # Initialize window with synthetic laps before lap_start
+    window = []
+    for i in range(window_size):
+        pre_lap = max(1, req.lap_start - window_size + i)
+        pre_tyre = max(1, req.tyre_life_start - (req.lap_start - pre_lap))
+        window.append(build_feature_row(pre_lap, pre_tyre, baseline))
+
+    # Scalers: scalers is a dict or tuple of (feature_scaler, target_scaler)
+    if isinstance(scalers, dict):
+        feat_scaler = scalers["feature_scaler"]
+        tgt_scaler = scalers["target_scaler"]
+    else:
+        feat_scaler, tgt_scaler = scalers[0], scalers[1]
+
+    predictions = []
+    for lap_num in range(req.lap_start, req.lap_end + 1):
+        tyre_life = req.tyre_life_start + (lap_num - req.lap_start)
+
+        # Scale the window
+        window_arr = np.array(window, dtype=np.float32)
+        scaled_window = feat_scaler.transform(window_arr).reshape(1, window_size, -1).astype(np.float32)
+
+        with torch.no_grad():
+            pred_scaled = model(torch.tensor(scaled_window)).item()
+
+        pred = float(tgt_scaler.inverse_transform([[pred_scaled]])[0, 0])
+
+        predictions.append({
+            "lap": lap_num,
+            "tyre_life": tyre_life,
+            "predicted_s": round(pred, 3),
+            "deg_delta": round(calc_deg(tyre_life), 3),
+        })
+
+        # Slide window: drop oldest, append new row with predicted lap time
+        window.pop(0)
+        window.append(build_feature_row(lap_num, tyre_life, pred))
+
+    return {
+        "model": "BiLSTM",
+        "circuit": req.circuit,
+        "driver": req.driver_code.upper(),
+        "compound": req.compound.upper(),
+        "total_laps": total_laps,
+        "baseline_pace_s": round(baseline, 3),
+        "window_size": window_size,
+        "weather": {
+            "air_temp_c": air_temp, "track_temp_c": track_temp,
+            "humidity_pct": humidity, "rainfall": rainfall, "air_density": air_density,
+        },
+        "predictions": predictions,
+    }
+
+
+# ── XGBoost Lap Time Inference ──────────────────────────────────────
+
+_xgb_model = None  # lazy-loaded
+
+
+def _load_xgb_model():
+    global _xgb_model
+    if _xgb_model is not None:
+        return _xgb_model
+    import xgboost as xgb
+    pkl_path = Path(__file__).parent.parent / "colabModels" / "xgboost_predictor" / "output" / "xgboost_lap_predictor.pkl"
+    if not pkl_path.exists():
+        raise HTTPException(404, "XGBoost model weights not found on disk")
+    import pickle
+    with open(pkl_path, "rb") as f:
+        _xgb_model = pickle.load(f)
+    logger.info(f"XGBoost model loaded from {pkl_path}")
+    return _xgb_model
+
+
+class LapPredictionRequest(BaseModel):
+    circuit: str  # e.g. "Bahrain Grand Prix"
+    driver_code: str  # e.g. "NOR"
+    compound: str  # SOFT, MEDIUM, HARD
+    lap_start: int = 1
+    lap_end: int = 20
+    tyre_life_start: int = 1
+    position: int = 10
+    stint: int = 1
+    baseline_pace_s: float | None = None  # if None, looked up from data
+    rainfall: float | None = None  # 0.0 = dry, >0 = wet; if None, looked up from weather
+    gap_to_leader: float | None = None  # seconds; if None, estimated from position
+
+
+@app.post("/api/local/strategy/predict-lap")
+async def strategy_predict_lap(req: LapPredictionRequest):
+    """Predict lap times using XGBoost model with auto-filled features from MongoDB."""
+    model = _load_xgb_model()
+    db = get_data_db()
+
+    # Load encodings from metadata
+    meta = db["xgboost_lap_predictions"].find_one({"type": "model_metadata"}, {"_id": 0})
+    if not meta:
+        raise HTTPException(500, "XGBoost metadata not found in MongoDB")
+
+    encodings = meta.get("encodings", {})
+    compound_map = encodings.get("compound_map", {"SOFT": 0, "MEDIUM": 1, "HARD": 2})
+    circuit_rank = encodings.get("circuit_rank", {})
+    driver_rank = encodings.get("driver_rank", {})
+    team_rank = encodings.get("team_rank", {})
+
+    # Validate inputs
+    compound_code = compound_map.get(req.compound.upper())
+    if compound_code is None:
+        raise HTTPException(400, f"Unknown compound: {req.compound}. Use SOFT/MEDIUM/HARD")
+    circuit_code = circuit_rank.get(req.circuit)
+    if circuit_code is None:
+        raise HTTPException(400, f"Unknown circuit: {req.circuit}. Known: {list(circuit_rank.keys())[:5]}...")
+    driver_code_enc = driver_rank.get(req.driver_code.upper())
+    if driver_code_enc is None:
+        raise HTTPException(400, f"Unknown driver: {req.driver_code}. Known: {list(driver_rank.keys())[:10]}...")
+
+    # Look up team for driver
+    standing = db["jolpica_driver_standings"].find_one(
+        {"driver_code": req.driver_code.upper()},
+        {"_id": 0, "constructor_name": 1},
+        sort=[("season", -1)],
+    )
+    team_name = standing["constructor_name"] if standing else "McLaren"
+    team_code = team_rank.get(team_name, team_rank.get("McLaren", 3))
+
+    # Get total laps for circuit (from most recent race)
+    race_doc = db["jolpica_race_results"].find_one(
+        {"race_name": req.circuit, "position": 1},
+        {"_id": 0, "laps": 1},
+        sort=[("season", -1)],
+    )
+    total_laps = int(race_doc["laps"]) if race_doc and race_doc.get("laps") else 57
+
+    # Weather: real TrackTemp + Rainfall from fastf1_weather, air density from race_air_density
+    weather_doc = db["fastf1_weather"].find_one(
+        {"Race": req.circuit, "SessionType": "R"},
+        {"_id": 0, "TrackTemp": 1, "AirTemp": 1, "Humidity": 1, "Rainfall": 1},
+        sort=[("Year", -1)],
+    )
+    air_doc = db["race_air_density"].find_one(
+        {"race": req.circuit}, {"_id": 0}, sort=[("year", -1)],
+    )
+    air_temp = (weather_doc or {}).get("AirTemp") or (air_doc or {}).get("avg_temp_c") or 28.0
+    track_temp = (weather_doc or {}).get("TrackTemp") or air_temp + 15
+    humidity = (weather_doc or {}).get("Humidity") or (air_doc or {}).get("avg_humidity_pct") or 40.0
+    rainfall = req.rainfall if req.rainfall is not None else ((weather_doc or {}).get("Rainfall") or 0.0)
+    air_density = (air_doc or {}).get("air_density_kg_m3") or 1.18
+
+    # Sector speeds: real averages from fastf1_laps for this driver at this circuit
+    sector_speed_pipeline = [
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "SpeedI1": {"$gt": 0}, "SessionType": "R"}},
+        {"$group": {"_id": None,
+                    "SpeedI1": {"$avg": "$SpeedI1"}, "SpeedI2": {"$avg": "$SpeedI2"},
+                    "SpeedFL": {"$avg": "$SpeedFL"}, "SpeedST": {"$avg": "$SpeedST"}}},
+    ]
+    sector_speed_agg = list(db["fastf1_laps"].aggregate(sector_speed_pipeline))
+    if not sector_speed_agg:
+        # Fallback: any driver at this circuit
+        sector_speed_pipeline[0]["$match"] = {
+            "Race": req.circuit, "SpeedI1": {"$gt": 0}, "SessionType": "R"
+        }
+        sector_speed_agg = list(db["fastf1_laps"].aggregate(sector_speed_pipeline))
+
+    # Sector times: real averages from fastf1_laps for lag feature initialization
+    sector_time_pipeline = [
+        {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                     "Sector1Time": {"$gt": 0}, "SessionType": "R", "IsAccurate": True}},
+        {"$group": {"_id": None,
+                    "s1": {"$avg": "$Sector1Time"}, "s2": {"$avg": "$Sector2Time"},
+                    "s3": {"$avg": "$Sector3Time"}}},
+    ]
+    sector_time_agg = list(db["fastf1_laps"].aggregate(sector_time_pipeline))
+    if not sector_time_agg:
+        sector_time_pipeline[0]["$match"] = {
+            "Race": req.circuit, "Sector1Time": {"$gt": 0}, "SessionType": "R", "IsAccurate": True
+        }
+        sector_time_agg = list(db["fastf1_laps"].aggregate(sector_time_pipeline))
+
+    # Speed: from telemetry_race_summary for this driver at this circuit
+    telem_doc = db["telemetry_race_summary"].find_one(
+        {"Driver": req.driver_code.upper(), "Race": req.circuit},
+        {"_id": 0, "avg_speed": 1, "top_speed": 1},
+        sort=[("Year", -1)],
+    )
+    if not telem_doc:
+        telem_doc = db["telemetry_race_summary"].find_one(
+            {"Race": req.circuit},
+            {"_id": 0, "avg_speed": 1, "top_speed": 1},
+            sort=[("Year", -1)],
+        )
+    avg_speed = telem_doc["avg_speed"] if telem_doc else 200.0
+    top_speed = telem_doc["top_speed"] if telem_doc else 310.0
+
+    # Resolve sector speeds with fallbacks
+    if sector_speed_agg:
+        ss = sector_speed_agg[0]
+        speed_i1 = ss.get("SpeedI1") or avg_speed * 0.95
+        speed_i2 = ss.get("SpeedI2") or avg_speed
+        speed_fl = ss.get("SpeedFL") or avg_speed * 1.05
+        speed_st = ss.get("SpeedST") or top_speed * 0.95
+    else:
+        speed_i1, speed_i2, speed_fl, speed_st = (
+            avg_speed * 0.95, avg_speed, avg_speed * 1.05, top_speed * 0.95
+        )
+
+    # Resolve sector times with fallbacks
+    if sector_time_agg:
+        st = sector_time_agg[0]
+        sector1_avg = st.get("s1") or baseline / 3
+        sector2_avg = st.get("s2") or baseline / 3
+        sector3_avg = st.get("s3") or baseline / 3
+    else:
+        sector1_avg = sector2_avg = sector3_avg = None  # set after baseline is computed
+
+    # Degradation curve for expected delta
+    deg_doc = db["tyre_degradation_curves"].find_one(
+        {"circuit": req.circuit, "compound": req.compound.upper(), "temp_band": "all"},
+        {"_id": 0, "coefficients": 1, "intercept": 1, "degree": 1},
+    )
+    if not deg_doc:
+        deg_doc = db["tyre_degradation_curves"].find_one(
+            {"circuit": req.circuit, "compound": req.compound.upper()},
+            {"_id": 0, "coefficients": 1, "intercept": 1, "degree": 1},
+        )
+
+    def calc_deg_delta(tyre_life: int) -> float:
+        if not deg_doc or not deg_doc.get("coefficients"):
+            return 0.0
+        coeffs = deg_doc["coefficients"]
+        intercept = deg_doc.get("intercept", 0)
+        val = intercept
+        for i, c in enumerate(coeffs):
+            val += c * (tyre_life ** (i + 1))
+        return val
+
+    # Baseline pace: look up or use provided
+    if req.baseline_pace_s:
+        baseline = req.baseline_pace_s
+    else:
+        # Use fastf1_laps average for driver at circuit (MongoDB 6.x compat)
+        pipeline = [
+            {"$match": {"Driver": req.driver_code.upper(), "Race": req.circuit,
+                        "LapTime": {"$gt": 50, "$lt": 200}}},
+            {"$group": {"_id": None, "avg": {"$avg": "$LapTime"}}},
+        ]
+        agg = list(db["fastf1_laps"].aggregate(pipeline))
+        if agg and agg[0].get("avg"):
+            baseline = agg[0]["avg"]
+        else:
+            # Fallback: any driver at this circuit
+            pipeline[0]["$match"] = {"Race": req.circuit, "LapTime": {"$gt": 50, "$lt": 200}}
+            agg = list(db["fastf1_laps"].aggregate(pipeline))
+            baseline = agg[0]["avg"] if agg and agg[0].get("avg") else 90.0
+
+    # Finalize sector times if deferred (no MongoDB data available)
+    if sector1_avg is None:
+        sector1_avg = sector2_avg = sector3_avg = baseline / 3
+
+    # Gap evolution: position-aware defaults
+    # During training, gap features default to 0 for leaders; estimate for non-leaders
+    gap_to_leader = req.gap_to_leader if req.gap_to_leader is not None else max(0, (req.position - 1) * 1.5)
+
+    # Build feature vectors for each lap
+    features_order = meta["features"]
+    predictions = []
+    prev_laps = [baseline, baseline, baseline]  # lag1, lag2, lag3
+    prev_sectors = [sector1_avg, sector2_avg, sector3_avg]
+
+    for lap_num in range(req.lap_start, req.lap_end + 1):
+        tyre_life = req.tyre_life_start + (lap_num - req.lap_start)
+        race_progress = lap_num / total_laps
+        fuel_load = 1.0 - race_progress
+        fresh_tyre = 1 if tyre_life == 1 else 0
+        deg_delta = calc_deg_delta(tyre_life)
+
+        feature_dict = {
+            "TyreLife": tyre_life,
+            "CompoundCode": compound_code,
+            "LapNumber": lap_num,
+            "Position": req.position,
+            "Stint": req.stint,
+            "FreshTyre": fresh_tyre,
+            "RaceProgress": race_progress,
+            "FuelLoad": fuel_load,
+            "TotalLaps": total_laps,
+            "SpeedI1": speed_i1,
+            "SpeedI2": speed_i2,
+            "SpeedFL": speed_fl,
+            "SpeedST": speed_st,
+            "LapTime_lag1": prev_laps[0],
+            "LapTime_lag2": prev_laps[1],
+            "LapTime_lag3": prev_laps[2],
+            "LapTime_roll3": sum(prev_laps) / 3,
+            "Sector1Time_lag1": prev_sectors[0],
+            "Sector2Time_lag1": prev_sectors[1],
+            "Sector3Time_lag1": prev_sectors[2],
+            "ExpectedDegDelta": deg_delta,
+            "TrackTemp": track_temp,
+            "AirTemp": air_temp,
+            "Humidity": humidity,
+            "Rainfall": rainfall,
+            "AirDensity": air_density,
+            "avg_speed": avg_speed,
+            "top_speed": top_speed,
+            "CircuitCode": circuit_code,
+            "DriverCode": driver_code_enc,
+            "TeamCode": team_code,
+            "TyreAgeAtStart": 0 if req.stint == 1 else tyre_life,
+            "StintNumber_of1": req.stint,
+            "IsUsedTyre": 0 if req.stint == 1 else 1,
+            # Gap evolution features (6 features the model was trained on)
+            "gap_to_leader": gap_to_leader,
+            "gap_delta": 0.0,
+            "gap_delta_roll3": 0.0,
+            "interval_to_car_ahead": min(gap_to_leader, 3.0) if req.position > 1 else 0.0,
+            "undercut_threat": 1.0 if gap_to_leader < 2.0 and req.position > 1 else 0.0,
+            "close_gap_trend": 0.0,
+        }
+
+        # Build ordered feature vector
+        row = [feature_dict.get(f, 0) for f in features_order]
+        pred = float(model.predict(np.array([row]))[0])
+        predictions.append({
+            "lap": lap_num,
+            "tyre_life": tyre_life,
+            "predicted_s": round(pred, 3),
+            "deg_delta": round(deg_delta, 3),
+        })
+
+        # Update lag features with prediction for next lap
+        prev_laps = [pred, prev_laps[0], prev_laps[1]]
+        # Approximate sector splits from predicted lap time using real sector ratios
+        total_sector = sector1_avg + sector2_avg + sector3_avg
+        if total_sector > 0:
+            prev_sectors = [
+                pred * sector1_avg / total_sector,
+                pred * sector2_avg / total_sector,
+                pred * sector3_avg / total_sector,
+            ]
+
+    return {
+        "circuit": req.circuit,
+        "driver": req.driver_code.upper(),
+        "compound": req.compound.upper(),
+        "total_laps": total_laps,
+        "baseline_pace_s": round(baseline, 3),
+        "weather": {
+            "air_temp_c": air_temp,
+            "track_temp_c": track_temp,
+            "humidity_pct": humidity,
+            "rainfall": rainfall,
+            "air_density": air_density,
+        },
+        "predictions": predictions,
     }
 
 
@@ -2190,6 +4841,347 @@ def omni_health_check():
     return {"status": "ok", "modules": modules}
 
 
+# ── Backtest ─────────────────────────────────────────────────────────────
+
+@app.post("/api/local/backtest/run")
+async def run_backtest_endpoint(
+    team: str | None = None,
+    driver: str | None = None,
+    race: int | None = None,
+    season: int | None = None,
+    force: bool = False,
+):
+    """Serve stored backtest results. Heavy computation must be run locally
+    via: PYTHONPATH=.:pipeline:omnisuitef1 python -m pipeline.backtest.replay --team McLaren"""
+    from pipeline.backtest.evaluate import compute_metrics, find_case_studies, find_system_correlations
+
+    target_season = season or 2024
+    db = get_data_db()
+
+    stored = db["backtest_results"].find_one(
+        {"season": target_season}, {"_id": 0}, sort=[("stored_at", -1)]
+    )
+    if not stored or not stored.get("results"):
+        raise HTTPException(404, "No backtest results found. Run pipeline locally first.")
+
+    results = stored["results"]
+    metrics = compute_metrics(results)
+    cases = find_case_studies(results, team_filter=team or "")
+    correlations = find_system_correlations(results)
+
+    return {
+        "season": stored["season"],
+        "races_evaluated": stored.get("races_evaluated"),
+        "total_predictions": stored.get("total_predictions"),
+        "metrics": metrics,
+        "case_studies": cases[:10],
+        "system_correlations": correlations,
+        "results": results,
+        "generated_at": stored.get("generated_at"),
+        "from_cache": True,
+    }
+
+
+@app.get("/api/local/backtest/results")
+async def get_backtest_results():
+    """Get the latest stored backtest results."""
+    db = get_data_db()
+    doc = db["backtest_results"].find_one(
+        {}, {"_id": 0}, sort=[("stored_at", -1)]
+    )
+    if not doc:
+        raise HTTPException(404, "No backtest results found")
+
+    from pipeline.backtest.evaluate import compute_metrics, find_case_studies, find_system_correlations
+
+    results = doc.get("results", [])
+    metrics = compute_metrics(results)
+    cases = find_case_studies(results)
+    correlations = find_system_correlations(results)
+    return {
+        "season": doc.get("season"),
+        "races_evaluated": doc.get("races_evaluated"),
+        "total_predictions": doc.get("total_predictions"),
+        "metrics": metrics,
+        "case_studies": cases[:10],
+        "system_correlations": correlations,
+        "results": results,
+        "generated_at": doc.get("generated_at"),
+    }
+
+
+@app.post("/api/local/backtest/kex")
+async def backtest_kex_briefing(force: bool = False):
+    """Generate per-case-study insights + combined briefing from stored backtest results."""
+    import asyncio
+    import time as _time
+
+    db = get_data_db()
+    coll = db["kex_backtest_briefings"]
+
+    # Return cached briefing unless forced
+    if not force:
+        existing = coll.find_one({}, {"_id": 0}, sort=[("generated_at", -1)])
+        if existing:
+            return existing
+
+    # Load latest stored backtest results from MongoDB
+    doc = db["backtest_results"].find_one({}, {"_id": 0}, sort=[("stored_at", -1)])
+    if not doc:
+        raise HTTPException(404, "No backtest results to brief on")
+
+    metrics = doc.get("metrics", {})
+    cases = doc.get("case_studies", [])[:7]
+
+    # Fallback: recompute if stored doc lacks pre-computed fields
+    if not metrics:
+        from pipeline.backtest.evaluate import compute_metrics, find_case_studies
+        results = doc.get("results", [])
+        metrics = compute_metrics(results)
+        cases = find_case_studies(results)[:7]
+
+    bad_outcomes = {"dnf_mechanical", "dnf_other", "lapped", "major_underperformance", "underperformance"}
+    system = (
+        "You are a McLaren F1 performance analyst. "
+        "Be precise, data-driven, and concise. Reference specific data points."
+    )
+
+    groq = get_groq()
+
+    def _llm_call(prompt: str, max_tokens: int = 512) -> str:
+        try:
+            completion = groq.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens,
+            )
+            return completion.choices[0].message.content or ""
+        except Exception as e:
+            logger.error("Backtest KeX LLM failed: %s", e)
+            return f"Briefing generation failed: {e}"
+
+    # ── Per-case-study insight prompts ──
+    def _case_prompt(cs: dict) -> str:
+        is_bad = cs.get("actual_outcome") in bad_outcomes
+        tag = "HIT" if cs.get("predicted_risk") and is_bad else "MISS" if is_bad else "CORRECT"
+        signals = cs.get("composite_signals", {})
+        signal_str = ", ".join(f"{k}={v:.0f}" if isinstance(v, (int, float)) else f"{k}={v}" for k, v in signals.items()) if signals else "N/A"
+        systems = cs.get("predicted_systems", {})
+        sys_str = ", ".join(f"{s}={h.get('health', '?')}%" for s, h in systems.items()) if systems else "N/A"
+
+        return (
+            f"Analyze this single race case study ({tag}):\n"
+            f"  Race: R{cs['round']} {cs['race_name']}\n"
+            f"  Driver: {cs['driver_code']} ({cs.get('constructor_name', 'McLaren')})\n"
+            f"  Grid: {cs.get('actual_grid')} → P{cs.get('actual_position')} "
+            f"({cs.get('actual_positions_gained', 0):+d} positions)\n"
+            f"  Outcome: {cs.get('actual_outcome')} | Status: {cs.get('actual_status')} "
+            f"| Points: {cs.get('actual_points', 0)}\n"
+            f"  Predicted Health: {cs.get('predicted_health')}% | Risk flagged: {cs.get('predicted_risk')}\n"
+            f"  Composite Risk: {cs.get('composite_risk', 'N/A')} ({cs.get('composite_risk_level', 'N/A')})\n"
+            f"  Signals: {signal_str}\n"
+            f"  Systems: {sys_str}\n"
+            f"  Flagged: {', '.join(cs.get('flagged_systems', [])) or 'None'}\n"
+            f"  Degrading: {', '.join(cs.get('degrading_systems', [])) or 'None'}\n"
+            f"  Strategy: {cs.get('strategy_predicted', 'N/A')}"
+            f"{' ✓' if cs.get('strategy_match') else ' ✗' if cs.get('strategy_match') is not None else ''}"
+            f"{' (delta ' + format(cs['strategy_time_delta_s'], '+.1f') + 's)' if cs.get('strategy_time_delta_s') is not None else ''}\n"
+            f"  Cliff warnings: {cs.get('cliff_warnings', 0)}\n\n"
+            f"In 2-3 sentences: What happened, why did MARIP {'correctly flag' if tag == 'HIT' else 'miss' if tag == 'MISS' else 'correctly clear'} this, "
+            f"and what signal was most informative?"
+        )
+
+    # ── Combined briefing prompt ──
+    case_lines = []
+    for cs in cases:
+        is_bad = cs.get("actual_outcome") in bad_outcomes
+        tag = "HIT" if cs.get("predicted_risk") and is_bad else "MISS" if is_bad else "OK"
+        case_lines.append(
+            f"  R{cs['round']} {cs['race_name']}: {cs['driver_code']} "
+            f"G{cs.get('actual_grid')}→P{cs.get('actual_position')} "
+            f"({cs.get('actual_outcome')}) Health={cs.get('predicted_health')}% "
+            f"Composite={cs.get('composite_risk', 'N/A')} [{tag}]"
+        )
+
+    cm = metrics.get("confusion_matrix", {})
+    combined_prompt = (
+        f"McLaren backtest analysis for {doc.get('season', 2024)} season.\n\n"
+        f"METRICS:\n"
+        f"  Accuracy: {metrics.get('accuracy')}% ({metrics.get('correct')}/{metrics.get('total_predictions')})\n"
+        f"  Precision: {metrics.get('precision')}% | Recall: {metrics.get('recall')}% | F1: {metrics.get('f1_score')}%\n"
+        f"  Confusion: TP={cm.get('true_positive', 0)} FP={cm.get('false_positive', 0)} "
+        f"FN={cm.get('false_negative', 0)} TN={cm.get('true_negative', 0)}\n"
+        f"  Avg Composite Risk: {metrics.get('avg_composite_risk', 'N/A')}\n"
+        f"  Strategy Match Rate: {metrics.get('strategy_match_rate', 'N/A')}%\n"
+        f"  ELT Coverage: {metrics.get('elt_coverage', 'N/A')}%\n"
+        f"  Cliff Warnings: {metrics.get('cliff_warnings_total', 0)}\n\n"
+        f"TOP 7 CASE STUDIES:\n" + "\n".join(case_lines) + "\n\n"
+        f"Provide a concise race engineer briefing covering:\n"
+        f"1. Overall model reliability assessment with key strengths/weaknesses\n"
+        f"2. Which signals (anomaly, ELT, strategy, cliff) contribute most to accuracy\n"
+        f"3. Pattern analysis — what types of incidents are caught vs missed\n"
+        f"4. Actionable recommendations for improving prediction coverage\n"
+        f"Keep it under 400 words. Use data references."
+    )
+
+    # ── Run all LLM calls in parallel: 7 per-case + 1 combined ──
+    case_prompts = [_case_prompt(cs) for cs in cases]
+    all_prompts = case_prompts + [combined_prompt]
+    all_results = await asyncio.gather(
+        *[asyncio.to_thread(_llm_call, p, 256 if i < len(cases) else 1024)
+          for i, p in enumerate(all_prompts)]
+    )
+
+    case_insights = all_results[:len(cases)]
+    combined_text = all_results[-1]
+    model_used = GROQ_MODEL
+
+    # Build per-case insight list keyed by round+driver
+    per_case = []
+    for cs, insight in zip(cases, case_insights):
+        per_case.append({
+            "round": cs["round"],
+            "driver_code": cs["driver_code"],
+            "race_name": cs["race_name"],
+            "insight": insight,
+        })
+
+    # Score dimensions from metrics
+    scores = {
+        "Accuracy": round(metrics.get("accuracy", 0), 1),
+        "Precision": round(metrics.get("precision", 0), 1),
+        "Recall": round(metrics.get("recall", 0), 1),
+        "F1 Score": round(metrics.get("f1_score", 0), 1),
+        "ELT Coverage": round(metrics.get("elt_coverage", 0), 1),
+    }
+    if metrics.get("strategy_match_rate") is not None:
+        scores["Strategy Match"] = round(metrics["strategy_match_rate"], 1)
+
+    summary = combined_text.split(". ")[0] + "." if ". " in combined_text else combined_text[:200]
+
+    now = _time.time()
+    result = {
+        "text": combined_text,
+        "scores": scores,
+        "summary": summary,
+        "model_used": model_used,
+        "provider_used": "groq",
+        "generated_at": now,
+        "season": doc.get("season"),
+        "case_insights": per_case,
+    }
+
+    # Persist: upsert by season
+    coll.replace_one({"season": doc.get("season")}, result, upsert=True)
+    result.pop("_id", None)
+    return result
+
+
+# ── Forecast Backtest ────────────────────────────────────────────────────
+
+@app.post("/api/local/backtest/forecast/run")
+async def run_forecast_backtest(
+    session_key: int,
+    driver_number: int,
+    force: bool = False,
+):
+    """Serve stored forecast backtest results. Run heavy computation locally."""
+    db = get_data_db()
+
+    stored = db["backtest_forecast_results"].find_one(
+        {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
+    )
+    if stored and stored.get("results"):
+        return {**stored, "from_cache": True}
+
+    raise HTTPException(404, "No forecast backtest results found. Run pipeline locally first.")
+
+
+@app.get("/api/local/backtest/forecast/results")
+async def get_forecast_backtest_results(
+    session_key: int,
+    driver_number: int,
+):
+    """Get stored forecast backtest results."""
+    db = get_data_db()
+    doc = db["backtest_forecast_results"].find_one(
+        {"session_key": session_key, "driver_number": driver_number}, {"_id": 0}
+    )
+    if not doc:
+        raise HTTPException(404, "No forecast backtest results found")
+    return doc
+
+
+@app.post("/api/local/backtest/forecast/run-multi")
+async def run_forecast_backtest_multi(body: dict):
+    """Serve stored forecast backtest results across multiple sessions. Run heavy computation locally."""
+    from omnianalytics.forecast_backtest import METHODS, DEFAULT_HORIZONS, DEFAULT_FEATURES
+
+    session_keys = body.get("session_keys", [])
+    driver_number = body.get("driver_number")
+    if not session_keys or not driver_number:
+        raise HTTPException(400, "session_keys and driver_number required")
+
+    db = get_data_db()
+    all_results = []
+
+    for sk in session_keys:
+        stored = db["backtest_forecast_results"].find_one(
+            {"session_key": sk, "driver_number": driver_number}, {"_id": 0}
+        )
+        if stored and stored.get("results"):
+            all_results.append(stored)
+
+    if not all_results:
+        raise HTTPException(404, "No forecast results found. Run pipeline locally first.")
+
+    # Aggregate: average metrics across sessions per (method, feature, horizon)
+    agg_results: dict = {m: {} for m in METHODS}
+    for method in METHODS:
+        for feat in DEFAULT_FEATURES:
+            agg_results[method][feat] = {}
+            for h in DEFAULT_HORIZONS:
+                h_key = str(h)
+                metric_lists: dict = {}
+                for sr in all_results:
+                    h_metrics = sr.get("results", {}).get(feat, {}).get(method, {}).get(h_key, {})
+                    for mk, mv in h_metrics.items():
+                        if mk == "n_windows" or mv is None:
+                            continue
+                        metric_lists.setdefault(mk, []).append(mv)
+                agg = {k: round(float(np.mean(v)), 4) for k, v in metric_lists.items() if v}
+                agg["n_sessions"] = len([
+                    sr for sr in all_results
+                    if sr.get("results", {}).get(feat, {}).get(method, {}).get(h_key, {}).get("n_windows", 0) > 0
+                ])
+                agg_results[method][feat][h_key] = agg
+
+    # Best method per feature across sessions
+    best_method: dict = {}
+    for feat in DEFAULT_FEATURES:
+        best_rmsse = float("inf")
+        best = METHODS[0]
+        for method in METHODS:
+            rmsse = agg_results[method].get(feat, {}).get("10", {}).get("rmsse")
+            if rmsse is not None and rmsse < best_rmsse:
+                best_rmsse = rmsse
+                best = method
+        best_method[feat] = best
+
+    return {
+        "sessions_evaluated": len(all_results),
+        "session_keys": [r["session_key"] for r in all_results],
+        "driver_number": driver_number,
+        "results": agg_results,
+        "best_method": best_method,
+        "generated_at": _dt.now(_tz.utc).isoformat(),
+    }
+
+
 # ── Run ──────────────────────────────────────────────────────────────────
 
 # ── Serve frontend SPA (must be last mount) ─────────────────────────────
@@ -2212,6 +5204,8 @@ if __name__ == "__main__":
     print(f"Starting F1 OmniSense API on port {PORT}")
     print(f"  Knowledge Agent: {GROQ_MODEL}")
     print(f"  3D Model Gen:   enabled")
-    print(f"  Vector store:   MongoDB Atlas")
+    _uri = os.getenv("MONGODB_URI", "")
+    _vs_label = "MongoDB Atlas" if "mongodb.net" in _uri else "MongoDB Local"
+    print(f"  Vector store:   {_vs_label}")
     print(f"  Frontend:       {'enabled' if _frontend_dist.exists() else 'not found'}")
     uvicorn.run(app, host="0.0.0.0", port=PORT)

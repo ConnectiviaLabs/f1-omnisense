@@ -15,6 +15,22 @@ f1data/
 /data/
 /output/
 omnisuitef1/Data/
+*.zip
+backups/
+f1-live-data/
+Documentation/
+colabModels/
+
+# ─── Build output ────────────────────────────────────
+frontend/dist/
+
+# ─── Pipeline output ─────────────────────────────────
+pipeline/output/
+
+# ─── Misc dumps ──────────────────────────────────────
+envfileclone.txt
+data_quality_report.py
+mongodb_data_check.py
 
 # ─── ML models & caches ──────────────────────────────
 *.pt
@@ -27,6 +43,7 @@ sam2/
 
 # ─── Secrets ──────────────────────────────────────────
 .env
+.mcp.json
 *.pem
 *.key
 

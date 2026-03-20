@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid,
+  CartesianGrid, BarChart, Bar, Cell,
 } from 'recharts';
-import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight } from 'lucide-react';
+import { MapPin, Loader2, Wind, Thermometer, Droplets, Timer, ChevronRight, Trophy, Flag, TrendingUp, Users } from 'lucide-react';
 import type { CircuitIntelligence, CircuitPitLoss, RaceAirDensity } from '../types';
 import * as api from '../api/circuitIntel';
+import type { CircuitHistory, CircuitKex } from '../api/circuitIntel';
+import KexBriefingCard from './KexBriefingCard';
 import { TrackMap } from './TrackMap';
 import { CIRCUITS } from '../data/circuits';
 
@@ -44,7 +46,7 @@ const NAME_ALIASES: Record<string, string> = {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload?.length) {
     return (
-      <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
+      <div className="bg-background border border-[rgba(255,128,0,0.2)] rounded-lg p-2 text-[12px]">
         <div className="text-muted-foreground mb-1">{label}</div>
         {payload.map((entry: any, i: number) => (
           <div key={i} className="flex items-center gap-2">
@@ -65,6 +67,11 @@ export function CircuitIntel() {
   const [airDensity, setAirDensity] = useState<RaceAirDensity[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<CircuitHistory | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [kex, setKex] = useState<CircuitKex | null>(null);
+  const [kexLoading, setKexLoading] = useState(false);
+
 
   useEffect(() => {
     Promise.all([
@@ -96,22 +103,42 @@ export function CircuitIntel() {
     [airDensity, selected]
   );
 
+  // Auto-generate KeX when circuit changes (backend auto-regenerates if data changed)
+  useEffect(() => {
+    setKex(null);
+    if (!selected) return;
+    setKexLoading(true);
+    api.getCircuitKex(selected)
+      .then(setKex)
+      .catch(() => setKex(null))
+      .finally(() => setKexLoading(false));
+  }, [selected]);
+
+  // Fetch history when circuit changes
+  useEffect(() => {
+    if (!selected) { setHistory(null); return; }
+    setHistoryLoading(true);
+    api.getCircuitHistory(selected)
+      .then(h => setHistory(h.seasons?.length ? h : null))
+      .catch(() => setHistory(null))
+      .finally(() => setHistoryLoading(false));
+  }, [selected]);
+
   // Pit loss ranking sorted by estimated pit lane loss
   const pitLossRanking = useMemo(() =>
     [...pitLoss].sort((a, b) => b.est_pit_lane_loss_s - a.est_pit_lane_loss_s),
     [pitLoss]
   );
 
-
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-[#FF8000] animate-spin" /></div>;
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 text-primary animate-spin" /></div>;
   }
 
   return (
     <div className="flex gap-4 h-[calc(100vh-200px)]">
       {/* Left: Circuit List */}
-      <div className="w-72 shrink-0 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl overflow-y-auto">
-        <div className="p-3 border-b border-[rgba(255,128,0,0.08)]">
+      <div className="w-72 shrink-0 bg-card border border-border rounded-lg overflow-y-auto">
+        <div className="p-3 border-b border-border">
           <h3 className="text-sm text-muted-foreground flex items-center gap-2">
             <MapPin className="w-4 h-4" />
             {circuits.length} Circuits
@@ -124,8 +151,8 @@ export function CircuitIntel() {
               onClick={() => setSelected(c.circuit_slug)}
               className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between ${
                 selected === c.circuit_slug
-                  ? 'bg-[#FF8000]/10 text-[#FF8000]'
-                  : 'text-muted-foreground hover:bg-[#222838] hover:text-foreground'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
               }`}
             >
               <div>
@@ -152,7 +179,7 @@ export function CircuitIntel() {
         ) : (
           <>
             {/* Header */}
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+            <div className="bg-card border border-border rounded-lg p-4">
               <h2 className="text-foreground text-lg font-semibold">{selectedCircuit?.circuit_name}</h2>
               <div className="flex flex-wrap gap-4 mt-3">
                 <InfoChip icon={<MapPin className="w-3.5 h-3.5" />} label="Length" value={`${((selectedCircuit?.computed_length_m || 0) / 1000).toFixed(2)} km`} />
@@ -174,7 +201,7 @@ export function CircuitIntel() {
               const ci = SLUG_TO_CIRCUIT.get(slug) ?? SLUG_TO_CIRCUIT.get(NAME_ALIASES[slug] ?? '');
               if (!ci) return null;
               return (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-lg overflow-hidden">
                   <TrackMap
                     geojsonPath={ci.geojsonPath}
                     circuitName={ci.circuitName}
@@ -192,7 +219,7 @@ export function CircuitIntel() {
 
             {/* Pit Loss */}
             {selectedPitLoss && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Timer className="w-4 h-4" /> Pit Stop Analysis</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <PitCard label="Pit Lane Loss" value={selectedPitLoss.est_pit_lane_loss_s} unit="s" />
@@ -212,24 +239,24 @@ export function CircuitIntel() {
 
             {/* Air Density History */}
             {selectedAirData.length > 0 && (
-              <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+              <div className="bg-card border border-border rounded-lg p-4">
                 <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2"><Wind className="w-4 h-4" /> Environmental Conditions by Year</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={selectedAirData}>
-                    <CartesianGrid stroke="rgba(255,128,0,0.08)" />
-                    <XAxis dataKey="year" tick={{ fill: '#888', fontSize: 11 }} />
-                    <YAxis yAxisId="temp" tick={{ fill: '#888', fontSize: 11 }} />
-                    <YAxis yAxisId="density" orientation="right" tick={{ fill: '#888', fontSize: 11 }} />
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="year" tick={{ fill: '#9090A8', fontSize: 11 }} />
+                    <YAxis yAxisId="temp" tick={{ fill: '#9090A8', fontSize: 11 }} />
+                    <YAxis yAxisId="density" orientation="right" tick={{ fill: '#9090A8', fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Line yAxisId="temp" type="monotone" dataKey="avg_temp_c" name="Temp (C)" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line yAxisId="temp" type="monotone" dataKey="avg_humidity_pct" name="Humidity (%)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
-                    <Line yAxisId="density" type="monotone" dataKey="air_density_kg_m3" name="Air Density" stroke="#FF8000" strokeWidth={2} dot={{ r: 4 }} />
+                    <Line yAxisId="temp" type="monotone" dataKey="avg_temp_c" name="Temp (C)" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Line yAxisId="temp" type="monotone" dataKey="avg_humidity_pct" name="Humidity (%)" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    <Line yAxisId="density" type="monotone" dataKey="air_density_kg_m3" name="Air Density" stroke="#FF8000" strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
                 <div className="flex items-center justify-center gap-6 mt-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1"><Thermometer className="w-3 h-3 text-red-400" /> Temperature</span>
                   <span className="flex items-center gap-1"><Droplets className="w-3 h-3 text-blue-400" /> Humidity</span>
-                  <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-[#FF8000]" /> Air Density</span>
+                  <span className="flex items-center gap-1"><Wind className="w-3 h-3 text-primary" /> Air Density</span>
                 </div>
               </div>
             )}
@@ -243,13 +270,13 @@ export function CircuitIntel() {
               const slowest = pitLossRanking[0].est_pit_lane_loss_s;
               const pct = ((val - fastest) / (slowest - fastest)) * 100;
               return (
-                <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl p-4">
+                <div className="bg-card border border-border rounded-lg p-4">
                   <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
                     <Timer className="w-4 h-4" /> Pit Lane Loss Rank
                   </h3>
                   <div className="flex items-center gap-4 mb-3">
                     <div className="text-center">
-                      <div className="text-2xl font-mono font-bold text-[#FF8000]">{rank}<span className="text-sm text-muted-foreground font-normal">/{total}</span></div>
+                      <div className="text-2xl font-mono font-bold text-primary">{rank}<span className="text-sm text-muted-foreground font-normal">/{total}</span></div>
                       <div className="text-[10px] text-muted-foreground">Slowest pit lane</div>
                     </div>
                     <div className="flex-1">
@@ -257,10 +284,10 @@ export function CircuitIntel() {
                         <span>Fastest ({fastest.toFixed(1)}s)</span>
                         <span>Slowest ({slowest.toFixed(1)}s)</span>
                       </div>
-                      <div className="h-2.5 bg-[#0D1117] rounded-full overflow-hidden relative">
+                      <div className="h-2.5 bg-background rounded-full overflow-hidden relative">
                         <div className="h-full rounded-full" style={{ width: '100%', background: 'linear-gradient(90deg, #22c55e, #eab308, #ef4444)' , opacity: 0.3 }} />
                         <div
-                          className="absolute top-0 w-3 h-2.5 bg-[#FF8000] rounded-full border-2 border-[#1A1F2E]"
+                          className="absolute top-0 w-3 h-2.5 bg-primary rounded-full border-2 border-[#1A1F2E]"
                           style={{ left: `calc(${pct}% - 6px)` }}
                         />
                       </div>
@@ -269,6 +296,121 @@ export function CircuitIntel() {
                 </div>
               );
             })()}
+
+            {/* ── Historical Race Performance ─────────────────────────── */}
+            {historyLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                <span className="text-muted-foreground text-sm ml-2">Loading race history…</span>
+              </div>
+            )}
+
+            {history && (
+              <>
+                {/* KPI row */}
+                <div className="bg-card border border-border rounded-lg p-4">
+                  <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                    <Trophy className="w-4 h-4" /> Race History Overview
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <PitCard label="Races in DB" value={history.total_races} unit="" precision={0} />
+                    <PitCard label="Pole → Win" value={history.pole_stats.rate * 100} unit="%" precision={0} />
+                    <PitCard label="Avg Pos. Gained" value={history.positions_gained.avg} unit="pos" />
+                    <PitCard label="DNF Rate" value={history.dnf_rate * 100} unit="%" precision={1} />
+                  </div>
+                </div>
+
+                {/* Winners Table */}
+                {history.winners.length > 0 && (
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <Flag className="w-4 h-4" /> Race Winners
+                    </h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-muted-foreground text-[11px] border-b border-border">
+                            <th className="text-left py-2 px-2">Season</th>
+                            <th className="text-left py-2 px-2">Winner</th>
+                            <th className="text-left py-2 px-2">Constructor</th>
+                            <th className="text-right py-2 px-2">Grid</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...history.winners].reverse().map(w => (
+                            <tr key={w.season} className="border-b border-[rgba(255,128,0,0.04)] hover:bg-secondary/50">
+                              <td className="py-2 px-2 font-mono text-muted-foreground">{w.season}</td>
+                              <td className="py-2 px-2 text-foreground font-semibold">{w.driver_code}</td>
+                              <td className="py-2 px-2 text-muted-foreground">{w.constructor}</td>
+                              <td className="py-2 px-2 text-right font-mono">
+                                <span className={w.grid === 1 ? 'text-primary' : 'text-foreground'}>
+                                  P{w.grid}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Constructor Dominance */}
+                {history.top_constructors.length > 0 && (
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Constructor Points at This Circuit
+                    </h3>
+                    <ResponsiveContainer width="100%" height={Math.max(200, history.top_constructors.length * 32)}>
+                      <BarChart data={history.top_constructors} layout="vertical" margin={{ left: 80, right: 20 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                        <XAxis type="number" tick={{ fill: '#9090A8', fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" tick={{ fill: '#ccc', fontSize: 11 }} width={75} />
+                        <Tooltip content={<CustomTooltip />} />
+                        <Bar dataKey="points" name="Points" radius={[0, 4, 4, 0]}>
+                          {history.top_constructors.map((c, i) => (
+                            <Cell key={c.id} fill={i === 0 ? '#FF8000' : i < 3 ? '#FF8000aa' : '#FF800055'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* Podium Kings */}
+                {history.top_podiums.length > 0 && (
+                  <div className="bg-card border border-border rounded-lg p-4">
+                    <h3 className="text-sm text-muted-foreground mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" /> Most Podiums at This Circuit
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {history.top_podiums.map((p, i) => (
+                        <div
+                          key={p.driver}
+                          className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2"
+                        >
+                          <span className={`font-mono text-sm font-bold ${i === 0 ? 'text-[#FFD700]' : i === 1 ? 'text-[#C0C0C0]' : i === 2 ? 'text-[#CD7F32]' : 'text-muted-foreground'}`}>
+                            {p.count}
+                          </span>
+                          <span className="text-foreground text-sm">{p.driver}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ── WISE Circuit Intelligence Briefing ──────────────────── */}
+            {selected && (
+              <KexBriefingCard
+                title="WISE Circuit Briefing"
+                kex={kex}
+                loading={kexLoading}
+                loadingText="Extracting circuit intelligence\u2026"
+              />
+            )}
+
           </>
         )}
       </div>
@@ -278,8 +420,8 @@ export function CircuitIntel() {
 
 function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg px-3 py-2">
-      <span className="text-[#FF8000]">{icon}</span>
+    <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-2">
+      <span className="text-primary">{icon}</span>
       <div>
         <div className="text-[10px] text-muted-foreground">{label}</div>
         <div className="text-sm text-foreground font-mono">{value}</div>
@@ -290,7 +432,7 @@ function InfoChip({ icon, label, value }: { icon: React.ReactNode; label: string
 
 function PitCard({ label, value, unit, precision = 2 }: { label: string; value: number | null | undefined; unit: string; precision?: number }) {
   return (
-    <div className="bg-[#0D1117] border border-[rgba(255,128,0,0.08)] rounded-lg p-3">
+    <div className="bg-background border border-border rounded-lg p-3">
       <div className="text-[11px] text-muted-foreground mb-1">{label}</div>
       <div className="flex items-baseline gap-1">
         <span className="text-foreground font-mono text-lg">{value != null ? value.toFixed(precision) : '—'}</span>

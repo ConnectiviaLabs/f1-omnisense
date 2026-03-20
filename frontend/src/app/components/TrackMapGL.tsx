@@ -200,18 +200,18 @@ export function TrackMapGL({
   // ─── Render ────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className={`bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] flex items-center justify-center ${className}`} style={{ height }}>
+      <div className={`bg-card rounded-lg border border-border flex items-center justify-center ${className}`} style={{ height }}>
         <div className="text-muted-foreground text-sm animate-pulse">Loading track map...</div>
       </div>
     );
   }
 
   return (
-    <div ref={containerRef} className={`relative bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] overflow-hidden ${className}`} style={{ height }}>
+    <div ref={containerRef} className={`relative bg-card rounded-lg border border-border overflow-hidden ${className}`} style={{ height }}>
       {/* Header overlay */}
       <div className="absolute top-0 left-0 right-0 z-10 p-3 bg-gradient-to-b from-[#0D1117ee] to-transparent pointer-events-none">
         <div className="flex items-center gap-2">
-          <MapPin className="w-3.5 h-3.5 text-[#FF8000]" />
+          <MapPin className="w-3.5 h-3.5 text-primary" />
           <span className="text-sm font-medium text-foreground">{circuitName}</span>
           <span className="text-[12px] text-muted-foreground">{locality}, {country}</span>
           <span className="text-[12px] text-muted-foreground ml-auto">{lengthKm} km</span>
@@ -414,7 +414,7 @@ export function TrackMapGL({
                   background: `repeating-conic-gradient(#fff 0% 25%, #111 0% 50%) 50%/6px 6px`,
                 }}
               />
-              <span className="text-[9px] text-white/60 mt-0.5 tracking-wider font-bold">S/F</span>
+              <span className="text-[10px] text-white/60 mt-0.5 tracking-wider font-bold">S/F</span>
             </div>
           </Marker>
         )}
@@ -436,8 +436,8 @@ export function TrackMapGL({
               }}
               onMouseLeave={() => setHoveredTurn(null)}
             >
-              <div className="w-4 h-4 rounded-full bg-[#0D1117] border border-white/40 flex items-center justify-center">
-                <span className="text-[9px] text-white font-bold">{turn.number}</span>
+              <div className="w-4 h-4 rounded-full bg-background border border-white/40 flex items-center justify-center">
+                <span className="text-[10px] text-white font-bold">{turn.number}</span>
               </div>
             </div>
           </Marker>
@@ -468,7 +468,7 @@ export function TrackMapGL({
               />
               {/* Label */}
               <div
-                className="text-[9px] font-bold mt-0.5 px-1 rounded z-10"
+                className="text-[10px] font-bold mt-0.5 px-1 rounded z-10"
                 style={{
                   backgroundColor: `${car.color}cc`,
                   color: '#fff',
@@ -490,7 +490,7 @@ export function TrackMapGL({
         >
           <div className="text-[12px] font-bold text-foreground">
             Turn {hoveredTurn.number}
-            {hoveredTurn.name && <span className="text-[#FF8000] ml-1">{hoveredTurn.name}</span>}
+            {hoveredTurn.name && <span className="text-primary ml-1">{hoveredTurn.name}</span>}
           </div>
           {hoveredTurn.gear && (
             <div className="text-[11px] text-muted-foreground">
@@ -508,8 +508,8 @@ export function TrackMapGL({
             onClick={() => setColorMode(mode)}
             className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider transition-all ${
               colorMode === mode
-                ? 'bg-[#FF8000] text-white'
-                : 'bg-[#222838] text-muted-foreground hover:text-foreground'
+                ? 'bg-primary text-white'
+                : 'bg-secondary text-muted-foreground hover:text-foreground'
             }`}
           >
             {mode.toUpperCase()}

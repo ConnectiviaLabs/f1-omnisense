@@ -316,12 +316,18 @@ def build_stats_table(data: pd.DataFrame, max_cols: int = 12) -> str:
 def _find_group_column(data: pd.DataFrame, cat_cols: List[str]) -> Optional[str]:
     """Find the best grouping column for per-group breakdowns."""
     for col in cat_cols:
-        n_unique = data[col].nunique()
+        try:
+            n_unique = data[col].nunique()
+        except TypeError:
+            continue
         if 2 <= n_unique <= 20:
             return col
     entity_cols = find_entity_columns(data)
     for col in entity_cols:
-        n_unique = data[col].nunique()
+        try:
+            n_unique = data[col].nunique()
+        except TypeError:
+            continue
         if 2 <= n_unique <= 50:
             return col
     return None
@@ -423,9 +429,12 @@ def compute_fingerprint(
     if len(cat_cols) > 0 and numeric_stats:
         group_col = None
         for col in cat_cols:
-            if 2 <= data[col].nunique() <= 20:
-                group_col = col
-                break
+            try:
+                if 2 <= data[col].nunique() <= 20:
+                    group_col = col
+                    break
+            except TypeError:
+                continue
         if group_col is not None:
             for gval, gdata in data.groupby(group_col):
                 if len(gdata) < 4:

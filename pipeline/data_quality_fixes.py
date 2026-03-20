@@ -55,11 +55,21 @@ def load_telemetry_from_mongo(
         ))
         chunks.sort(key=lambda d: d.get("chunk", 0))
 
+        # Extract year from filename: "2024_R.parquet" → 2024
+        try:
+            file_year = int(fname.split("_")[0])
+        except (ValueError, IndexError):
+            file_year = None
+
         for doc in chunks:
             try:
                 df = pickle.loads(gzip.decompress(doc["data"]))
+                if file_year is not None:
+                    df["Year"] = file_year
                 if columns:
                     available = [c for c in columns if c in df.columns]
+                    if "Year" in df.columns and "Year" not in available:
+                        available.append("Year")
                     df = df[available]
                 frames.append(df)
             except Exception:

@@ -16,7 +16,7 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────
 
 REGION="${GCP_REGION:-us-central1}"
-SERVICE_NAME="f1-backend"
+SERVICE_NAME="${CLOUD_RUN_SERVICE:-f1-omnisense-api}"
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
 
 if [ -z "$PROJECT_ID" ]; then
@@ -61,7 +61,7 @@ echo "▸ Deploying to Cloud Run..."
 
 # Build a YAML env-vars file from .env (handles URLs and special chars)
 ENV_FILE=$(mktemp /tmp/env-vars-XXXXXX.yaml)
-API_PORT="8100"   # default
+API_PORT="8000"   # default
 if [ -f .env ]; then
   while IFS='=' read -r key value; do
     # Skip comments, empty lines, malformed keys
@@ -83,11 +83,13 @@ gcloud run deploy "${SERVICE_NAME}" \
   --region="${REGION}" \
   --platform=managed \
   --port="${API_PORT}" \
-  --memory=2Gi \
+  --memory=4Gi \
   --cpu=2 \
   --min-instances=0 \
   --max-instances=3 \
   --timeout=300s \
+  --concurrency=10 \
+  --startup-cpu-boost \
   --allow-unauthenticated \
   --env-vars-file="${ENV_FILE}"
 

@@ -30,6 +30,7 @@ ENDPOINTS = [
     ("race_control", "openf1_race_control", ["session_key", "date"]),
     ("weather", "openf1_weather", ["session_key", "date"]),
     ("drivers", "openf1_drivers", ["session_key", "driver_number"]),
+    ("team_radio", "openf1_team_radio", ["session_key", "driver_number", "date"]),
 ]
 
 

@@ -205,9 +205,94 @@ def compute_overtake_profiles(db) -> int:
         result = db["driver_overtake_profiles"].bulk_write(ops, ordered=False)
         count = result.upserted_count + result.modified_count
         print(f"  ✅ Upserted {count} driver overtake profiles")
-        return count
+    else:
+        count = 0
 
-    return 0
+    # ── Per-season profiles for 2025+ ──────────────────────────────────
+    seasons_2025_plus = sorted(
+        y for y in db["openf1_overtakes"].distinct("year")
+        if y is not None and int(y) >= 2025
+    )
+
+    if seasons_2025_plus:
+        print(f"\n  Computing per-season overtake profiles (2025+): {seasons_2025_plus}")
+
+        for season in seasons_2025_plus:
+            season_pipeline = [
+                {"$match": {"year": season}},
+                {"$facet": {
+                    "as_overtaker": [
+                        {"$group": {
+                            "_id": "$overtaking_driver_number",
+                            "total_overtakes": {"$sum": 1},
+                            "races_with_overtakes": {"$addToSet": "$session_key"},
+                        }},
+                    ],
+                    "as_overtaken": [
+                        {"$group": {
+                            "_id": "$overtaken_driver_number",
+                            "total_times_overtaken": {"$sum": 1},
+                            "races_overtaken_in": {"$addToSet": "$session_key"},
+                        }},
+                    ],
+                }},
+            ]
+            s_result = list(db["openf1_overtakes"].aggregate(season_pipeline, allowDiskUse=True))
+            if not s_result:
+                continue
+
+            s_overtaker = {r["_id"]: r for r in s_result[0]["as_overtaker"]}
+            s_overtaken = {r["_id"]: r for r in s_result[0]["as_overtaken"]}
+
+            # Race counts for this season
+            season_sessions = set(db["openf1_sessions"].distinct(
+                "session_key", {"session_type": "Race", "year": season}
+            ))
+            s_race_counts = {}
+            for doc in db["openf1_position"].aggregate([
+                {"$match": {"session_key": {"$in": list(season_sessions)}}},
+                {"$group": {"_id": "$driver_number", "races": {"$addToSet": "$session_key"}}},
+            ], allowDiskUse=True):
+                s_race_counts[doc["_id"]] = len(doc["races"])
+
+            s_all_drivers = set(s_overtaker.keys()) | set(s_overtaken.keys())
+            s_ops = []
+            for dn in s_all_drivers:
+                code = num_to_code.get(dn)
+                if not code:
+                    continue
+                ot = s_overtaker.get(dn, {"total_overtakes": 0, "races_with_overtakes": []})
+                od = s_overtaken.get(dn, {"total_times_overtaken": 0, "races_overtaken_in": []})
+                total_r = s_race_counts.get(dn, 1)
+                s_doc = {
+                    "driver_code": code,
+                    "driver_number": dn,
+                    "season": int(season),
+                    "total_overtakes_made": ot["total_overtakes"],
+                    "total_times_overtaken": od["total_times_overtaken"],
+                    "overtake_net": ot["total_overtakes"] - od["total_times_overtaken"],
+                    "overtakes_per_race": round(ot["total_overtakes"] / max(total_r, 1), 2),
+                    "times_overtaken_per_race": round(od["total_times_overtaken"] / max(total_r, 1), 2),
+                    "overtake_ratio": round(ot["total_overtakes"] / max(od["total_times_overtaken"], 1), 3),
+                    "races_analysed": total_r,
+                    "updated_at": now,
+                }
+                s_ops.append(UpdateOne(
+                    {"driver_code": code, "season": int(season)},
+                    {"$set": s_doc},
+                    upsert=True,
+                ))
+
+            if s_ops:
+                db["driver_overtake_profiles"].create_index(
+                    [("driver_code", 1), ("season", 1)], unique=True, sparse=True,
+                )
+                s_res = db["driver_overtake_profiles"].bulk_write(s_ops, ordered=False)
+                print(f"    Season {season}: {s_res.upserted_count + s_res.modified_count} profiles")
+    else:
+        print("\n  ⚠ No 2025+ overtake data found (expected — no 2025 data yet)")
+
+    return count
 
 
 def main():

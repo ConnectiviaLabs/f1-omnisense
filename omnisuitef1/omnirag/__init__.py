@@ -33,13 +33,29 @@ from omnirag.ingest import ingest_file, ingest_texts, ingest_directory
 from omnirag._types import (
     RAGDocument, SearchResult, ChatMessage, ChatResponse, IngestResult,
 )
+from omnirag.agent import RAGAgent, ToolRegistry, ToolDefinition, AgentResponse
+from omnirag.context_pipeline import ContextPipeline, ContextBlock, retriever_as_source
+from omnirag.streaming import stream_agent_response, sse_event
 
 __all__ = [
+    # Vector store
     "get_vectorstore", "AtlasStore", "ChromaStore", "VectorStoreProtocol",
+    # Retrieval
     "RAGRetriever",
+    # Q&A
     "RAGChain",
+    # Conversation
     "ConversationManager",
+    # LLM
     "get_llm", "generate", "LLMConfig",
+    # Ingestion
     "ingest_file", "ingest_texts", "ingest_directory",
+    # Types
     "RAGDocument", "SearchResult", "ChatMessage", "ChatResponse", "IngestResult",
+    # Agent
+    "RAGAgent", "ToolRegistry", "ToolDefinition", "AgentResponse",
+    # Context pipeline
+    "ContextPipeline", "ContextBlock", "retriever_as_source",
+    # Streaming
+    "stream_agent_response", "sse_event",
 ]

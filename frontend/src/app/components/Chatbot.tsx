@@ -1,131 +1,503 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
-  Send, Bot, User, Loader2, Sparkles,
-  FileText, BookOpen, Cog, Ruler, Database, RotateCcw, Filter,
+  Send, Bot, User, Loader2, Sparkles, RotateCcw,
+  TrendingUp, TrendingDown, Minus, Info, AlertTriangle, XCircle,
+  RefreshCw,
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar, Cell,
+} from 'recharts';
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  sources?: Source[];
+/* ── Lightweight UIMessage type (replaces @ai-sdk/react dependency) ── */
+interface UIMessagePart { type: string; text?: string; [k: string]: any }
+interface UIMessage { id: string; role: 'user' | 'assistant'; parts: UIMessagePart[] }
+
+/* ── Simple chat hook that talks to our /api/chat endpoint ────────── */
+function useSimpleChat() {
+  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [status, setStatus] = useState<'ready' | 'submitted' | 'streaming'>('ready');
+  const [error, setError] = useState<Error | null>(null);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  const sendMessage = useCallback(async ({ text }: { text: string }) => {
+    const userMsg: UIMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      parts: [{ type: 'text', text }],
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setStatus('submitted');
+    setError(null);
+
+    try {
+      // Use /api/chat (Python backend RAG)
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || `Chat failed (${res.status})`);
+      }
+      const data = await res.json();
+      setMessages(prev => [...prev, {
+        id: crypto.randomUUID(), role: 'assistant',
+        parts: [{ type: 'text', text: data.answer ?? data.text ?? '' }],
+      }]);
+    } catch (e: any) {
+      setError(e instanceof Error ? e : new Error(String(e)));
+    } finally {
+      setStatus('ready');
+    }
+  }, [messages]);
+
+  return { messages, setMessages, sendMessage, status, error, clearError };
 }
 
-interface Source {
-  content: string;
-  data_type: string;
-  category: string;
-  source: string;
-  page: number;
-}
-
+/* ── Suggestion prompts (diagnostic-focused) ─────────────────────── */
 const SUGGESTIONS = [
-  'What are the minimum car weight requirements?',
-  'Explain the front wing dimensional constraints',
-  'What tire compounds are allowed in 2024?',
-  'List the safety equipment regulations',
-  'What are the power unit restrictions?',
-  'Describe the floor body regulations',
+  "How is Norris's car health trending this season?",
+  'Compare brake system health across the last 5 races',
+  'What are the biggest reliability risks for the McLaren fleet?',
+  'Show me engine performance trends for Piastri',
+  'Which systems need maintenance attention before the next race?',
+  'Analyze tyre management across the McLaren cars',
 ];
 
-const typeIcons: Record<string, React.ReactNode> = {
-  regulation: <BookOpen className="w-3 h-3" />,
-  equipment: <Cog className="w-3 h-3" />,
-  dimension: <Ruler className="w-3 h-3" />,
-  material: <Database className="w-3 h-3" />,
-  document_metadata: <FileText className="w-3 h-3" />,
+/* ── Severity / trend color maps ─────────────────────────────────── */
+const SEV_COLORS: Record<string, string> = {
+  nominal: '#22c55e', warning: '#f59e0b', critical: '#ef4444', info: '#3b82f6',
+};
+const SEV_BG: Record<string, string> = {
+  nominal: 'rgba(34,197,94,0.08)', warning: 'rgba(245,158,11,0.08)',
+  critical: 'rgba(239,68,68,0.08)', info: 'rgba(59,130,246,0.08)',
+};
+const TREND_ICON: Record<string, React.ReactNode> = {
+  up: <TrendingUp className="w-3.5 h-3.5" />,
+  down: <TrendingDown className="w-3.5 h-3.5" />,
+  stable: <Minus className="w-3.5 h-3.5" />,
+};
+const SEV_ICON: Record<string, React.ReactNode> = {
+  info: <Info className="w-4 h-4" />,
+  warning: <AlertTriangle className="w-4 h-4" />,
+  critical: <XCircle className="w-4 h-4" />,
 };
 
-const FILTER_LABELS: Record<string, string> = {
-  regulation: 'Regulations',
-  equipment: 'Equipment',
-  dimension: 'Dimensions',
-  material: 'Materials',
-  document_metadata: 'Documents',
-};
+/* ── Fade-in animation wrapper ───────────────────────────────────── */
+function FadeIn({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`animate-[fadeSlideIn_0.3s_ease-out] ${className}`}>
+      {children}
+      <style>{`
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GenUI Widget Renderers
+   ═══════════════════════════════════════════════════════════════════ */
+
+function MetricCard({ title, value, trend, severity, subtitle }: {
+  title: string; value: string; trend: string; severity: string; subtitle?: string;
+}) {
+  const color = SEV_COLORS[severity] ?? '#666';
+  return (
+    <FadeIn>
+      <div
+        className="rounded-lg px-3 py-2.5 border transition-all hover:scale-[1.02]"
+        style={{
+          borderColor: color,
+          borderLeftWidth: 3,
+          background: SEV_BG[severity] ?? 'rgba(255,255,255,0.03)',
+        }}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{title}</span>
+          <span style={{ color }}>{TREND_ICON[trend]}</span>
+        </div>
+        <div className="text-lg font-semibold text-foreground">{value}</div>
+        {subtitle && <div className="text-[10px] text-muted-foreground mt-0.5">{subtitle}</div>}
+      </div>
+    </FadeIn>
+  );
+}
+
+function SparklineChart({ title, data, unit, thresholds }: {
+  title: string;
+  data: { race: string; value: number }[];
+  unit: string;
+  thresholds?: { warning: number; critical: number };
+}) {
+  // Shorten race names for x-axis
+  const shortData = data.map(d => ({
+    ...d,
+    short: d.race.replace(/ Grand Prix$/i, '').replace(/^20\d{2} /, ''),
+  }));
+  return (
+    <FadeIn>
+      <div className="rounded-lg bg-background border border-border p-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>
+        <ResponsiveContainer width="100%" height={150}>
+          <LineChart data={shortData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+            <XAxis dataKey="short" tick={{ fontSize: 8, fill: '#666' }} interval={0} angle={-35} textAnchor="end" height={50} />
+            <YAxis tick={{ fontSize: 9, fill: '#666' }} domain={['dataMin - 5', 'dataMax + 5']} />
+            <Tooltip
+              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
+              formatter={(v: number) => [`${v} ${unit}`, '']}
+              labelFormatter={(label) => shortData.find(d => d.short === label)?.race ?? label}
+            />
+            <Line type="monotone" dataKey="value" stroke="#FF8000" strokeWidth={2} dot={{ r: 3, fill: '#FF8000', strokeWidth: 0 }} activeDot={{ r: 5, fill: '#FF8000' }} />
+            {thresholds && (
+              <>
+                <ReferenceLine y={thresholds.warning} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Warning', fontSize: 8, fill: '#f59e0b', position: 'right' }} />
+                <ReferenceLine y={thresholds.critical} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Critical', fontSize: 8, fill: '#ef4444', position: 'right' }} />
+              </>
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </FadeIn>
+  );
+}
+
+function ComparisonBar({ title, items }: {
+  title: string; items: { label: string; value: number; max: number }[];
+}) {
+  const chartData = items.map(it => ({ name: it.label, value: it.value, max: it.max }));
+  return (
+    <FadeIn>
+      <div className="rounded-lg bg-background border border-border p-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">{title}</div>
+        <ResponsiveContainer width="100%" height={items.length * 36 + 20}>
+          <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 60 }}>
+            <XAxis type="number" tick={{ fontSize: 9, fill: '#666' }} />
+            <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#999' }} width={55} />
+            <Tooltip
+              contentStyle={{ background: '#1A1F2E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 11 }}
+            />
+            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              {chartData.map((entry, i) => {
+                const pct = entry.max > 0 ? entry.value / entry.max : 0;
+                const fill = pct > 0.7 ? '#22c55e' : pct > 0.4 ? '#f59e0b' : '#ef4444';
+                return <Cell key={i} fill={fill} />;
+              })}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </FadeIn>
+  );
+}
+
+function Recommendation({ title, description, severity, action }: {
+  title: string; description: string; severity: string; action: string;
+}) {
+  const color = SEV_COLORS[severity] ?? '#666';
+  return (
+    <FadeIn>
+      <div
+        className="rounded-lg px-3 py-2.5 border"
+        style={{
+          borderColor: color,
+          borderLeftWidth: 3,
+          background: SEV_BG[severity] ?? 'rgba(255,255,255,0.03)',
+        }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span style={{ color }}>{SEV_ICON[severity] ?? SEV_ICON.info}</span>
+          <span className="text-xs font-medium text-foreground">{title}</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed mb-1.5">{description}</p>
+        <span
+          className="inline-block text-[10px] px-2 py-0.5 rounded-full font-medium"
+          style={{ background: color + '22', color }}
+        >
+          {action}
+        </span>
+      </div>
+    </FadeIn>
+  );
+}
+
+function AnalysisText({ content }: { content: string }) {
+  return (
+    <FadeIn>
+      <div className="border-l-2 border-primary/40 pl-3 py-1">
+        <p className="text-[11px] text-muted-foreground leading-relaxed">{content}</p>
+      </div>
+    </FadeIn>
+  );
+}
+
+/* ── Similar Drivers widget ────────────────────────────────────── */
+function SimilarDriversWidget({ driver_code, similar }: { driver_code: string; similar: { driver_code: string; team: string; score: number }[] }) {
+  if (!similar?.length) return null;
+  return (
+    <FadeIn>
+      <div className="rounded-lg border border-[rgba(255,128,0,0.15)] bg-background p-3">
+        <div className="text-[10px] font-semibold tracking-wider text-primary/70 mb-2">
+          SIMILAR TO {driver_code}
+        </div>
+        <div className="space-y-1.5">
+          {similar.map((s, i) => {
+            const pct = Math.round(s.score * 100);
+            return (
+              <div key={s.driver_code} className="flex items-center gap-2 text-[11px]">
+                <span className="text-muted-foreground w-3 font-mono">{i + 1}</span>
+                <span className="font-semibold text-foreground w-8">{s.driver_code}</span>
+                <span className="text-muted-foreground flex-1 truncate">{s.team || '—'}</span>
+                <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="font-mono text-primary w-8 text-right">{pct}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </FadeIn>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Tool Part Renderer — maps tool name → widget
+   ═══════════════════════════════════════════════════════════════════ */
+
+function renderToolPart(part: any) {
+  // Skip tools still streaming input
+  if (part.state === 'input-streaming') return null;
+
+  const name = part.type?.startsWith('tool-')
+    ? part.type.slice(5)
+    : part.toolName;
+  const args = part.input ?? {};
+
+  switch (name) {
+    case 'metric_card':
+      return <MetricCard {...args} />;
+    case 'sparkline':
+      return <SparklineChart {...args} />;
+    case 'comparison':
+      return <ComparisonBar {...args} />;
+    case 'recommendation':
+      return <Recommendation {...args} />;
+    case 'text':
+      return <AnalysisText {...args} />;
+    case 'similar_drivers':
+      return <SimilarDriversWidget {...(part.output ?? args)} />;
+    default:
+      return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Message Renderers
+   ═══════════════════════════════════════════════════════════════════ */
+
+function AssistantMessage({ message }: { message: UIMessage }) {
+  const parts = message.parts ?? [];
+  const hasToolParts = parts.some(p => p.type.startsWith('tool-') || p.type === 'dynamic-tool');
+
+  // Separate into: metric cards, visual widgets, text (tool-text + plain text)
+  const metricCards: any[] = [];
+  const visualWidgets: any[] = [];  // sparkline, comparison, recommendation, similar_drivers
+  const textParts: any[] = [];      // tool-text + plain text
+
+  parts.forEach((part, i) => {
+    const name = part.type?.startsWith('tool-') ? part.type.slice(5) : (part as any).toolName;
+    if (name === 'metric_card') {
+      metricCards.push({ part, key: i });
+    } else if (name === 'text') {
+      // tool-text → treat as analysis text below widgets
+      textParts.push({ part, key: i, isToolText: true });
+    } else if (part.type === 'text') {
+      textParts.push({ part, key: i, isToolText: false });
+    } else if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+      visualWidgets.push({ part, key: i });
+    }
+  });
+
+  const hasVisuals = metricCards.length > 0 || visualWidgets.length > 0;
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-4 h-4 text-primary" />
+      </div>
+      <div className={`space-y-3 ${hasToolParts ? 'w-full max-w-full' : 'max-w-[75%]'}`}>
+        {/* ── Gen UI Widgets (top section) ──────────────────────── */}
+        {hasVisuals && (
+          <div className="rounded-lg bg-background border border-[rgba(255,128,0,0.15)] p-3 space-y-3">
+            {/* Metric cards grid */}
+            {metricCards.length > 0 && (
+              <div className={`grid gap-2 ${metricCards.length >= 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                {metricCards.map(({ part, key }) => (
+                  <div key={key}>{renderToolPart(part)}</div>
+                ))}
+              </div>
+            )}
+            {/* Visual widgets (sparklines, comparisons, recommendations) */}
+            {visualWidgets.map(({ part, key }) => {
+              const rendered = renderToolPart(part);
+              return rendered ? <div key={key}>{rendered}</div> : null;
+            })}
+          </div>
+        )}
+
+        {/* ── Text Analysis (below widgets, like KeX briefing) ── */}
+        {textParts.map(({ part, key, isToolText }) => {
+          if (isToolText) {
+            // tool-text: analysis paragraph from LLM
+            const content = part.input?.content ?? '';
+            if (!content.trim()) return null;
+            return (
+              <FadeIn key={key}>
+                <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
+                  {content}
+                </div>
+              </FadeIn>
+            );
+          }
+          // plain text part
+          const text = (part as any).text?.trim();
+          if (!text) return null;
+          return (
+            <FadeIn key={key}>
+              <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-card border border-border text-foreground">
+                {text}
+              </div>
+            </FadeIn>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UserMessage({ message }: { message: UIMessage }) {
+  const text = message.parts?.find(p => p.type === 'text') as any;
+  return (
+    <div className="flex items-start gap-3 flex-row-reverse">
+      <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+        <User className="w-4 h-4 text-blue-400" />
+      </div>
+      <div className="max-w-[75%]">
+        <div className="rounded-lg px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap bg-blue-500/10 border border-blue-500/20 text-foreground">
+          {text?.text ?? ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Error Display
+   ═══════════════════════════════════════════════════════════════════ */
+
+function ErrorBanner({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
+        <XCircle className="w-4 h-4 text-red-400" />
+      </div>
+      <div className="bg-red-500/5 border border-red-500/20 rounded-lg px-4 py-3 max-w-[75%]">
+        <p className="text-[11px] text-red-400 mb-2">
+          {error.message.includes('GROQ_API_KEY')
+            ? 'Groq API key not configured. Add GROQ_API_KEY to your .env file.'
+            : `Connection error: ${error.message}`}
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="flex items-center gap-1.5 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+        >
+          <RefreshCw className="w-3 h-3" />
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Streaming Skeleton
+   ═══════════════════════════════════════════════════════════════════ */
+
+function StreamingSkeleton() {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+        <Bot className="w-4 h-4 text-primary" />
+      </div>
+      <div className="space-y-2 w-full">
+        {/* Metric card skeletons */}
+        <div className="grid grid-cols-3 gap-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-lg bg-card border border-border px-3 py-2.5 animate-pulse">
+              <div className="h-2 w-16 bg-primary/10 rounded mb-2" />
+              <div className="h-5 w-12 bg-primary/15 rounded mb-1" />
+              <div className="h-2 w-20 bg-primary/5 rounded" />
+            </div>
+          ))}
+        </div>
+        {/* Chart skeleton */}
+        <div className="rounded-lg bg-background border border-border p-3 animate-pulse">
+          <div className="h-2 w-24 bg-primary/10 rounded mb-3" />
+          <div className="h-[100px] bg-primary/5 rounded" />
+        </div>
+        {/* Text skeleton */}
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin text-primary" />
+          Analyzing diagnostics...
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Main Chatbot Component
+   ═══════════════════════════════════════════════════════════════════ */
 
 export function Chatbot() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [expandedSources, setExpandedSources] = useState<number | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(() => localStorage.getItem('omni_chat_session'));
-  const [modelUsed, setModelUsed] = useState<string | null>(null);
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const {
+    messages, setMessages, sendMessage, status, error, clearError,
+  } = useSimpleChat();
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [lastInput, setLastInput] = useState('');
+
+  const isLoading = status === 'streaming' || status === 'submitted';
+  // Show skeleton only when waiting for first content (submitted but no assistant message yet)
+  const showSkeleton = status === 'submitted';
+  // Show streaming indicator when we have content coming in
+  const isStreaming = status === 'streaming';
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [messages, isLoading]);
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || loading) return;
-
-    const userMsg: ChatMessage = { role: 'user', content: text.trim() };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      // Try OmniRAG endpoint first (server-side session), fall back to legacy /api/chat
-      let data: any;
-      try {
-        const omniRes = await fetch('/api/omni/rag/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text.trim(),
-            session_id: sessionId,
-            ...(activeFilters.size > 0 && { data_types: [...activeFilters] }),
-          }),
-        });
-        if (omniRes.ok) {
-          data = await omniRes.json();
-          if (data.session_id) {
-            setSessionId(data.session_id);
-            localStorage.setItem('omni_chat_session', data.session_id);
-          }
-          if (data.model_used) setModelUsed(data.model_used);
-        }
-      } catch { /* OmniRAG unavailable, fall through */ }
-
-      if (!data) {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text.trim(),
-            history: messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
-            ...(activeFilters.size > 0 && { data_types: [...activeFilters] }),
-          }),
-        });
-        if (!res.ok) throw new Error(`Server error: ${res.status}`);
-        data = await res.json();
-        setModelUsed(null);
-      }
-
-      const assistantMsg: ChatMessage = {
-        role: 'assistant',
-        content: data.answer,
-        sources: data.sources,
-      };
-      setMessages(prev => [...prev, assistantMsg]);
-    } catch (err) {
-      const errorMsg: ChatMessage = {
-        role: 'assistant',
-        content: 'Failed to reach the knowledge agent. Make sure the chat server is running:\n```\npython pipeline/chat_server.py\n```',
-      };
-      setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
-    }
+  const handleSend = (text: string) => {
+    if (!text.trim() || isLoading) return;
+    setLastInput(text.trim());
+    clearError();
+    sendMessage({ text: text.trim() });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
+  const handleRetry = () => {
+    if (lastInput) {
+      clearError();
+      sendMessage({ text: lastInput });
     }
   };
 
@@ -133,31 +505,33 @@ export function Chatbot() {
     <div className="flex flex-col h-[calc(100vh-140px)]">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto space-y-4 pb-4">
-        {messages.length === 0 ? (
-          <EmptyState onSelect={sendMessage} />
+        {messages.length === 0 && !error ? (
+          <EmptyState onSelect={handleSend} />
         ) : (
-          messages.map((msg, i) => (
-            <MessageBubble
-              key={i}
-              message={msg}
-              index={i}
-              expandedSources={expandedSources}
-              onToggleSources={() => setExpandedSources(expandedSources === i ? null : i)}
-            />
-          ))
+          messages.map((msg) =>
+            msg.role === 'user'
+              ? <UserMessage key={msg.id} message={msg} />
+              : msg.role === 'assistant'
+                ? <AssistantMessage key={msg.id} message={msg} />
+                : null
+          )
         )}
 
-        {loading && (
-          <div className="flex items-start gap-3">
-            <div className="w-7 h-7 rounded-lg bg-[#FF8000]/10 flex items-center justify-center shrink-0 mt-0.5">
-              <Bot className="w-4 h-4 text-[#FF8000]" />
+        {/* Error display */}
+        {error && <ErrorBanner error={error} onRetry={handleRetry} />}
+
+        {/* Loading skeleton before first content arrives */}
+        {showSkeleton && <StreamingSkeleton />}
+
+        {/* Streaming indicator when content is flowing */}
+        {isStreaming && (
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-10">
+            <div className="flex gap-0.5">
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+              <span className="w-1 h-1 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
             </div>
-            <div className="bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin text-[#FF8000]" />
-                Searching knowledge base...
-              </div>
-            </div>
+            Generating...
           </div>
         )}
 
@@ -165,67 +539,44 @@ export function Chatbot() {
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 pt-3 border-t border-[rgba(255,128,0,0.12)]">
-        {/* Topic Filters */}
-        <div className="flex items-center gap-1.5 mb-2 px-1 flex-wrap">
-          <Filter className="w-3 h-3 text-muted-foreground shrink-0" />
-          {Object.entries(FILTER_LABELS).map(([key, label]) => {
-            const isActive = activeFilters.has(key);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setActiveFilters(prev => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                }}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] border transition-all ${
-                  isActive
-                    ? 'bg-[#FF8000]/15 border-[#FF8000]/40 text-[#FF8000]'
-                    : 'bg-[#1A1F2E] border-[rgba(255,128,0,0.08)] text-muted-foreground hover:border-[#FF8000]/20 hover:text-foreground'
-                }`}
-              >
-                {typeIcons[key]}
-                {label}
-              </button>
-            );
-          })}
-          {activeFilters.size > 0 && (
-            <button
-              type="button"
-              onClick={() => setActiveFilters(new Set())}
-              className="text-[10px] text-muted-foreground hover:text-[#FF8000] transition-colors ml-1"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2 bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-[#FF8000]/40 transition-colors">
+      <div className="shrink-0 pt-3 border-t border-border">
+        <form
+          ref={formRef}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const input = inputRef.current;
+            if (input) {
+              handleSend(input.value);
+              input.value = '';
+            }
+          }}
+          className="flex items-center gap-2 bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-4 py-2 focus-within:border-primary/40 transition-colors"
+        >
           <input
             ref={inputRef}
             type="text"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about F1 regulations, specs, equipment..."
+            placeholder="Ask about car diagnostics, system health, reliability..."
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-            disabled={loading}
+            disabled={isLoading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                formRef.current?.requestSubmit();
+              }
+            }}
           />
           <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || loading}
-            className="w-7 h-7 rounded-lg bg-[#FF8000] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[#FF8000]/80 transition-colors"
+            type="submit"
+            disabled={isLoading}
+            title="Send message"
+            className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-primary/80 transition-colors"
           >
             <Send className="w-3.5 h-3.5 text-[#0D1117]" />
           </button>
-        </div>
+        </form>
         <div className="flex items-center justify-between mt-2 px-1">
           <span className="text-[11px] text-muted-foreground">
-            {modelUsed ? `Model: ${modelUsed}` : 'Powered by Groq Llama 3.3 70B'} + Atlas Vector Search
+            Groq Llama 3.3 70B · GenUI
           </span>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-muted-foreground">
@@ -234,13 +585,8 @@ export function Chatbot() {
             {messages.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  setMessages([]);
-                  setSessionId(null);
-                  setModelUsed(null);
-                  localStorage.removeItem('omni_chat_session');
-                }}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-[#FF8000] transition-colors"
+                onClick={() => { setMessages([]); clearError(); }}
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
                 title="New conversation"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -254,95 +600,30 @@ export function Chatbot() {
   );
 }
 
+/* ── Empty State ─────────────────────────────────────────────────── */
+
 function EmptyState({ onSelect }: { onSelect: (q: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
-      <div className="w-14 h-14 rounded-2xl bg-[#FF8000]/10 flex items-center justify-center mb-4">
-        <Sparkles className="w-7 h-7 text-[#FF8000]" />
+      <div className="w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+        <Sparkles className="w-7 h-7 text-primary" />
       </div>
-      <h3 className="text-sm text-foreground mb-1">F1 Knowledge Agent</h3>
+      <h3 className="text-sm text-foreground mb-1">F1 Diagnostic AI</h3>
       <p className="text-[11px] text-muted-foreground mb-6 max-w-md">
-        Ask questions about FIA technical regulations, car dimensions,
-        equipment specs, and materials. Powered by RAG over 2,449 extracted documents.
+        Ask questions about car health, system diagnostics, and reliability trends.
+        Responses include interactive charts and visual metrics powered by real telemetry data.
       </p>
       <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
         {SUGGESTIONS.map((q) => (
           <button
+            type="button"
             key={q}
             onClick={() => onSelect(q)}
-            className="text-left text-[11px] text-muted-foreground bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-[#FF8000]/30 hover:text-foreground transition-all"
+            className="text-left text-[11px] text-muted-foreground bg-card border border-border rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.3)] px-3 py-2.5 hover:border-primary/30 hover:text-foreground transition-all"
           >
             {q}
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function MessageBubble({
-  message, index, expandedSources, onToggleSources,
-}: {
-  message: ChatMessage;
-  index: number;
-  expandedSources: number | null;
-  onToggleSources: () => void;
-}) {
-  const isUser = message.role === 'user';
-
-  return (
-    <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-        isUser ? 'bg-blue-500/10' : 'bg-[#FF8000]/10'
-      }`}>
-        {isUser
-          ? <User className="w-4 h-4 text-blue-400" />
-          : <Bot className="w-4 h-4 text-[#FF8000]" />
-        }
-      </div>
-
-      <div className={`max-w-[75%] space-y-2 ${isUser ? 'items-end' : ''}`}>
-        <div className={`rounded-xl px-4 py-3 text-[11px] leading-relaxed whitespace-pre-wrap ${
-          isUser
-            ? 'bg-blue-500/10 border border-blue-500/20 text-foreground'
-            : 'bg-[#1A1F2E] border border-[rgba(255,128,0,0.12)] text-foreground'
-        }`}>
-          {message.content}
-        </div>
-
-        {/* Sources */}
-        {message.sources && message.sources.length > 0 && (
-          <div>
-            <button
-              onClick={onToggleSources}
-              className="text-[12px] text-[#FF8000] hover:text-[#FF8000]/80 flex items-center gap-1"
-            >
-              <FileText className="w-3 h-3" />
-              {expandedSources === index ? 'Hide' : 'Show'} {message.sources.length} sources
-            </button>
-
-            {expandedSources === index && (
-              <div className="mt-2 space-y-1.5">
-                {message.sources.map((src, si) => (
-                  <div
-                    key={si}
-                    className="bg-[#0D1117] border border-[rgba(255,128,0,0.12)] rounded-lg px-3 py-2"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[#FF8000]">
-                        {typeIcons[src.data_type] || <FileText className="w-3 h-3" />}
-                      </span>
-                      <span className="text-[11px] text-[#FF8000] font-mono">{src.data_type}</span>
-                      <span className="text-[11px] text-muted-foreground">/ {src.category}</span>
-                      <span className="text-[11px] text-muted-foreground ml-auto">p.{src.page}</span>
-                    </div>
-                    <p className="text-[12px] text-muted-foreground line-clamp-3">{src.content}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

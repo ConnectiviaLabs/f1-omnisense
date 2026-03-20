@@ -1,7 +1,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-size: 16px;
+  --font-size: 14px;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
   /* McLaren Theme — aligned with OmniSense Design System */
   --background: #0D1117;
@@ -24,9 +25,9 @@
   --destructive: #FB2C36;
   --destructive-foreground: #ffffff;
 
-  /* Borders — 3-tier system */
-  --border: rgba(255, 128, 0, 0.12);
-  --border-strong: rgba(255, 128, 0, 0.20);
+  /* Borders — 3-tier system (neutral resting, orange signal-only) */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.10);
   --border-accent: rgba(255, 128, 0, 0.35);
 
   /* Inputs */
@@ -89,7 +90,7 @@
   --sidebar-primary-foreground: #0D1117;
   --sidebar-accent: #222838;
   --sidebar-accent-foreground: #E8E8F0;
-  --sidebar-border: rgba(255, 128, 0, 0.12);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-ring: #FF8000;
   --sidebar-hover: rgba(255, 128, 0, 0.05);
 
@@ -138,6 +139,42 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-hover: var(--sidebar-hover);
+
+  /* Extended tokens */
+  --color-border-strong: var(--border-strong);
+  --color-border-accent: var(--border-accent);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-hover-overlay: var(--hover-overlay);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-surface-raised: var(--surface-raised);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-text: var(--warning-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-text: var(--info-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-muted: var(--accent-muted);
+  --color-accent-hover: var(--accent-hover);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
 @layer base {
@@ -147,33 +184,60 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   html {
     font-size: var(--font-size);
   }
 
+  /* Custom scrollbar — dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* Tabular numerals for all monospace — aligns digits like telemetry displays */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
   h1 {
     font-size: var(--text-2xl);
     font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
   }
 
   h2 {
     font-size: var(--text-xl);
     font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.25;
+    letter-spacing: -0.005em;
   }
 
   h3 {
     font-size: var(--text-lg);
     font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.3;
   }
 
   h4 {
     font-size: var(--text-base);
     font-weight: var(--font-weight-medium);
-    line-height: 1.5;
+    line-height: 1.35;
   }
 }

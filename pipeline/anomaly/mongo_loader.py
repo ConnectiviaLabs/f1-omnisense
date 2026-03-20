@@ -86,6 +86,38 @@ def load_driver_race_telemetry(driver_code: str, year: Optional[int] = None) -> 
     return result
 
 
+def load_race_summary_features(driver_code: str, year: int | None = None) -> pd.DataFrame:
+    """Load per-race car telemetry features from telemetry_race_summary.
+
+    Returns RPM, throttle, brake, DRS aggregates per (Year, Race) — data
+    that fastf1_laps doesn't carry.  Merged into the anomaly pipeline to
+    power the expanded 7-system grouping.
+    """
+    db = get_db()
+    query: dict = {"Driver": driver_code.upper()}
+    if year:
+        query["Year"] = year
+
+    projection = {
+        "_id": 0, "Year": 1, "Race": 1,
+        "avg_rpm": 1, "max_rpm": 1,
+        "avg_throttle": 1, "brake_pct": 1,
+        "drs_pct": 1, "avg_speed": 1, "top_speed": 1,
+    }
+
+    docs = list(db["telemetry_race_summary"].find(query, projection))
+    if not docs:
+        logger.info("No telemetry_race_summary data for %s", driver_code)
+        return pd.DataFrame()
+
+    df = pd.DataFrame(docs)
+    for col in ["avg_rpm", "max_rpm", "avg_throttle", "brake_pct", "drs_pct", "avg_speed", "top_speed"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    return df
+
+
 def load_driver_lap_data(
     driver_code: str,
     year: Optional[int] = None,

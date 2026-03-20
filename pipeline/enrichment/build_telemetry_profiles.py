@@ -294,6 +294,51 @@ def main():
     else:
         print("\n  ⚠ No profiles to write")
 
+    # ── Per-season profiles for 2025+ ──────────────────────────────────
+    if "Year" in tel_df.columns:
+        seasons_2025_plus = sorted(
+            int(y) for y in tel_df["Year"].dropna().unique() if int(y) >= 2025
+        )
+    else:
+        seasons_2025_plus = []
+
+    if seasons_2025_plus:
+        print(f"\n  Computing per-season telemetry profiles (2025+): {seasons_2025_plus}")
+
+        for season in seasons_2025_plus:
+            s_tel = tel_df[tel_df["Year"] == season]
+            s_drivers = sorted(s_tel["Driver"].dropna().unique())
+            s_ops = []
+
+            for driver_code in s_drivers:
+                drv = s_tel[s_tel["Driver"] == driver_code].copy()
+                if len(drv) < 1000:
+                    continue
+
+                metrics = {"driver_code": driver_code, "season": season, "sample_count": len(drv)}
+                metrics.update(compute_braking_metrics(drv))
+                metrics.update(compute_throttle_metrics(drv))
+                metrics.update(compute_speed_metrics(drv))
+                metrics.update(compute_drs_metrics(drv))
+                metrics.update(compute_gear_metrics(drv))
+                metrics.update(compute_wet_dry_delta(drv))
+                metrics["updated_at"] = now
+
+                s_ops.append(UpdateOne(
+                    {"driver_code": driver_code, "season": season},
+                    {"$set": metrics},
+                    upsert=True,
+                ))
+
+            if s_ops:
+                db["driver_telemetry_profiles"].create_index(
+                    [("driver_code", 1), ("season", 1)], unique=True, sparse=True,
+                )
+                s_res = db["driver_telemetry_profiles"].bulk_write(s_ops, ordered=False)
+                print(f"    Season {season}: {s_res.upserted_count + s_res.modified_count} profiles")
+    else:
+        print("\n  ⚠ No 2025+ telemetry data found (expected — no 2025 data yet)")
+
     # Verify
     total = db["driver_telemetry_profiles"].count_documents({})
     print(f"\n  driver_telemetry_profiles: {total} drivers")

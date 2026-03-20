@@ -38,6 +38,21 @@ class AnomalyScore:
         d["severity"] = self.severity.value
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "AnomalyScore":
+        severity = d.get("severity", "normal")
+        if isinstance(severity, str):
+            severity = SeverityLevel(severity)
+        return cls(
+            row_index=d.get("row_index", 0),
+            score_mean=d.get("score_mean", 0.0),
+            score_std=d.get("score_std", 0.0),
+            severity=severity,
+            vote_count=d.get("vote_count", 0),
+            total_models=d.get("total_models", 4),
+            model_scores=d.get("model_scores", {}),
+        )
+
 
 @dataclass
 class AnomalyResult:
@@ -59,6 +74,22 @@ class AnomalyResult:
             "model_weights": self.model_weights,
             "scores": [s.to_dict() for s in self.scores],
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AnomalyResult":
+        scores = [
+            AnomalyScore.from_dict(s) if isinstance(s, dict) else s
+            for s in d.get("scores", [])
+        ]
+        return cls(
+            scores=scores,
+            contamination_estimate=d.get("contamination_estimate", 0),
+            threshold=d.get("threshold", 0),
+            anomaly_count=d.get("anomaly_count", 0),
+            total_rows=d.get("total_rows", 0),
+            severity_distribution=d.get("severity_distribution", {}),
+            model_weights=d.get("model_weights", {}),
+        )
 
 
 @dataclass
@@ -84,6 +115,26 @@ class ForecastResult:
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
         return {k: v for k, v in d.items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "ForecastResult":
+        return cls(
+            column=d.get("column", ""),
+            method=d.get("method", ""),
+            horizon=d.get("horizon", 0),
+            timestamps=d.get("timestamps", []),
+            values=d.get("values", []),
+            lower_bound=d.get("lower_bound", []),
+            upper_bound=d.get("upper_bound", []),
+            mae=d.get("mae"),
+            rmse=d.get("rmse"),
+            trend_direction=d.get("trend_direction"),
+            trend_pct=d.get("trend_pct"),
+            volatility=d.get("volatility"),
+            risk_flag=d.get("risk_flag", False),
+            history=d.get("history", []),
+            history_timestamps=d.get("history_timestamps", []),
+        )
 
 
 @dataclass

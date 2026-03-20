@@ -290,6 +290,50 @@ def main():
     else:
         print("⚠ No results to write")
 
+    # ── Per-season documents for 2025+ ────────────────────────────────────
+    if "Year" in laps_df.columns:
+        seasons_2025_plus = sorted(
+            int(y) for y in laps_df["Year"].dropna().unique() if int(y) >= 2025
+        )
+    else:
+        seasons_2025_plus = []
+
+    if seasons_2025_plus:
+        print(f"\n{'=' * 60}")
+        print(f"COMPUTING PER-SEASON MARKERS (2025+): {seasons_2025_plus}")
+        print(f"{'=' * 60}")
+
+        season_results = []
+        for season in seasons_2025_plus:
+            print(f"\n─── Season {season} ───")
+            s_laps = laps_df[laps_df["Year"] == season]
+            s_weather = weather_df[weather_df["Year"] == season] if weather_df is not None and "Year" in weather_df.columns else weather_df
+            s_tel = tel_df[tel_df["Year"] == season] if not tel_df.empty and "Year" in tel_df.columns else tel_df
+            s_drivers = sorted(s_laps["Driver"].dropna().unique())
+            for driver in s_drivers:
+                try:
+                    marker = process_driver(driver, s_laps, s_weather, s_tel)
+                    if marker:
+                        marker["season"] = season
+                        season_results.append(marker)
+                except Exception as e:
+                    print(f"  ❌ {driver} ({season}): {e}")
+
+        if season_results:
+            db[OUT_COL].create_index([("Driver", 1), ("season", 1)], unique=True, sparse=True)
+            ops = [
+                UpdateOne(
+                    {"Driver": r["Driver"], "season": r["season"]},
+                    {"$set": r},
+                    upsert=True,
+                )
+                for r in season_results
+            ]
+            result = db[OUT_COL].bulk_write(ops, ordered=False)
+            print(f"\n✅ Upserted {result.upserted_count + result.modified_count} per-season docs")
+        else:
+            print("\n⚠ No 2025+ season data found (expected — no 2025 data yet)")
+
     # Sanity check
     total = db[OUT_COL].count_documents({})
     print(f"\nTotal docs in {OUT_COL}: {total}")

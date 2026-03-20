@@ -18,6 +18,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
 from omnidata._types import TabularDataset
+from omnianalytics import feature_store
 from omnianalytics._types import (
     AnomalyResult, AnomalyScore, SeverityLevel,
 )
@@ -76,12 +77,23 @@ class AnomalyEnsemble:
         weights: Optional[Dict[str, float]] = None,
         explain_critical: bool = True,
         top_k_features: int = 3,
+        session_key: Optional[int] = None,
+        driver_number: Optional[int] = None,
+        db=None,
+        calibrated_thresholds: Optional[Dict[str, float]] = None,
     ) -> AnomalyResult:
         """Run full ensemble on dataset metric columns.
 
         If explain_critical=True, runs SHAP on HIGH/CRITICAL anomalies
         and stores top_k contributing feature names in each AnomalyScore.model_scores.
         """
+        # ── Feature store cache check ──
+        if session_key is not None and driver_number is not None and db is not None:
+            cached = feature_store.get(db, session_key, driver_number, "anomaly_scores")
+            if cached is not None:
+                logger.info("feature_store HIT: anomaly_scores session=%s driver=%s", session_key, driver_number)
+                return AnomalyResult.from_dict(cached)
+
         from omnidata.profiler import profile as run_profile
 
         if not dataset.profile.columns:
@@ -140,8 +152,8 @@ class AnomalyEnsemble:
         threshold = statistical_threshold(enhanced)
         anomaly_flags = enhanced >= threshold
 
-        # Severity classification
-        severities = self._classify_severity(enhanced, score_std)
+        # Severity classification (use calibrated thresholds if available)
+        severities = self._classify_severity(enhanced, score_std, calibrated_thresholds)
 
         # SHAP explanations for HIGH/CRITICAL
         shap_features = {}
@@ -173,7 +185,7 @@ class AnomalyEnsemble:
             scores.append(s)
             severity_dist[severities[i].value] += 1
 
-        return AnomalyResult(
+        result = AnomalyResult(
             scores=scores,
             contamination_estimate=round(contam, 4),
             threshold=round(float(threshold), 4),
@@ -182,6 +194,15 @@ class AnomalyEnsemble:
             severity_distribution=severity_dist,
             model_weights={m: round(w.get(m, 0.5), 2) for m in model_names},
         )
+
+        # ── Cache result in feature store ──
+        if session_key is not None and driver_number is not None and db is not None:
+            try:
+                feature_store.put(db, session_key, driver_number, "anomaly_scores", result.to_dict())
+            except Exception:
+                logger.debug("Failed to cache anomaly_scores for session=%s driver=%s", session_key, driver_number)
+
+        return result
 
     def _run_isolation_forest(self, scaled: np.ndarray, contamination: float) -> Tuple[np.ndarray, np.ndarray]:
         model = IsolationForest(
@@ -238,18 +259,35 @@ class AnomalyEnsemble:
 
     def _classify_severity(
         self, enhanced: np.ndarray, score_std: np.ndarray,
+        calibrated_thresholds: Optional[Dict[str, float]] = None,
     ) -> List[SeverityLevel]:
-        """Quantile-based 5-level severity classification."""
-        q = np.percentile(enhanced, [75, 85, 93, 97])
+        """5-level severity classification.
+
+        If calibrated_thresholds is provided (from backtest calibration),
+        uses absolute thresholds keyed by level name. Otherwise falls back
+        to percentile-based thresholds (relative to current session).
+
+        Calibrated thresholds should be: {"low": 0.3, "medium": 0.45, "high": 0.6, "critical": 0.75}
+        """
+        if calibrated_thresholds:
+            t_critical = calibrated_thresholds.get("critical", 0.75)
+            t_high = calibrated_thresholds.get("high", 0.6)
+            t_medium = calibrated_thresholds.get("medium", 0.45)
+            t_low = calibrated_thresholds.get("low", 0.3)
+        else:
+            # Fallback: percentile-based (relative to this session)
+            q = np.percentile(enhanced, [75, 85, 93, 97])
+            t_low, t_medium, t_high, t_critical = q[0], q[1], q[2], q[3]
+
         severities = []
         for i, score in enumerate(enhanced):
-            if score >= q[3]:
+            if score >= t_critical:
                 severities.append(SeverityLevel.CRITICAL)
-            elif score >= q[2]:
+            elif score >= t_high:
                 severities.append(SeverityLevel.HIGH)
-            elif score >= q[1]:
+            elif score >= t_medium:
                 severities.append(SeverityLevel.MEDIUM)
-            elif score >= q[0]:
+            elif score >= t_low:
                 severities.append(SeverityLevel.LOW)
             else:
                 severities.append(SeverityLevel.NORMAL)

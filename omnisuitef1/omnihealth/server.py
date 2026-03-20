@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, Query, UploadFile
@@ -21,9 +22,10 @@ app = FastAPI(
     version="0.1.0",
 )
 
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

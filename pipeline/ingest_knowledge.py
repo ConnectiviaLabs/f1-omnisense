@@ -294,11 +294,11 @@ def ingest(rebuild: bool = False):
     print(f"  Embedded {len(embeddings)} documents in {embed_time:.1f}s")
     print(f"  Rate: {len(embeddings) / embed_time:.1f} docs/sec")
 
-    # Upsert to Atlas
-    print("\n[3/3] Upserting to MongoDB Atlas...")
-    from pipeline.vectorstore import AtlasVectorStore
+    # Upsert to MongoDB
+    print("\n[3/3] Upserting to MongoDB...")
+    from pipeline.vectorstore import get_vector_store
 
-    vs = AtlasVectorStore()
+    vs = get_vector_store()
 
     if rebuild:
         print("  Rebuilding collection (--rebuild flag)...")

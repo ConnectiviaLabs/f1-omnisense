@@ -6,8 +6,41 @@ networks:
 
 volumes:
   hf-cache:
+  mongo-data:
 
 services:
+
+  # ── MongoDB: self-hosted (replaces Atlas) ────────────────────
+  mongo:
+    image: mongo:7
+    container_name: f1-mongo
+    networks:
+      - f1net
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-maripf1admin}
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  # ── Mongo Express: web admin UI ──────────────────────────────
+  mongo-express:
+    image: mongo-express:latest
+    container_name: f1-mongo-express
+    networks:
+      - f1net
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD:-maripf1admin}
+      ME_CONFIG_MONGODB_URL: mongodb://admin:${MONGO_ROOT_PASSWORD:-maripf1admin}@mongo:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      - mongo
+    restart: unless-stopped
 
   # ── Backend: FastAPI + sentence-transformers + CLIP ──────
   backend:
@@ -21,6 +54,8 @@ services:
       - "8300:8300"
     env_file:
       - .env
+    depends_on:
+      - mongo
     environment:
       - API_PORT=8300
     volumes:
