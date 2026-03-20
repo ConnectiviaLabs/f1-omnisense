@@ -1106,57 +1106,8 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
                         </div>
                       )}
                     </div>
-                    <div className="bg-[#0D1117] rounded-lg p-2">
-                      <div className="text-lg font-mono font-bold text-red-400">{s.timesOvertaken}</div>
-                      <div className="text-[9px] text-muted-foreground">Lost</div>
-                    </div>
-                    <div className="bg-[#0D1117] rounded-lg p-2">
-                      <div className="text-lg font-mono font-bold" style={{ color: (s.overtakeNet ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>
-                        {(s.overtakeNet ?? 0) >= 0 ? '+' : ''}{s.overtakeNet}
-                      </div>
-                      <div className="text-[9px] text-muted-foreground">Net</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* System Health — stacked in sidebar */}
-              <div className="bg-[#1A1F2E] rounded-xl border border-[rgba(255,128,0,0.12)] p-3">
-                <h3 className="text-[12px] font-medium text-foreground mb-2 flex items-center gap-1.5">
-                  <Gauge className="w-3 h-3 text-[#FF8000]" />
-                  System Health
-                </h3>
-                <div className="space-y-1.5">
-                  {selectedCar.systems.map(sys => {
-                    const Icon = sys.icon;
-                    return (
-                      <div key={sys.name} className="rounded-lg p-2 border" style={{ background: levelBg(sys.level), borderColor: `${levelColor(sys.level)}15` }}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-1.5">
-                            <Icon className="w-3 h-3" style={{ color: levelColor(sys.level) }} />
-                            <span className="text-[12px] font-medium text-foreground">{sys.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[12px] font-mono font-semibold" style={{ color: levelColor(sys.level) }}>
-                              {sys.health}%
-                            </span>
-                            {sys.level === 'nominal' && <CheckCircle2 className="w-2.5 h-2.5 text-green-400" />}
-                            {sys.level === 'warning' && <AlertTriangle className="w-2.5 h-2.5 text-[#FF8000]" />}
-                            {sys.level === 'critical' && <XCircle className="w-2.5 h-2.5 text-red-400" />}
-                          </div>
-                        </div>
-                        <div className="h-1 bg-[#0D1117] rounded-full overflow-hidden mb-1.5">
-                          <div className="h-full rounded-full transition-all duration-700"
-                            style={{ width: `${sys.health}%`, background: levelColor(sys.level) }} />
-                        </div>
-                        <SeverityBar probabilities={sys.severityProbabilities} />
-                        {sys.maintenanceAction && sys.maintenanceAction !== 'none' && (
-                          <div className="mt-1.5"><MaintenanceBadge action={sys.maintenanceAction} /></div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1281,7 +1232,7 @@ export function FleetOverview({ prefetchedVehicles, prefetchLoading, defaultSect
             <ForecastChart driverCode={selectedCar.code} />
           )}
 
-            </motion.div>
+          </motion.div>
           </AnimatePresence>
 
         </div>
