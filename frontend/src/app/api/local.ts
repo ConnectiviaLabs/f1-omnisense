@@ -134,6 +134,7 @@ export const aim = {
   health: (id: string) => fetchLocal<any>(`aim/health/${id}`),
   anomaly: (id: string) => fetchLocal<any>(`aim/anomaly/${id}`),
   compare: (ids: string[]) => fetchLocal<any>(`aim/compare?sessions=${ids.join(',')}`),
+  trackAnomalies: (id: string) => fetchLocal<any>(`aim/track-anomalies/${id}`),
   upload: (file: File) => {
     const form = new FormData();
     form.append('xrk', file);

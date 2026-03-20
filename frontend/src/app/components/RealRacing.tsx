@@ -259,12 +259,13 @@ function ChartCard({ group, data }: { group: ChartGroup; data: any[] }) {
 
 // ── Track Map Overlay (Lap Compare + Metric) ────────────────────────────
 
-function TrackMapOverlay({ trackData, laps, activeLap }: {
+function TrackMapOverlay({ trackData, laps, activeLap, trackAnomalies }: {
   trackData: any[];
   laps: { lap_number: number; lap_time_s: number }[];
   activeLap: number | null;
+  trackAnomalies: any;
 }) {
-  const [mode, setMode] = useState<'compare' | 'metric'>('compare');
+  const [mode, setMode] = useState<'compare' | 'metric' | 'anomalies'>('compare');
   const [selectedLaps, setSelectedLaps] = useState<Set<number>>(new Set([1]));
   const [metric, setMetric] = useState('GPS_Speed_kmh');
 
@@ -303,6 +304,9 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
         lap,
         points: lapGroups.get(lap) || [],
       }));
+    }
+    if (mode === 'anomalies') {
+      return [{ lap: 0, points: trackData }];
     }
     const pts = activeLap != null ? (lapGroups.get(activeLap) || []) : trackData;
     return [{ lap: activeLap ?? 0, points: pts }];
@@ -357,6 +361,16 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
           >
             Metric
           </button>
+          <button
+            onClick={() => setMode('anomalies')}
+            className={`text-[10px] px-2.5 py-1 rounded-full border transition-colors ${
+              mode === 'anomalies'
+                ? 'bg-red-500 text-white border-red-500 font-medium'
+                : 'border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Anomalies{trackAnomalies?.summary?.total_anomalies > 0 ? ` (${trackAnomalies.summary.total_anomalies})` : ''}
+          </button>
         </div>
       </div>
 
@@ -377,6 +391,8 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
             const p2 = toSvg(pt);
             const segColor = mode === 'compare'
               ? color!
+              : mode === 'anomalies'
+              ? 'rgba(255,255,255,0.15)'
               : metricColor(metric, pt[metric] ?? 0, metricBounds.min, metricBounds.max);
 
             return (
@@ -391,6 +407,42 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
             );
           });
         })}
+        {/* Anomaly markers */}
+        {mode === 'anomalies' && trackAnomalies && (
+          <>
+            {(trackAnomalies.anomaly_zones || []).map((zone: any, i: number) => {
+              if (!zone.start_gps?.lat || !zone.end_gps?.lat) return null;
+              const p1 = toSvg({ GPS_Lat: zone.start_gps.lat, GPS_Lon: zone.start_gps.lon });
+              const p2 = toSvg({ GPS_Lat: zone.end_gps.lat, GPS_Lon: zone.end_gps.lon });
+              const color = zone.severity === 'CRITICAL' ? RED : zone.severity === 'HIGH' ? PAPAYA : AMBER;
+              return (
+                <g key={`zone-${i}`}>
+                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    stroke={color} strokeWidth={8} strokeLinecap="round" opacity={0.4} />
+                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    stroke={color} strokeWidth={3} strokeLinecap="round" opacity={0.9} />
+                  <title>{`${zone.system}: ${zone.reason} (Lap ${zone.lap})`}</title>
+                </g>
+              );
+            })}
+            {(trackAnomalies.point_events || []).map((pt: any, i: number) => {
+              if (!pt.gps?.lat) return null;
+              const p = toSvg({ GPS_Lat: pt.gps.lat, GPS_Lon: pt.gps.lon });
+              const SYSTEM_COLORS: Record<string, string> = {
+                Brakes: RED, Thermal: PAPAYA, Suspension: PURPLE,
+                Electronics: CYAN, 'Power Unit': LIME, Drivetrain: AMBER, 'Tyre Management': PINK,
+              };
+              const color = SYSTEM_COLORS[pt.system] || AMBER;
+              return (
+                <g key={`pt-${i}`}>
+                  <circle cx={p.x} cy={p.y} r={7} fill={color} opacity={0.25} />
+                  <circle cx={p.x} cy={p.y} r={4} fill={color} stroke="white" strokeWidth={1} />
+                  <title>{`${pt.system}: ${pt.reason} (Lap ${pt.lap})`}</title>
+                </g>
+              );
+            })}
+          </>
+        )}
         {/* Start marker */}
         {trackData.length > 0 && (() => {
           const start = toSvg(trackData[0]);
@@ -399,7 +451,7 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
       </svg>
 
       {/* Controls */}
-      {mode === 'compare' ? (
+      {mode === 'compare' && (
         <div className="flex gap-1.5 mt-3 flex-wrap">
           {lapNumbers.map((lap, i) => (
             <button
@@ -417,7 +469,8 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
           ))}
           <span className="text-[9px] text-muted-foreground self-center ml-1">max 3</span>
         </div>
-      ) : (
+      )}
+      {mode === 'metric' && (
         <div className="mt-3 space-y-2">
           <select
             value={metric}
@@ -442,6 +495,26 @@ function TrackMapOverlay({ trackData, laps, activeLap }: {
                 : 'linear-gradient(to right, rgb(0,255,80), rgb(255,200,0), rgb(255,128,0), rgb(255,0,0))'
             }} />
             <span>{metric === 'Gear' ? '7' : 'High'}</span>
+          </div>
+        </div>
+      )}
+      {mode === 'anomalies' && trackAnomalies && (
+        <div className="mt-3 space-y-1.5">
+          <div className="flex flex-wrap gap-2 text-[10px]">
+            {[
+              { label: 'Brakes', color: RED },
+              { label: 'Thermal', color: PAPAYA },
+              { label: 'Suspension', color: PURPLE },
+              { label: 'Electronics', color: CYAN },
+            ].map(s => (
+              <div key={s.label} className="flex items-center gap-1 text-muted-foreground">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
+                {s.label}
+              </div>
+            ))}
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            {trackAnomalies.summary?.total_anomalies || 0} anomalies detected · hover for details
           </div>
         </div>
       )}
@@ -562,6 +635,7 @@ export function RealRacing() {
   const [trackData, setTrackData] = useState<any[]>([]);
   const [health, setHealth] = useState<AiMHealthResult | null>(null);
   const [anomaly, setAnomaly] = useState<any>(null);
+  const [trackAnomalies, setTrackAnomalies] = useState<any>(null);
   const [activeLap, setActiveLap] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [telLoading, setTelLoading] = useState(false);
@@ -589,12 +663,14 @@ export function RealRacing() {
       aim.track(selectedId),  // always fetch all laps for overlay
       aim.health(selectedId).catch(() => null),
       aim.anomaly(selectedId).catch(() => null),
-    ]).then(([sess, tel, trk, hlth, anom]) => {
+      aim.trackAnomalies(selectedId).catch(() => null),
+    ]).then(([sess, tel, trk, hlth, anom, trkAnom]) => {
       setSession(sess);
       setTelemetry(tel?.data || []);
       setTrackData(trk?.track_xy || trk?.gps || []);
       setHealth(hlth);
       setAnomaly(anom);
+      setTrackAnomalies(trkAnom);
     }).catch(err => {
       console.error('Failed to load session data:', err);
     }).finally(() => {
@@ -733,7 +809,7 @@ export function RealRacing() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Left: Track Map + Lap Times */}
           <div className="space-y-4">
-            <TrackMapOverlay trackData={trackData} laps={session?.laps || []} activeLap={activeLap} />
+            <TrackMapOverlay trackData={trackData} laps={session?.laps || []} activeLap={activeLap} trackAnomalies={trackAnomalies} />
             {session?.laps && <LapTimesChart laps={session.laps} />}
           </div>
 
@@ -748,6 +824,122 @@ export function RealRacing() {
 
       {/* ── Section 5: Health Dashboard ── */}
       {!telLoading && <HealthDashboard health={health} anomaly={anomaly} />}
+
+      {/* ── Section 6: Intelligence Cards ── */}
+      {!telLoading && trackAnomalies && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Anomaly Alerts */}
+          {(trackAnomalies.anomaly_zones?.length > 0 || trackAnomalies.point_events?.length > 0) && (
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-sm font-medium text-foreground">Anomaly Alerts</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  {(trackAnomalies.anomaly_zones?.length || 0) + (trackAnomalies.point_events?.length || 0)} issues
+                </span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {[...(trackAnomalies.anomaly_zones || []), ...(trackAnomalies.point_events || [])]
+                  .sort((a: any, b: any) => {
+                    const order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'NORMAL'];
+                    return order.indexOf(a.severity) - order.indexOf(b.severity);
+                  })
+                  .map((a: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px]">
+                      <span className="w-2 h-2 rounded-full mt-1 shrink-0"
+                        style={{ background: a.severity === 'HIGH' || a.severity === 'CRITICAL' ? RED : AMBER }} />
+                      <div>
+                        <span className="text-foreground font-medium">{a.system}</span>
+                        <span className="text-muted-foreground"> · Lap {a.lap} · {a.severity}</span>
+                        <div className="text-muted-foreground">{a.reason}</div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Degradation Watch */}
+          {trackAnomalies.degradation?.length > 0 && (
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-medium text-foreground">Degradation Watch</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  {trackAnomalies.degradation.length} trends
+                </span>
+              </div>
+              <div className="space-y-3">
+                {trackAnomalies.degradation.map((d: any, i: number) => (
+                  <div key={i}>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-foreground font-medium">{d.label}</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                        d.severity === 'HIGH' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'
+                      }`}>
+                        {d.rate_pct_per_lap > 0 ? '+' : ''}{d.rate_pct_per_lap}%/lap
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">{d.message}</div>
+                    <div className="flex items-end gap-px mt-1.5 h-6">
+                      {d.lap_values.map((v: number, j: number) => {
+                        const min = Math.min(...d.lap_values);
+                        const max = Math.max(...d.lap_values);
+                        const pct = max === min ? 50 : ((v - min) / (max - min)) * 100;
+                        return (
+                          <div key={j} className="flex-1 rounded-sm"
+                            style={{
+                              height: `${Math.max(10, pct)}%`,
+                              background: d.severity === 'HIGH' ? RED : AMBER,
+                              opacity: 0.3 + (j / d.lap_values.length) * 0.7,
+                            }}
+                            title={`Lap ${j + 1}: ${v} ${d.unit}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Lap Deltas — full width */}
+          {trackAnomalies.lap_deltas?.length > 0 && (
+            <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Timer className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium text-foreground">Lap-over-Lap Analysis</span>
+              </div>
+              <div className="space-y-2">
+                {trackAnomalies.lap_deltas.map((d: any, i: number) => (
+                  <div key={i} className="flex items-start gap-3 text-[11px]">
+                    <div className="shrink-0 w-20 text-right">
+                      <span className="text-muted-foreground">L{d.vs_lap}→L{d.lap}</span>
+                    </div>
+                    <div className={`shrink-0 w-16 font-mono font-bold ${d.faster ? 'text-green-400' : 'text-red-400'}`}>
+                      {d.delta_s > 0 ? '+' : ''}{d.delta_s.toFixed(3)}s
+                    </div>
+                    <div className="text-muted-foreground flex-1">
+                      {d.reasons.length > 0
+                        ? d.reasons.map((r: any) => r.detail).join(' · ')
+                        : 'No significant channel changes detected'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All nominal state */}
+          {!trackAnomalies.anomaly_zones?.length && !trackAnomalies.point_events?.length && !trackAnomalies.degradation?.length && (
+            <div className="lg:col-span-2 bg-card border border-border rounded-xl p-4 text-center">
+              <div className="text-green-400 text-sm font-medium">All Systems Nominal</div>
+              <div className="text-[11px] text-muted-foreground mt-1">No anomalies or degradation trends detected</div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Empty state */}
       {!loading && sessions.length === 0 && (
