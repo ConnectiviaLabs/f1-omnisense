@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SidebarProvider } from './hooks/useSidebar';
 import { Sidebar } from './components/Sidebar';
 import { Home_v3 as Home } from './components/Home_v3';
@@ -22,7 +22,7 @@ import { ChevronRight, Wifi, Signal, Clock } from 'lucide-react';
 import type { ViewType } from './types';
 import type { Pillar, StrategyTab } from './components/Sidebar';
 import { parseAnomalyDrivers } from './components/anomalyHelpers';
-import type { VehicleData } from './components/anomalyHelpers';
+import type { VehicleData, FeatureForecast } from './components/anomalyHelpers';
 
 const RACE_DAY_VIEWS = new Set<ViewType>(['dashboard', 'car', 'driver', 'schedule']);
 
