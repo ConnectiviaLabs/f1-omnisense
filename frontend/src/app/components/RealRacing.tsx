@@ -422,7 +422,7 @@ export function RealRacing() {
     Promise.all([
       aim.session(selectedId),
       aim.telemetry(selectedId, activeLap ?? undefined),
-      aim.track(selectedId, activeLap ?? undefined),
+      aim.track(selectedId),  // always fetch all laps for overlay
       aim.health(selectedId).catch(() => null),
       aim.anomaly(selectedId).catch(() => null),
     ]).then(([sess, tel, trk, hlth, anom]) => {
