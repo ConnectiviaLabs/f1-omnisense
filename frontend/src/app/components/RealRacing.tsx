@@ -109,9 +109,7 @@ const CHART_GROUPS: ChartGroup[] = [
     icon: Timer,
     channels: [
       { key: 'PredictiveTime', color: PAPAYA, label: 'Predictive' },
-      { key: 'BestRunDiff', color: LIME, label: 'Best Run Δ' },
-      { key: 'BestTodayDiff', color: CYAN, label: 'Best Today Δ' },
-      { key: 'PrevLapDiff', color: AMBER, label: 'Prev Lap Δ' },
+      { key: 'RefLapDiff', color: CYAN, label: 'Ref Lap Δ' },
     ],
   },
   {

@@ -213,7 +213,8 @@ async def get_track(
     track_docs = [_scrub_nan(d) for d in db["aim_telemetry"].find(
         tel_query,
         {"_id": 0, "X_m": 1, "Y_m": 1, "Z_m": 1, "GPS_Speed_kmh": 1,
-         "GPS_Lat": 1, "GPS_Lon": 1, "time_s": 1, "lap": 1, "Distance_m": 1},
+         "GPS_Lat": 1, "GPS_Lon": 1, "time_s": 1, "lap": 1, "Distance_m": 1,
+         "FrontBrake_bar": 1, "Throttle_pct": 1, "LateralAcc_g": 1, "Gear": 1},
     ).sort("time_s", 1)]
 
     # Downsample track to ~2K points
