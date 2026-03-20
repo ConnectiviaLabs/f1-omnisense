@@ -60,9 +60,10 @@ PORT = int(os.getenv("PORT", os.getenv("API_PORT", "8300")))
 USE_OMNIRAG = os.getenv("USE_OMNIRAG", "").lower() in ("1", "true", "yes")
 
 app = FastAPI(title="F1 OmniSense API")
+_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

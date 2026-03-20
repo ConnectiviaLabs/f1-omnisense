@@ -25,9 +25,9 @@ COPY omnisuitef1/ /app/omnisuitef1/
 # Copy AgentML module (imported by chat_server)
 COPY onmichine/ /app/onmichine/
 
-EXPOSE 8000
+EXPOSE 8300
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8000}/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT:-8300}/health')" || exit 1
 
 CMD ["python", "/app/pipeline/chat_server.py"]

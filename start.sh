@@ -42,18 +42,18 @@ else
   exit 1
 fi
 
-# 2. Check Ollama + nomic-embed-text
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo -e "${R}  [✗] Ollama not running — start it first: ollama serve${C}"
+# 2. Check required API keys
+if [ -z "$NOMIC_API_KEY" ]; then
+  # Try loading from .env
+  if [ -f "$ROOT/.env" ]; then
+    export $(grep -v '^#' "$ROOT/.env" | grep NOMIC_API_KEY | xargs 2>/dev/null)
+  fi
+fi
+if [ -z "$NOMIC_API_KEY" ]; then
+  echo -e "${R}  [✗] NOMIC_API_KEY not set — add it to .env${C}"
   exit 1
 fi
-echo -e "${G}  [✓] Ollama running${C}"
-
-if ! ollama list 2>/dev/null | grep -q "nomic-embed-text"; then
-  echo -e "${O}  [~] Pulling nomic-embed-text...${C}"
-  ollama pull nomic-embed-text
-fi
-echo -e "${G}  [✓] nomic-embed-text ready${C}"
+echo -e "${G}  [✓] NOMIC_API_KEY set${C}"
 
 # 3. Start API server (Knowledge Agent + 3D Model Gen on port 8300)
 echo -e "\n${O}  Starting API server (port 8300)...${C}"

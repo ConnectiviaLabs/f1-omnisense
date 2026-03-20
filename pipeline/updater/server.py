@@ -109,9 +109,10 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     app = FastAPI(title="F1 Data Updater API", version="1.0.0")
+    _allowed = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=_allowed,
         allow_methods=["*"],
         allow_headers=["*"],
     )
