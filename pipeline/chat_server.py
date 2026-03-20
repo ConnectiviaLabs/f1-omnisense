@@ -259,7 +259,7 @@ def retrieve_context(query: str, k: int = 8, data_types: list[str] | None = None
     if _embedder is not None:
         try:
             vs = get_vs()
-            query_vec = _embedder.embed([query])[0]
+            query_vec = _embedder.embed_query(query)
             docs = vs.similarity_search(query, k=k, query_embedding=query_vec, filter=vs_filter)
             sources = []
             for doc in docs:

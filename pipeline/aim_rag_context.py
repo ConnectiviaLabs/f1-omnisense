@@ -126,7 +126,6 @@ def push_aim_to_knowledge_base(session_id: str) -> int:
     Returns number of chunks inserted.
     """
     from langchain_core.documents import Document
-    from pipeline.embeddings import NomicEmbedder
     from pipeline.vectorstore import get_vector_store
 
     chunks = build_aim_session_context(session_id)
@@ -154,8 +153,9 @@ def push_aim_to_knowledge_base(session_id: str) -> int:
             },
         ))
 
-    # Embed
-    embedder = NomicEmbedder()
+    # Embed (BGE 1024-dim to match vectorstore index)
+    from omnidoc.embedder import get_embedder
+    embedder = get_embedder(enable_clip=False)
     texts = [doc.page_content for doc in documents]
     embeddings = embedder.embed_texts(texts)
 
