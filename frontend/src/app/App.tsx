@@ -68,18 +68,6 @@ export default function App() {
     ? platform
     : lastPlatform;
 
-  // ── Pre-fetch fleet anomaly data on app startup ──────────
-  const [fleetVehicles, setFleetVehicles] = useState<VehicleData[]>([]);
-  const [fleetLoading, setFleetLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/pipeline/anomaly')
-      .then(r => r.json())
-      .then(data => setFleetVehicles(parseAnomalyDrivers(data)))
-      .catch(err => console.error('Fleet prefetch error:', err))
-      .finally(() => setFleetLoading(false));
-  }, []);
-
   // ── Pre-fetch fleet anomaly + forecasts on app startup ──────────
   const [fleetVehicles, setFleetVehicles] = useState<VehicleData[]>([]);
   const [fleetForecasts, setFleetForecasts] = useState<Record<string, FeatureForecast[]>>({});
